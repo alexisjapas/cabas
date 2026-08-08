@@ -28,6 +28,24 @@ pub(crate) fn mint(platform: &impl Platform, prefix: &str) -> Result<String> {
     Ok(format!("{prefix}{:016x}", platform.random_u64()?))
 }
 
+/// Mints the id of a recipe line, for a host that has to name one before the
+/// recipe it belongs to has ever been saved (DECISIONS 0039).
+///
+/// The one id an editor cannot wait for. A step references a *usage* rather
+/// than an ingredient (DECISIONS 0022), so mentioning a line the user has just
+/// added means naming it, and [`crate::Command::SaveRecipe`] does not return
+/// until every line already carries the name the steps used. The host mints it
+/// up front and sends it back as the line's `id`.
+///
+/// It comes from here rather than from the host's own random source for the
+/// reason the module note gives: two devices adding a line to the same recipe
+/// offline must not choose the same id, and a locally invented `"line-1"`
+/// would guarantee that they do — which under a CRDT is not a conflict but two
+/// different lines silently merging into one.
+pub fn mint_usage_id(platform: &impl Platform) -> Result<String> {
+    mint(platform, USAGE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,6 +73,18 @@ mod tests {
         // Fixed width: ids sort the same way whatever the value, which is
         // what keeps `Document`'s by-id ordering meaningful.
         assert_eq!(mint(&platform, RECIPE).expect("mint").len(), id.len());
+    }
+
+    #[test]
+    fn a_host_minted_usage_id_is_an_ordinary_usage_id() {
+        // The editor's ids must be indistinguishable from the ones `component`
+        // mints, or a line created in the editor would be a second kind of id
+        // for something the document treats as one kind (DECISIONS 0039).
+        let platform = Sequence(Cell::new(0));
+        let host = mint_usage_id(&platform).expect("mint");
+        let internal = mint(&platform, USAGE).expect("mint");
+        assert!(host.starts_with(USAGE));
+        assert_eq!(host.len(), internal.len());
     }
 
     #[test]

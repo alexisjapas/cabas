@@ -10,7 +10,7 @@
   } = $props();
 
   /**
-   * Icons are inline paths rather than a font or a sprite: four shapes do not
+   * Icons are inline paths rather than a font or a sprite: five shapes do not
    * justify a dependency, and an icon that fails to load in a shop is worse
    * than no icon.
    */
@@ -21,6 +21,11 @@
       path: 'M4 9h16l-1.4 10.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 9Zm5 0V6a3 3 0 0 1 6 0v3',
     },
     { id: 'list', label: 'Liste', path: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01' },
+    {
+      id: 'recipes',
+      label: 'Recettes',
+      path: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v18H6.5A1.5 1.5 0 0 1 5 19.5v-15ZM5 17.5h14M9 7.5h6',
+    },
     { id: 'ingredients', label: 'Ingrédients', path: 'M3 11.5 11.5 3H20a1 1 0 0 1 1 1v8.5L12.5 21 3 11.5Zm13-3.5h.01' },
     { id: 'settings', label: 'Réglages', path: 'M4 8h16M4 16h16M9 8a2 2 0 1 0 0 .01M15 16a2 2 0 1 0 0 .01' },
   ];
@@ -57,7 +62,10 @@
 
   button {
     flex: 1;
-    max-width: calc(var(--content-width) / 4);
+    /* Five tabs across the narrowest phone: the labels ellipsize rather than
+       wrap the bar onto two lines. */
+    min-width: 0;
+    max-width: calc(var(--content-width) / 5);
     display: flex;
     flex-direction: column;
     align-items: center;

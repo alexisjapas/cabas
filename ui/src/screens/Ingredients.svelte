@@ -2,6 +2,7 @@
   import Screen from '../components/Screen.svelte';
   import type { AisleTag } from '../lib/bindings/AisleTag';
   import type { IngredientView } from '../lib/bindings/IngredientView';
+  import { byName } from '../lib/format';
   import { AISLE_LABEL, AISLES } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -15,9 +16,7 @@
    */
   let { session }: { session: Session } = $props();
 
-  let ingredients = $derived(
-    [...session.state.ingredients].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
-  );
+  let ingredients = $derived([...session.state.ingredients].sort(byName));
 
   type Draft = {
     id: string | null;

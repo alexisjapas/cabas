@@ -16,10 +16,14 @@
     amount = $bindable(),
     unit = $bindable(),
     label = 'Quantité',
+    required = false,
   }: {
     amount: string;
     unit: UnitTag;
     label?: string;
+    /** Lets the browser block the submit, rather than the core refusing an
+        empty amount after the fact. */
+    required?: boolean;
   } = $props();
 </script>
 
@@ -32,6 +36,7 @@
       placeholder="1,5"
       aria-label="Quantité"
       autocomplete="off"
+      {required}
     />
     <select bind:value={unit} aria-label="Unité">
       {#each UNIT_GROUPS as group (group.label)}

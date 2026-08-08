@@ -93,14 +93,35 @@ async function waitFor(expression, label, timeoutMs = 15000) {
  * what a keystroke does.
  */
 const HELPERS = `
-  window.__set = (selector, value) => {
-    const el = document.querySelector(selector);
-    if (!el) throw new Error('missing ' + selector);
-    const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  window.__setNode = (el, value) => {
+    const proto =
+      el instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+      : el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
+  window.__set = (selector, value) => {
+    const el = document.querySelector(selector);
+    if (!el) throw new Error('missing ' + selector);
+    __setNode(el, value);
+  };
+  /** The nth match, because a form repeats a field once per line. */
+  window.__setNth = (selector, n, value) => {
+    const el = document.querySelectorAll(selector)[n];
+    if (!el) throw new Error('missing ' + selector + ' #' + n);
+    __setNode(el, value);
+  };
+  /** Chooses an option by the words on it: the value is an opaque id. */
+  window.__pick = (selector, n, text) => {
+    const el = document.querySelectorAll(selector)[n];
+    if (!el) throw new Error('missing ' + selector + ' #' + n);
+    const option = [...el.options].find((o) => o.textContent.trim() === text);
+    if (!option) throw new Error(text + ' missing from ' + selector + ' #' + n);
+    __setNode(el, option.value);
+  };
+  window.__count = (selector) => document.querySelectorAll(selector).length;
   window.__click = (selector) => {
     const el = document.querySelector(selector);
     if (!el) throw new Error('missing ' + selector);
@@ -250,6 +271,118 @@ await waitFor(`__text('h1') === 'Courses'`, 'the screen that was open');
 await waitFor(`__text('details summary')?.startsWith('Acheté')`, 'the ticked line');
 ok('everything survived a cold reload, on the screen it was left on');
 await shot('06-reloaded');
+
+// --- a recipe, written in one pass ------------------------------------------
+//
+// The editor's whole premise: lines and the prose that mentions them go out in
+// one `SaveRecipe`, because a line carries its id from the moment it is added
+// (DECISIONS 0039). If that were not so, the mention below would save as a
+// reference to nothing and read back as "ligne supprimée".
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the recipes screen');
+await evaluate(`__clickText('button', 'Nouvelle')`);
+await waitFor(`__text('h1') === 'Nouvelle recette'`, 'the recipe editor');
+
+await evaluate(`__set('input[placeholder="Tarte aux tomates"]', 'Salade de tomates')`);
+
+await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
+await waitFor(`__count('select[aria-label="Ingrédient"]') === 1`, 'the first line');
+await evaluate(`__pick('select[aria-label="Ingrédient"]', 0, 'Tomates')`);
+await evaluate(`__setNth('input[aria-label="Quantité"]', 0, '2')`);
+await evaluate(`__setNth('select[aria-label="Unité"]', 0, 'piece')`);
+
+await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
+await waitFor(`__count('select[aria-label="Ingrédient"]') === 2`, 'the second line');
+await evaluate(`__pick('select[aria-label="Ingrédient"]', 1, 'Sel')`);
+await evaluate(`__setNth('input[aria-label="Quantité"]', 1, '5')`);
+await evaluate(`__setNth('select[aria-label="Unité"]', 1, 'g')`);
+ok('two ingredient lines, each named before the recipe exists');
+
+// Typing "@tom" offers the recipe's own tomato line, and picking it splits the
+// prose around a reference — never a marker inside a string (DECISIONS 0022).
+await evaluate(`__clickText('.adders button', '+ Étape')`);
+await waitFor(`__count('textarea') === 1`, 'a step to write in');
+await evaluate(`__set('textarea', 'Couper les @tom')`);
+await waitFor(`__count('.picker button') === 1`, 'the mention picker, scoped to this recipe');
+await evaluate(`__clickText('.picker button', 'Tomates')`);
+await waitFor(`__count('.chip') === 1`, 'the mention became a chip');
+await evaluate(`__setNth('textarea', 1, ' en quartiers.')`);
+ok('an @ mention resolves against a line that has never been saved');
+await shot('07-editor');
+
+await evaluate(`__clickText('button', 'Enregistrer')`);
+await waitFor(`__text('h1') === 'Salade de tomates'`, 'the recipe opens after saving');
+
+const prose = await evaluate(`__text('.prose')`);
+if (!prose.includes('Couper les') || !prose.includes('Tomates') || !prose.includes('quartiers')) {
+  throw new Error(`the step did not render its reference: ${JSON.stringify(prose)}`);
+}
+if (prose.includes('supprimée')) {
+  throw new Error(`the mention dangled: ${JSON.stringify(prose)}`);
+}
+ok(`the step reads back with its reference resolved (${JSON.stringify(prose)})`);
+
+// Read at eight what was written for four: every quantity doubles, in the
+// ingredient list and inside the step, and none of it is computed here.
+await evaluate(`__click('button[aria-label="Plus"]')`);
+await evaluate(`__click('button[aria-label="Plus"]')`);
+await evaluate(`__click('button[aria-label="Plus"]')`);
+await evaluate(`__click('button[aria-label="Plus"]')`);
+await waitFor(`__text('.count') === '8 pers.'`, 'the recipe read at eight');
+
+const scaled = await evaluate(`__all('.components .amount')`);
+if (!scaled.includes('4') || !scaled.includes('10 g')) {
+  throw new Error(`expected doubled quantities, got ${JSON.stringify(scaled)}`);
+}
+ok(`scaling is the core's arithmetic, not the frontend's (${JSON.stringify(scaled)})`);
+await shot('08-recipe');
+
+await evaluate(`__clickText('button', 'Ajouter à la liste')`);
+await waitFor(`__text('.primary') === 'Ajoutée à la liste'`, 'the recipe on the list');
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__all('li .name').includes('Salade de tomates')`, 'the entry');
+const entry = await evaluate(`__all('li .servings span')`);
+if (!entry.includes('8 pers.')) {
+  throw new Error(`the entry did not keep the servings it was added at: ${JSON.stringify(entry)}`);
+}
+ok('the recipe goes onto the list at the servings it was read at');
+
+// --- and the recipe survived too -------------------------------------------
+
+await new Promise((resolve) => setTimeout(resolve, 1200));
+await load(APP);
+await waitFor('document.querySelector("nav")', 'tab bar after the second reload');
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__all('li .name').includes('Salade de tomates')`, 'the recipe in the library');
+await evaluate(`__clickText('li button', 'Salade de tomates')`);
+await waitFor(`__text('h1') === 'Salade de tomates'`, 'the recipe reopens');
+const reread = await evaluate(`__text('.prose')`);
+if (!reread.includes('Tomates') || reread.includes('supprimée')) {
+  throw new Error(`the reference did not survive the round trip: ${JSON.stringify(reread)}`);
+}
+ok('the recipe and its references came back out of IndexedDB');
+await shot('09-reloaded-recipe');
+
+// --- and it can be edited without losing what it points at ------------------
+//
+// The other half of the editor: a draft seeded from `focus.edit`, whose lines
+// already carry ids the steps already reference. A save that dropped or
+// re-minted them would turn every mention into "ligne supprimée".
+
+await evaluate(`__clickText('button', 'Modifier')`);
+await waitFor(`__text('h1') === 'Modifier'`, 'the editor on an existing recipe');
+const seeded = await evaluate(`__count('.chip')`);
+if (seeded !== 1) throw new Error(`the draft lost its mention: ${seeded} chips`);
+
+await evaluate(`__set('input[placeholder="Tarte aux tomates"]', 'Salade de tomates au sel')`);
+await evaluate(`__clickText('button', 'Enregistrer')`);
+await waitFor(`__text('h1') === 'Salade de tomates au sel'`, 'the renamed recipe');
+const edited = await evaluate(`__text('.prose')`);
+if (!edited.includes('Tomates') || edited.includes('supprimée')) {
+  throw new Error(`editing broke the reference: ${JSON.stringify(edited)}`);
+}
+ok('editing an existing recipe keeps its lines and their mentions');
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

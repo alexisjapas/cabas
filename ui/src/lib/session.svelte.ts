@@ -33,9 +33,9 @@ import { Core } from './core';
  * reload otherwise drops you on the home screen mid-shop — the most visible
  * flaw of an installed PWA, and the cheapest one to fix (DECISIONS 0003).
  */
-export type Screen = 'cart' | 'list' | 'ingredients' | 'settings';
+export type Screen = 'cart' | 'list' | 'recipes' | 'ingredients' | 'settings';
 
-const SCREENS: readonly Screen[] = ['cart', 'list', 'ingredients', 'settings'];
+const SCREENS: readonly Screen[] = ['cart', 'list', 'recipes', 'ingredients', 'settings'];
 const SCREEN_KEY = 'cabas.screen';
 
 /**

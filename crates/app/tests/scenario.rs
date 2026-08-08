@@ -174,11 +174,14 @@ async fn scenario() {
     let state = tart(&mut app, &state).await;
     let recipe = id_of_recipe(&state, "Tomato tart");
 
-    // --- steps reference usages, so they must be minted first -------------
+    // --- steps reference usages, so they must be named first --------------
     //
-    // Exactly the flow a recipe editor performs: save the lines, get them
-    // back with their ids in `focus.edit`, then write the prose that points
-    // at them (DECISIONS 0022).
+    // Saving the lines and reading their ids back out of `focus.edit` is one
+    // way round it, and the one exercised here because it also proves that
+    // `edit` round-trips. An editor takes the other — it mints the id before
+    // the line exists, so a step can mention a line the recipe has never been
+    // saved with (DECISIONS 0039); `a_recipe_is_writable_in_a_single_save`
+    // covers that path.
     let state = app
         .dispatch(Command::OpenRecipe {
             recipe: recipe.clone(),
@@ -445,6 +448,78 @@ async fn broken_reference() {
     assert_eq!(state.problems[0].subject.as_deref(), Some(tomato.as_str()));
 }
 
+/// What the recipe editor actually does: name the lines, then write the prose
+/// that points at them, and send both in one command (DECISIONS 0039).
+///
+/// The property under test is that a usage id minted by the host is an
+/// ordinary usage id — the document keeps it verbatim, and a step referencing
+/// it resolves like any other. Without this the editor would have to save a
+/// half-finished recipe into the library just to learn what its own lines are
+/// called.
+async fn written_in_one_save() {
+    let mut app = open(MemoryStorage::new()).await;
+    let state = stocked(&mut app).await;
+
+    // The host's own source, exactly as the PWA calls `CabasApp.mintUsageId`
+    // while a form is open — the replica knows nothing about this line yet.
+    let host = TestPlatform::default();
+    let flour_usage = cabas_app::mint_usage_id(&host).expect("the host mints a usage id");
+
+    let state = app
+        .dispatch(Command::SaveRecipe {
+            recipe: RecipeInput {
+                id: None,
+                name: "Pastry".into(),
+                servings: 4,
+                yields: Some(amount("500", UnitTag::G)),
+                components: vec![ComponentInput::Ingredient {
+                    id: Some(flour_usage.clone()),
+                    ingredient: id_of_ingredient(&state, "Flour"),
+                    quantity: amount("250", UnitTag::G),
+                }],
+                steps: vec![StepInput {
+                    segments: vec![
+                        SegmentInput::Text {
+                            text: "Sift ".into(),
+                        },
+                        SegmentInput::Ingredient {
+                            usage: flour_usage.clone(),
+                            display: RefDisplayTag::Full,
+                        },
+                    ],
+                }],
+            },
+        })
+        .await
+        .expect("lines and steps are saved together");
+
+    let recipe = id_of_recipe(&state, "Pastry");
+    let state = app
+        .apply(Command::OpenRecipe {
+            recipe,
+            servings: Some(8),
+        })
+        .expect("the recipe opens at eight");
+    let focus = state.focus.as_ref().expect("a recipe is open");
+
+    // The id the host chose is the one the line carries.
+    match &focus.recipe.components[0] {
+        ComponentView::Ingredient { usage, .. } => assert_eq!(usage, &flour_usage),
+        other => panic!("expected an ingredient line, got {other:?}"),
+    }
+
+    // And the step resolved against it — scaled, because this is read at
+    // double what it was written for, and never `Missing`.
+    match &focus.recipe.steps[0].segments[1] {
+        SegmentView::Ingredient { name, quantity, .. } => {
+            assert_eq!(name.as_deref(), Some("Flour"));
+            assert_eq!(quantity.as_ref().expect("a full reference").amount, "500");
+        }
+        other => panic!("expected a resolved reference, got {other:?}"),
+    }
+    assert_eq!(state.problems, Vec::new());
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod native {
     use super::*;
@@ -474,6 +549,11 @@ mod native {
     fn a_deleted_recipe_or_ingredient_degrades_to_a_warning() {
         block_on(broken_reference());
     }
+
+    #[test]
+    fn a_recipe_is_writable_in_a_single_save() {
+        block_on(written_in_one_save());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -491,6 +571,11 @@ mod browser {
     #[wasm_bindgen_test]
     async fn a_deleted_recipe_or_ingredient_degrades_to_a_warning() {
         broken_reference().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_recipe_is_writable_in_a_single_save() {
+        written_in_one_save().await;
     }
 
     /// The PWA's actual path: a command built as a JS object, through the

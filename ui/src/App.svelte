@@ -9,6 +9,7 @@
   import Ingredients from './screens/Ingredients.svelte';
   import List from './screens/List.svelte';
   import Onboarding from './screens/Onboarding.svelte';
+  import Recipes from './screens/Recipes.svelte';
   import Settings from './screens/Settings.svelte';
 
   /**
@@ -80,6 +81,8 @@
       <Cart {session} />
     {:else if session.screen === 'list'}
       <List {session} />
+    {:else if session.screen === 'recipes'}
+      <Recipes {session} />
     {:else if session.screen === 'ingredients'}
       <Ingredients {session} />
     {:else}

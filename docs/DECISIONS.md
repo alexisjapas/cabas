@@ -1061,3 +1061,61 @@ is a contained change rather than a rewrite.
 **Rejected.** **`vite-plugin-pwa` / Workbox** — see above. **No service
 worker** — not an option: without one the app is not installable and does not
 open in a shop with no signal, which is the entire point (Rule 6).
+
+## 0039 — The editor names a recipe line before the line exists
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0022](#0022--instruction-steps-are-segments-referencing-ingredient-usages)
+
+**Context.** 0022 made an instruction step a run of segments, and made an
+ingredient mention reference a **usage** — a specific line of the recipe —
+rather than an ingredient, so that a recipe using flour twice renders the
+right amount in each step. That reference is an id, and the recipe editor is
+the first thing to have to produce one: a person adds "250 g de farine" to a
+new recipe and immediately writes "tamiser la farine" mentioning it, while
+nothing has been saved and the line therefore has no id.
+
+The ids of everything else are minted inside `App` while a command runs.
+`SaveRecipe` does the same for a line whose `id` is absent — but it hands the
+minted id back only in the state that follows the save, which is after the
+steps referencing it had to be written.
+
+**Decision.** **The host mints the usage id, from the core**, through
+`cabas_app::mint_usage_id` and its binding `CabasApp.mintUsageId`. The editor
+calls it when a line is added to the draft, uses the result both as the line's
+`id` and as the `usage` its steps reference, and sends the whole recipe in one
+`SaveRecipe`.
+
+**Consequences.** A recipe is written in a single command, which is what makes
+the editor an ordinary form: a local draft, one save, cancel costs nothing.
+The alternative shape — save the lines, read their ids back, then write the
+prose — is still valid and still exercised by `scenario.rs`, but it is no
+longer what an editor has to do.
+
+An id minted this way is indistinguishable from one `SaveRecipe` mints, and
+that is the property to keep: same prefix, same width, same random source. It
+is asserted directly in `id.rs`, because a second *kind* of usage id would be
+a difference the document cannot see and a reader eventually would.
+
+This is the second thing the host mints, after the device identity (0031), and
+it is the same bargain for the same reason — the format and the randomness
+stay in Rust, the host holds an opaque string. `crypto.randomUUID` in the
+frontend would have worked exactly once per device and then, on the day two
+phones add a line to the same recipe while both offline, produced two ids
+whose collision a CRDT reports as one line rather than as a conflict.
+
+It does widen the surface Rule 9 keeps narrow, by one function that decides
+nothing. The line to hold is that the frontend *holds* the id and never
+*reads* it: nothing parses the prefix, and the editor treats it as opaque.
+
+**Rejected.** **Save first, then reference** — a recipe half-written into the
+family library the moment a second ingredient is added, visible on the other
+phone, and left behind entirely if the person changes their mind. It also
+makes the editor a hybrid of draft and pushed state, re-seeding its fields
+after every structural change, which is the shape that produces a form
+overwriting what is being typed into it.
+**A frontend-generated id** — see above; wrong source of randomness, and a
+format the core did not choose.
+**Referencing a line by its position in the recipe** — a reference that breaks
+when a line is reordered or deleted, which is exactly what 0022 rejected
+prose-with-markers for.

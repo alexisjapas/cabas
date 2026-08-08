@@ -11,6 +11,20 @@
 import type { QuantityView } from './bindings/QuantityView';
 import { UNIT_LABEL, UNIT_PLURAL } from './labels';
 
+/**
+ * Alphabetical, to a French reader — accents collate where a person expects
+ * rather than where their code points fall.
+ *
+ * Every list on screen is sorted through this. The core sorts by id, which is
+ * stable across replicas and is what keeps two devices showing the same
+ * library in the same order (`store` sorts every keyed read); stable is not
+ * the same as legible, and which of the two you want depends on whether the
+ * reader is a person.
+ */
+export function byName(a: { name: string }, b: { name: string }): number {
+  return a.name.localeCompare(b.name, 'fr');
+}
+
 /** "28.35" → "28,35". The core renders with a point; French reads a comma. */
 export function decimal(amount: string): string {
   return amount.replace('.', ',');

@@ -79,6 +79,25 @@ export async function mintIdentity(userName: string, deviceName: string): Promis
 }
 
 /**
+ * The id of a recipe line the editor is about to create.
+ *
+ * The editor needs it before there is anything to save: a step references a
+ * *usage* rather than an ingredient (DECISIONS 0022), so mentioning a line the
+ * user has just added means naming it, and `SaveRecipe` does not hand the name
+ * back until after the save. Minting it up front is what lets the whole recipe
+ * — lines and the prose that points at them — go out in one command instead of
+ * a half-finished recipe being written to the library first (DECISIONS 0039).
+ *
+ * From the core rather than from `crypto.randomUUID`, because two devices
+ * adding a line to the same recipe offline must not choose the same id, and
+ * because the format is the core's to decide. Synchronous, and safe to be:
+ * the editor is only reachable once `Core.open` has instantiated the module.
+ */
+export function mintUsageId(): string {
+  return CabasApp.mintUsageId();
+}
+
+/**
  * The replica, with the types the frontend is written against.
  *
  * Deliberately not reactive: reactivity is `Session`'s business, and mixing

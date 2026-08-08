@@ -60,6 +60,7 @@ mod wasm;
 pub use app::App;
 pub use command::Command;
 pub use error::{AppError, Result};
+pub use id::mint_usage_id;
 pub use platform::{Identity, Platform, SystemPlatform};
 pub use view::StateView;
 

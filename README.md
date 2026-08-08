@@ -14,7 +14,7 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M3 complete, nothing on screen yet. `crates/domain` holds the
+**Status**: M3 complete, M4 usable on a desktop browser. `crates/domain` holds the
 whole product logic as pure, tested functions — units and exact conversions,
 recipe scaling, the sub-recipe DAG, cart aggregation and check-state
 derivation. `crates/store` persists it: a Loro document, snapshots with
@@ -24,15 +24,17 @@ relay they never used at the same time. `crates/app` turns that into the
 surface a frontend can use: thirteen commands in, one complete view-model
 out, with the TypeScript types generated from the Rust ones. A scripted
 shopping trip — build a library, cook for six instead of four, tick things
-off, finish, restart — passes natively **and** in a headless browser. 121
-tests green plus 3 in chromium.
+off, finish, restart — passes natively **and** in a headless browser. 123
+tests green plus 4 in chromium.
 
 **M4 is in progress**: `ui/` is a working Svelte 5 app — it mints an identity,
-builds a library, derives the cart and survives a cold restart, all driven end
-to end in a real browser by `ui-test`. Still to come before it is the thing on
-a phone: the recipe view and editor, and the service worker that makes it
-installable and openable with no signal. Resuming work starts at the
-"Resuming work" section of the [ROADMAP](ROADMAP.md).
+builds a library, writes and reads recipes, derives the cart and survives a
+cold restart, all driven end to end in a real browser by `ui-test`. Every one
+of the thirteen commands is reachable from the UI. What is left before it is
+the thing on a phone is platform rather than product: the service worker and
+manifest that make it installable and openable with no signal, and the iPhone
+itself. Resuming work starts at the "Resuming work" section of the
+[ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape

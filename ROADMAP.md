@@ -68,32 +68,32 @@ cargo test -p cabas-app --features typescript export_bindings
 
 **Next actions, in order:**
 
-1. **The recipe screens** — the view and the editor. They are the last part of
-   M4 that is product rather than platform, and the only place five of the
-   thirteen commands are still unreachable. Read `crates/app/src/view.rs`
-   (`FocusView` carries both shapes: `recipe` rendered at the current
-   servings, and `edit`, which is literally the `RecipeInput` that
-   `SaveRecipe` takes) and then `ui/src/screens/List.svelte` for the form
-   idiom already in use.
-
-   Two traps, both already paid for elsewhere. An edit form must render with
-   `number::render_lossless`, never `render`, or a save rounds the quantity it
-   was only displaying (DECISIONS 0035). And a step is a run of **segments**,
-   not a string with markers in it, so the `@`-mention editor edits a list and
-   never re-parses prose (DECISIONS 0022).
-
-2. **The service worker and the manifest** — hand-written, precaching the
+1. **The service worker and the manifest** — hand-written, precaching the
    shell from Vite's build manifest (DECISIONS 0038). Until this lands the app
    is not installable and does not open without network, which is most of what
-   M4 is for.
+   M4 is for. It is now the only thing between the app and an iPhone: every
+   command is reachable from the UI, and the product half of M4 is done.
 
-3. **The iPhone.** Install it, use it in a shop, and only then decide whether
-   the 713 kB gzipped core needs work. Budget a day for the keyboard.
+   The fiddly part is versioning, not caching — a cache name that does not
+   change with the build serves the old app forever, and on an installed iOS
+   PWA that is indistinguishable from the app being broken. Vite emits
+   fingerprinted filenames; take the precache list and the cache name from
+   its manifest rather than from a hand-maintained array.
+
+2. **The iPhone.** Install it, use it in a shop, and only then decide whether
+   the 713 kB gzipped core needs work. Budget a day for the keyboard — the
+   step editor is the screen that will find every one of its edges, since it
+   is the only one where a soft keyboard covers a control (the mention picker)
+   that appears *because* of what was typed.
+
+3. **Scroll position**, alongside the persisted screen. Cheap, and the last
+   thing on the M4 list that is not the phone itself.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
 holds the one piece of state and the save policy, and `ui/src/lib/labels.ts` is
-the only file with French in it. `ui-test` drives the whole thing in a browser.
+the only file with French tables in it. `ui-test` drives the whole thing in a
+browser, recipe editor included.
 
 ---
 
@@ -255,10 +255,15 @@ The first genuinely usable artifact.
       (DECISIONS 0003)
 - [x] End-to-end test in a real browser — `ui-test`, the frontend's
       counterpart to `crates/app/tests/scenario.rs`
-- [ ] Recipe view and recipe edit — the two biggest screens, and the only
-      commands not yet reachable from the UI (`SaveRecipe`, `DeleteRecipe`,
-      `AddRecipeToList`, `OpenRecipe`, `CloseRecipe`)
-- [ ] `@`-mention autocomplete in the step editor, scoped to the recipe's own usages (DECISIONS 0022)
+- [x] Recipe view and recipe edit — the two biggest screens, and with them the
+      last five commands (`SaveRecipe`, `DeleteRecipe`, `AddRecipeToList`,
+      `OpenRecipe`, `CloseRecipe`). **Every command is now reachable from the
+      UI.** Read at any serving count, added to the list at the count it was
+      read at
+- [x] `@`-mention autocomplete in the step editor, scoped to the recipe's own
+      usages (DECISIONS 0022). A line is named when it is added rather than
+      when it is saved, so the whole recipe — lines and the prose pointing at
+      them — goes out in one command (DECISIONS 0039)
 - [ ] Service worker, offline-first, IndexedDB; **no user action ever waits on the network** (Rule 6) — hand-written (DECISIONS 0038)
 - [ ] Scroll position persisted alongside the screen
 - [ ] Manifest, icons, `visualViewport` keyboard handling — budget a day for the iOS keyboard, not an hour. The safe-area insets are already tokens
@@ -272,8 +277,12 @@ data survives a cold restart of the app.
 | | |
 |---|---|
 | wasm core | **1.81 MB**, 713 kB gzipped |
-| JS bundle | 84.6 kB, **30.7 kB gzipped** |
-| CSS | 16.4 kB, 3.1 kB gzipped |
+| JS bundle | 105 kB, **36.2 kB gzipped** |
+| CSS | 26.2 kB, 4.1 kB gzipped |
+
+The recipe screens cost 5.5 kB gzipped of JS and 1 kB of CSS — the two
+biggest screens in the app, against a core that is twenty times the whole
+frontend put together.
 
 The core is the whole download, and Loro is most of the core. That is the
 number to watch on a phone over 4G, and the one to measure on the actual

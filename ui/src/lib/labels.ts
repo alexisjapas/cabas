@@ -14,6 +14,7 @@
 import type { AisleTag } from './bindings/AisleTag';
 import type { CheckStateTag } from './bindings/CheckStateTag';
 import type { ProblemKind } from './bindings/ProblemKind';
+import type { RefDisplayTag } from './bindings/RefDisplayTag';
 import type { UnitTag } from './bindings/UnitTag';
 
 /**
@@ -95,6 +96,20 @@ export const PROBLEM_LABEL: Record<ProblemKind, string> = {
   broken_graph: 'Des sous-recettes se référencent en boucle.',
   broken_yield: "Une sous-recette n'indique pas de rendement utilisable.",
 };
+
+/**
+ * What a mention shows where it sits in a step. "Verser le lait" wants the
+ * name alone, "verser les 20 cl" the quantity alone, and a first mention
+ * usually wants both — the choice is the cook's, per mention (DECISIONS 0022).
+ */
+export const REF_DISPLAY_LABEL: Record<RefDisplayTag, string> = {
+  full: 'nom et quantité',
+  name_only: 'nom seul',
+  quantity_only: 'quantité seule',
+};
+
+/** The order tapping a mention cycles through. */
+export const REF_DISPLAYS: readonly RefDisplayTag[] = ['full', 'name_only', 'quantity_only'];
 
 /** Aisles in the order the pickers offer them — the shop's walking order. */
 export const AISLES: readonly AisleTag[] = [

@@ -62,6 +62,17 @@ impl CabasApp {
         to_js(&identity)
     }
 
+    /// Mints the id of a recipe line the editor is about to create.
+    ///
+    /// Synchronous and free of the replica on purpose: it is called while a
+    /// form is being filled, by an editor that holds a draft the document has
+    /// never seen. See [`crate::mint_usage_id`] for why the id comes from here
+    /// at all (DECISIONS 0039).
+    #[wasm_bindgen(js_name = mintUsageId)]
+    pub fn mint_usage_id() -> Result<String, JsError> {
+        Ok(crate::mint_usage_id(&SystemPlatform)?)
+    }
+
     /// Opens the replica stored in IndexedDB, or starts a new one.
     pub async fn open(identity: JsValue) -> Result<CabasApp, JsError> {
         let identity: Identity = serde_wasm_bindgen::from_value(identity)?;

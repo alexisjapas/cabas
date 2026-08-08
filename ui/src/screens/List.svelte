@@ -2,7 +2,7 @@
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
   import type { UnitTag } from '../lib/bindings/UnitTag';
-  import { formatQuantity, relativeTime } from '../lib/format';
+  import { byName, formatQuantity, relativeTime } from '../lib/format';
   import { PROBLEM_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -19,9 +19,7 @@
   let problems = $derived(session.state.problems);
 
   /** Sorted for a reader; the core sorts by id, which is stable, not legible. */
-  let ingredients = $derived(
-    [...session.state.ingredients].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
-  );
+  let ingredients = $derived([...session.state.ingredients].sort(byName));
 
   let adding = $state(false);
   let chosen = $state('');
