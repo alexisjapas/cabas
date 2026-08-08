@@ -1,0 +1,32 @@
+{
+  // Strict, and deliberately so: the types under `src/lib/bindings/` are
+  // generated from the Rust ones (DECISIONS 0036), so the compiler is what
+  // makes Rule 9 enforceable on this side of the boundary. A view-model field
+  // that moved in Rust must fail here, not on a phone.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    // Every import that only carries a type says so. Svelte compiles each
+    // block in isolation and cannot see across files to work it out.
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+
+    "allowJs": true,
+    "checkJs": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte", "svelte.config.js", "vite.config.ts"]
+}

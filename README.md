@@ -45,17 +45,33 @@ cargo clippy --workspace --all-targets -- -D warnings
 check-wasm-bindgen                        # CLI/crate version match (Rule 13)
 ```
 
+The PWA lives in `ui/` — Svelte 5 on plain Vite
+([0037](docs/DECISIONS.md#0037--the-pwa-is-a-plain-vite-spa-not-sveltekit)).
+Build the wasm core before anything that reads it; the glue it writes is a
+build product and is not committed:
+
+```sh
+build-wasm [--dev]                        # the core → ui/src/lib/wasm/
+pnpm -C ui install                        # once
+pnpm -C ui dev                            # dev server, reachable from a phone
+pnpm -C ui check                          # types, against the generated bindings
+pnpm -C ui build                          # ui/dist
+```
+
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):
 
 ```sh
 nix develop .#wasm-test -c wasm-test      # store + app, in headless chromium
+nix develop .#wasm-test -c ui-test        # the PWA end to end (needs ui/dist)
 nix develop .#android                     # SDK/NDK — M7 only
 ```
 
 `wasm-test` is the only thing that *runs* wasm; `wasm-check` proves the
 shared crates compile for it, which is a weaker and much faster claim.
+`ui-test` drives the built PWA over the DevTools protocol: mint an identity,
+build a library, derive the cart, tick a line, reload from IndexedDB.
 
 The frontend's types are generated from the Rust ones and committed, and CI
 fails if they are stale

@@ -7,7 +7,11 @@
 # the relay binary by the release CI (rust-embed), never committed.
 /ui/node_modules
 /ui/dist
-/ui/.svelte-kit
+
+# The wasm core and its glue, written by `build-wasm`. A build product, unlike
+# `ui/src/lib/bindings/`, which is generated *and* committed so CI can diff it
+# (DECISIONS 0036).
+/ui/src/lib/wasm
 
 # Local secrets: pairing keys, tunnel credentials, add-on options.
 *.local

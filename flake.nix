@@ -79,6 +79,67 @@
             --target wasm32-unknown-unknown "$@"
         '';
 
+        # The wasm core, in the shape the PWA imports it.
+        #
+        # Two explicit steps rather than `wasm-pack`, for the reason Rule 13
+        # exists: this calls *the* `wasm-bindgen` the flake pins, where
+        # wasm-pack fetches a CLI of its own choosing and would quietly
+        # reintroduce the version skew `check-wasm-bindgen` was written to
+        # catch. It also gets the `wasm-release` profile, which wasm-pack has
+        # no flag for — on a phone the download is the cost that matters, so
+        # the core is built `opt-level = "z"` and then run through wasm-opt.
+        #
+        # `--target web` emits an ES module the browser loads directly. Vite
+        # sees the `.wasm` through `new URL(..., import.meta.url)` and
+        # fingerprints it like any other asset.
+        #
+        # The output is a build product, not a source: `ui/src/lib/wasm/` is
+        # gitignored, unlike `ui/src/lib/bindings/`, which is generated *and*
+        # committed because CI diffs it (DECISIONS 0036).
+        buildWasm = pkgs.writeShellScriptBin "build-wasm" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+
+          profile="wasm-release"
+          artifacts="wasm-release"
+          optimise=1
+          if [ "''${1:-}" = "--dev" ]; then
+            # Seconds instead of a minute, for the edit-reload loop. The
+            # module is several times larger and nobody should ship it.
+            profile="dev"
+            artifacts="debug"
+            optimise=0
+            shift
+          fi
+
+          out="ui/src/lib/wasm"
+          cargo build -p cabas-app \
+            --target wasm32-unknown-unknown --profile "$profile" "$@"
+          wasm-bindgen \
+            --target web --out-dir "$out" --out-name cabas \
+            "target/wasm32-unknown-unknown/$artifacts/cabas_app.wasm"
+
+          if [ "$optimise" = 1 ]; then
+            # The features rustc enables by default for wasm32-unknown-unknown,
+            # spelled out because wasm-opt refuses anything it was not told
+            # about and the target-features section does not survive
+            # wasm-bindgen. Without them this fails with a wall of validator
+            # output about `memory.fill` and `i64.trunc_sat_f64_s` rather than
+            # anything resembling "add a flag".
+            wasm-opt -Oz \
+              --enable-sign-ext \
+              --enable-mutable-globals \
+              --enable-nontrapping-float-to-int \
+              --enable-bulk-memory \
+              --enable-bulk-memory-opt \
+              --enable-multivalue \
+              --enable-reference-types \
+              --enable-call-indirect-overlong \
+              -o "$out/cabas_bg.wasm" "$out/cabas_bg.wasm"
+          fi
+          echo "build-wasm: $out/cabas_bg.wasm ($(du -h "$out/cabas_bg.wasm" | cut -f1), profile $profile)"
+        '';
+
         # The two things that only a browser can answer, in a real browser.
         #
         # `store`'s IndexedDB backend, because IndexedDB exists nowhere else;
@@ -101,6 +162,77 @@
             --target wasm32-unknown-unknown --test indexeddb "$@"
           cargo test -p cabas-app \
             --target wasm32-unknown-unknown --test scenario "$@"
+        '';
+
+        # The PWA itself, driven in the same browser, for the same reason.
+        #
+        # `wasm-test` proves the core survives a browser; this proves the
+        # screens do. Everything it covers is invisible anywhere else — the
+        # wasm module failing to instantiate under Vite's asset handling, a
+        # `null` arriving as `undefined`, an IndexedDB write that never lands.
+        # All three look like a blank page on a phone and like nothing at all
+        # in a unit test.
+        #
+        # It expects a built bundle rather than building one: `build-wasm`
+        # needs binaryen and the default shell, and a test command that
+        # silently rebuilds is a test command nobody can reason about.
+        uiTest = pkgs.writeShellScriptBin "ui-test" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+
+          if [ ! -f ui/dist/index.html ]; then
+            echo "ui-test: no ui/dist. Build it first, in the default shell:" >&2
+            echo "  nix develop -c build-wasm" >&2
+            echo "  nix develop -c pnpm -C ui build" >&2
+            exit 1
+          fi
+
+          # Refuse to start on a port something else already holds. Without
+          # this the harness attaches to *that* browser instead of its own,
+          # and then reports on a page this run never opened — a test that
+          # lies is worse than a test that fails.
+          if ${pkgs.curl}/bin/curl -sf --max-time 2 http://localhost:9222/json/version >/dev/null; then
+            echo "ui-test: something is already listening on 9222 (a leaked run?)." >&2
+            echo "  pkill -f 'remote-debugging-port=9222'" >&2
+            exit 1
+          fi
+          if ${pkgs.curl}/bin/curl -sf --max-time 2 http://localhost:4173 >/dev/null; then
+            echo "ui-test: something is already listening on 4173." >&2
+            exit 1
+          fi
+
+          profile="$(mktemp -d)"
+          pnpm -C ui preview --port 4173 --strictPort >/dev/null 2>&1 &
+          server=$!
+          chromium --headless --no-sandbox --disable-gpu \
+            --remote-debugging-port=9222 --user-data-dir="$profile" \
+            --window-size=390,844 about:blank >/dev/null 2>&1 &
+          browser=$!
+
+          cleanup() {
+            kill "$server" "$browser" 2>/dev/null || true
+            wait "$server" "$browser" 2>/dev/null || true
+            rm -rf "$profile"
+          }
+          trap cleanup EXIT INT TERM
+
+          # Both bind their port a moment after forking; polling beats a sleep
+          # long enough to be safe on the slowest runner.
+          ready=0
+          for _ in $(seq 1 100); do
+            if ${pkgs.curl}/bin/curl -sf http://localhost:4173 >/dev/null \
+              && ${pkgs.curl}/bin/curl -sf http://localhost:9222/json/version >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.2
+          done
+          [ "$ready" = 1 ] || { echo "ui-test: preview or chromium never came up" >&2; exit 1; }
+
+          # Deliberately not `exec`: that would replace this shell and the
+          # trap above would never run, leaking a browser and a server that
+          # then hold the ports against the next run.
+          node ui/tests/smoke.mjs "$@"
         '';
 
         # Everything the Rust core and the PWA need. Deliberately *not*
@@ -126,6 +258,7 @@
             ++ [
               checkWasmBindgen
               wasmCheck
+              buildWasm
               pkgs.cargo-nextest
               # Dependency hygiene (Rule 13): `cargo deny check` in CI, and
               # the third-party notices the PWA has to ship.
@@ -138,6 +271,7 @@
             echo "  cargo nextest run --workspace         # tests"
             echo "  wasm-check                            # Rule 8: the four shared crates on wasm32"
             echo "  check-wasm-bindgen                    # CLI/crate version match"
+            echo "  build-wasm [--dev]                    # the wasm core into ui/src/lib/wasm"
             echo "  nix develop .#wasm-test -c wasm-test   # IndexedDB in headless chromium"
             echo "  nix develop .#android                 # Android SDK/NDK shell (M7)"
             echo "  wasm-bindgen $(wasm-bindgen --version | ${pkgs.gawk}/bin/awk '{print $2}') · node $(node --version)"
@@ -154,9 +288,16 @@
             pkgs.chromium
             pkgs.chromedriver
             wasmTest
+            # `ui-test` drives the built PWA in the same browser, so it needs a
+            # node to run the harness and a pnpm to serve `ui/dist`.
+            pkgs.nodejs_22
+            pkgs.pnpm
+            uiTest
           ];
           shellHook = ''
-            echo "cabas wasm-test shell — run: wasm-test"
+            echo "cabas browser shell — the two checks that need a real browser:"
+            echo "  wasm-test    # store's IndexedDB and app's scenario, in Rust"
+            echo "  ui-test      # the PWA end to end (needs ui/dist)"
           '';
         };
 

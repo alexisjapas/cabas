@@ -1,0 +1,165 @@
+/*
+ * Design tokens, and the handful of base styles every screen assumes.
+ *
+ * Rule 10: no component writes a colour, a size, a radius or an easing. They
+ * are all declared here, once. The current look is deliberately vanilla and
+ * temporary (DECISIONS 0026) — this file is the entire reason that is
+ * affordable, because restyling later is a change to these values rather than
+ * a sweep through every component. Dark mode falls out of the same discipline
+ * for free.
+ */
+
+:root {
+  /* Native form controls follow this, which is most of what makes a vanilla
+     UI look deliberate rather than unfinished in dark mode. */
+  color-scheme: light dark;
+
+  /* --- Colour: surfaces and text ------------------------------------- */
+  --surface: #faf9f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1efeb;
+  --border: #e4e0d9;
+  --border-strong: #cfc9bf;
+  --text: #1d1b19;
+  --text-muted: #6d675e;
+  --text-faint: #948d82;
+
+  /* --- Colour: meaning ------------------------------------------------ */
+  --accent: #3f6f4f;
+  --accent-soft: #e7efe9;
+  --on-accent: #ffffff;
+  --danger: #a83c2b;
+  --danger-soft: #fbeae7;
+  --on-danger: #ffffff;
+
+  /* --- Spacing -------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* --- Radii ---------------------------------------------------------- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-pill: 999px;
+
+  /* --- Typography ----------------------------------------------------- */
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-numeric: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* --- Elevation ------------------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 6%);
+  --shadow-md: 0 6px 20px rgb(0 0 0 / 10%);
+
+  /* --- Motion --------------------------------------------------------- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* --- Layout --------------------------------------------------------- */
+  /* Phone first; on a wide screen the column stays a column rather than
+     stretching a shopping list to 1600 px. */
+  --content-width: 34rem;
+  --tapsize: 2.75rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #17161a;
+    --surface-raised: #201f25;
+    --surface-sunken: #111015;
+    --border: #322f38;
+    --border-strong: #4a4653;
+    --text: #ece9f0;
+    --text-muted: #a49eae;
+    --text-faint: #7b7488;
+
+    --accent: #7fb98f;
+    --accent-soft: #23302a;
+    --on-accent: #10220f;
+    --danger: #e08375;
+    --danger-soft: #33211f;
+    --on-danger: #2a100b;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-md: 0 6px 20px rgb(0 0 0 / 50%);
+  }
+}
+
+/* Honour the system setting rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Safari enlarges text on rotation without this, which reflows a list
+     mid-shop. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  /* A tap must not paint a grey box over a list row. */
+  -webkit-tap-highlight-color: transparent;
+  /* No rubber-band bounce revealing white behind an installed app. */
+  overscroll-behavior-y: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Every focusable thing gets the same visible ring, and only from the
+   keyboard — a tap on a phone should not leave one behind. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
+}

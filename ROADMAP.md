@@ -13,7 +13,7 @@ milestone is not started until the previous one's criterion holds.
 | **M1** | Domain: units, conversions, scaling, recipe DAG, cart derivation | Property tests green; a recipe list produces a correct aggregated cart, offline, in `cargo test` | ✅ |
 | **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ✅ |
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
-| **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ⬜ |
+| **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | 🚧 |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ⬜ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
@@ -40,7 +40,19 @@ wasm-check                                   # Rule 8: the four shared crates on
 cargo clippy --workspace --all-targets -- -D warnings
 check-wasm-bindgen                           # CLI/crate version match (Rule 13)
 nix develop .#wasm-test -c wasm-test         # IndexedDB, in headless chromium
+
+# The PWA (M4)
+pnpm -C ui install                           # once
+build-wasm [--dev]                           # the core, into ui/src/lib/wasm
+pnpm -C ui check                             # types, against the generated bindings
+pnpm -C ui dev                               # dev server, reachable from the phone
+pnpm -C ui build                             # ui/dist
+nix develop .#wasm-test -c ui-test           # the whole vertical, in a browser
 ```
+
+`build-wasm` comes before anything that type-checks the frontend: the glue it
+writes into `ui/src/lib/wasm/` is a build product, gitignored, and `core.ts`
+imports it.
 
 All project knowledge lives in the repo: binding rules in
 [CONSTITUTION.md](CONSTITUTION.md), the reasoning behind every choice in
@@ -56,24 +68,32 @@ cargo test -p cabas-app --features typescript export_bindings
 
 **Next actions, in order:**
 
-1. Start **M4** — the PWA. Everything below it is settled and proven on both
-   targets: `App::apply` returns a whole `StateView`, `App::persist` writes,
-   and `ui/src/lib/bindings/*.ts` already declares every type the frontend
-   will touch. Read `crates/app/src/view.rs` first — it *is* the screen list
-   — then `crates/app/tests/scenario.rs`, which is the whole vertical
-   exercised through the public surface.
+1. **The recipe screens** — the view and the editor. They are the last part of
+   M4 that is product rather than platform, and the only place five of the
+   thirteen commands are still unreachable. Read `crates/app/src/view.rs`
+   (`FocusView` carries both shapes: `recipe` rendered at the current
+   servings, and `edit`, which is literally the `RecipeInput` that
+   `SaveRecipe` takes) and then `ui/src/screens/List.svelte` for the form
+   idiom already in use.
 
-   Two things about the wiring, both already decided and both easy to get
-   wrong by accident. The frontend calls `apply` (synchronous, returns the
-   state) and then lets `flush` resolve on its own — rendering never waits on
-   IndexedDB (DECISIONS 0032). And the UI owns every *word*: view-models
-   carry tags (`"kg"`, `"produce"`, `"to_buy"`) and rendered numbers, so the
-   French label table lives in Svelte and the arithmetic never does
-   (DECISIONS 0035).
+   Two traps, both already paid for elsewhere. An edit form must render with
+   `number::render_lossless`, never `render`, or a save rounds the quantity it
+   was only displaying (DECISIONS 0035). And a step is a run of **segments**,
+   not a string with markers in it, so the `@`-mention editor edits a list and
+   never re-parses prose (DECISIONS 0022).
 
-   The first task is not a screen: it is `localStorage` and
-   `CabasApp.mintIdentity`, because nothing else can run until the device
-   knows who it is (DECISIONS 0031).
+2. **The service worker and the manifest** — hand-written, precaching the
+   shell from Vite's build manifest (DECISIONS 0038). Until this lands the app
+   is not installable and does not open without network, which is most of what
+   M4 is for.
+
+3. **The iPhone.** Install it, use it in a shop, and only then decide whether
+   the 713 kB gzipped core needs work. Budget a day for the keyboard.
+
+The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
+only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
+holds the one piece of state and the save policy, and `ui/src/lib/labels.ts` is
+the only file with French in it. `ui-test` drives the whole thing in a browser.
 
 ---
 
@@ -215,22 +235,50 @@ Two things M3 uncovered, both now load-bearing:
 
 The first genuinely usable artifact.
 
-- [ ] Svelte 5 frontend, vanilla CSS with design tokens only (Rule 10),
-      typed against the generated `ui/src/lib/bindings/*.ts`
-- [ ] Device identity in `localStorage`, minted once by `CabasApp.mintIdentity`
+- [x] Svelte 5 frontend, vanilla CSS with design tokens only (Rule 10),
+      typed against the generated `ui/src/lib/bindings/*.ts`. Plain Vite, no
+      SvelteKit (DECISIONS 0037)
+- [x] Device identity in `localStorage`, minted once by `CabasApp.mintIdentity`
       — nothing else can run before the device knows who it is (DECISIONS 0031)
-- [ ] The French label tables: units, aisles, check states, problem kinds.
+- [x] The French label tables: units, aisles, check states, problem kinds.
       They live here and only here (DECISIONS 0035)
-- [ ] Screens: cart (the home screen — that is what you open in the shop), list, recipe view, recipe edit, ingredient library, settings
+- [x] The cart screen — the home screen, because that is what you open in the
+      shop: grouped by aisle, one tap per line, progress, finish the trip
+- [x] Two collapsed sections at the bottom of the cart: "Acheté" and "Déjà à
+      la maison", which do not mean the same thing (DECISIONS 0023)
+- [x] The list screen: entries, per-entry progress, rescaling, problems
+      rendered in place (DECISIONS 0034)
+- [x] The ingredient library: create, edit, delete, aisle, staple, and the two
+      conversion coefficients
+- [x] Settings: rename the person this device belongs to
+- [x] Current screen persisted, so an iOS cold reload resumes where you were
+      (DECISIONS 0003)
+- [x] End-to-end test in a real browser — `ui-test`, the frontend's
+      counterpart to `crates/app/tests/scenario.rs`
+- [ ] Recipe view and recipe edit — the two biggest screens, and the only
+      commands not yet reachable from the UI (`SaveRecipe`, `DeleteRecipe`,
+      `AddRecipeToList`, `OpenRecipe`, `CloseRecipe`)
 - [ ] `@`-mention autocomplete in the step editor, scoped to the recipe's own usages (DECISIONS 0022)
-- [ ] Two collapsed sections at the bottom of the cart: "Bought" and "Already at home", which do not mean the same thing (DECISIONS 0023)
-- [ ] Service worker, offline-first, IndexedDB; **no user action ever waits on the network** (Rule 6)
-- [ ] UI state (current screen, scroll position) persisted so an iOS cold reload resumes where you were — the most visible flaw of an iOS PWA, and the one with the cheapest fix (DECISIONS 0003)
-- [ ] Manifest, icons, `env(safe-area-inset-*)`, `visualViewport` keyboard handling — budget a day for the iOS keyboard, not an hour
+- [ ] Service worker, offline-first, IndexedDB; **no user action ever waits on the network** (Rule 6) — hand-written (DECISIONS 0038)
+- [ ] Scroll position persisted alongside the screen
+- [ ] Manifest, icons, `visualViewport` keyboard handling — budget a day for the iOS keyboard, not an hour. The safe-area insets are already tokens
 - [ ] Installed and tested on the actual iPhone, in airplane mode
 
 **Exit**: installed on the iPhone from the home screen, fully usable offline,
 data survives a cold restart of the app.
+
+**Measured so far** (release build, `wasm-release` + `wasm-opt -Oz`):
+
+| | |
+|---|---|
+| wasm core | **1.81 MB**, 713 kB gzipped |
+| JS bundle | 84.6 kB, **30.7 kB gzipped** |
+| CSS | 16.4 kB, 3.1 kB gzipped |
+
+The core is the whole download, and Loro is most of the core. That is the
+number to watch on a phone over 4G, and the one to measure on the actual
+device before deciding whether it needs work — M2's premise was that the
+*document* is small (154 kB), and it is; the *engine* is not.
 
 ## M5 — Relay and sync
 

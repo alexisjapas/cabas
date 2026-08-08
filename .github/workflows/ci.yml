@@ -112,6 +112,51 @@ jobs:
       - name: wasm-bindgen-test
         run: nix develop .#wasm-test --command wasm-test --locked
 
+  # The PWA: that it type-checks against the generated bindings, that it
+  # builds, and that it actually works in a browser.
+  #
+  # Its own job because it spans both shells — the wasm core and the bundle are
+  # built in the default one, and the end-to-end run needs the browser shell.
+  # Splitting it further would mean building the core twice.
+  frontend:
+    name: pwa · types · build · browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # wasm32 again, but the `wasm-release` profile rather than `dev` —
+          # a third cache key, for the same reason `wasm-storage` has a second.
+          key: frontend
+
+      - name: install (frozen lockfile)
+        run: nix develop --command pnpm -C ui install --frozen-lockfile
+
+      # Before the type check, deliberately: `src/lib/core.ts` imports the
+      # generated glue, so a missing wasm build reads as a missing module
+      # rather than as the build step nobody ran.
+      - name: build the wasm core
+        run: nix develop --command build-wasm --locked
+
+      # Rule 9 — the frontend is written against types generated from Rust. A
+      # view-model field that moved must fail here, not on a phone.
+      - name: svelte-check
+        run: nix develop --command pnpm -C ui check
+
+      - name: build the bundle
+        run: nix develop --command pnpm -C ui build
+
+      # The whole vertical in a real browser: identity, IndexedDB, the derived
+      # cart, and a cold reload. See `ui/tests/smoke.mjs`.
+      - name: end to end
+        run: nix develop .#wasm-test --command ui-test
+
   # The Android shell is not built here (a multi-GB SDK for a milestone that
   # has not started), but it must keep *evaluating*: a flake that breaks at
   # eval is discovered at M7 otherwise, long after the change that broke it.

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!--
+    The same basket as the cart tab, which is the screen this app opens on.
+
+    An asset cannot read the CSS custom properties of Rule 10 — it is not a
+    component and has no document to inherit from — so the two theme colours
+    are declared here, once, and switched by a media query inside the file.
+    SVG favicons honour `prefers-color-scheme`; a tab strip is dark far more
+    often than a page is.
+  -->
+  <style>
+    .basket { fill: none; stroke: #3f6f4f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    @media (prefers-color-scheme: dark) {
+      .basket { stroke: #7fb98f; }
+    }
+  </style>
+  <path class="basket" d="M4 9h16l-1.4 10.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 9Zm5 0V6a3 3 0 0 1 6 0v3" />
+</svg>

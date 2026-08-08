@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+
+    <!--
+      `viewport-fit=cover` is what makes `env(safe-area-inset-*)` mean
+      anything: without it iOS letterboxes the page and the notch insets all
+      read zero. `user-scalable=no` is deliberately absent — pinch-zoom is an
+      accessibility feature, and the layout does not need to forbid it.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!--
+      Standalone display when launched from the home screen. The `apple-`
+      variant is the one iOS actually reads; the unprefixed one is the
+      standard every other browser reads (DECISIONS 0003).
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="cabas" />
+
+    <!-- Both, so the status bar follows the theme rather than fighting it. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#17161a" />
+
+    <!--
+      The home-screen icons and the web manifest land with the service worker
+      (DECISIONS 0038); this is the browser-tab one, and its absence is a 404
+      that `ui-test` treats as a failure — correctly, for an app whose whole
+      point is loading with no network.
+    -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <title>cabas</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

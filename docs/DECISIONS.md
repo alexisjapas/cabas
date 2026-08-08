@@ -46,6 +46,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0034](#0034--a-broken-reference-is-a-warning-not-an-empty-screen) | A broken reference is a warning, not an empty screen | Product |
 | [0035](#0035--the-app-owns-every-number-the-frontend-owns-every-word) | The app owns every number; the frontend owns every word | Architecture |
 | [0036](#0036--typescript-types-are-generated-behind-a-feature) | TypeScript types are generated, behind a feature | Tooling |
+| [0037](#0037--the-pwa-is-a-plain-vite-spa-not-sveltekit) | The PWA is a plain Vite SPA, not SvelteKit | Stack |
+| [0038](#0038--the-service-worker-is-written-by-hand) | The service worker is written by hand | Stack |
 
 ---
 
@@ -973,3 +975,89 @@ what the CI check removes.
 **Rejected.** **`tsify`** — see above. **Hand-written types** — Rule 9.
 **Generating into `ui/` at build time** — makes the frontend unbuildable
 without the whole Nix shell, for no gain over a committed file plus a check.
+
+---
+
+## 0037 — The PWA is a plain Vite SPA, not SvelteKit
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0004](#0004--svelte-5-as-the-frontend-framework)
+
+**Context.** 0004 settled on Svelte 5 and said nothing about what sits around
+it. The two candidates were SvelteKit — file-based routing, SSR, data
+loading, an adapter that emits static files — and Vite on its own, with the
+framework's compiler and nothing else.
+
+**Decision.** **Vite + Svelte 5 as a single-page app.** No SvelteKit. The
+current screen is a value in `Session`, persisted to `localStorage`, and the
+whole of `ui/dist` is a folder of static files that M6 embeds into the relay
+binary.
+
+**Consequences.** SSR is SvelteKit's centre of gravity and this app has
+nothing to render on a server: the data lives in IndexedDB on the phone, and
+the relay is forbidden from being able to read it (Rule 7). Adopting it would
+have meant `ssr = false` everywhere — carrying the concept in order to
+disable it.
+
+Routing is the sharper reason. DECISIONS 0003 requires the current screen to
+be **persisted**, so an iOS cold reload resumes where you were; that is
+application state, saved next to the identity. SvelteKit would make the URL
+the source of truth, leaving two mechanisms doing one job and a
+reconciliation between them to write and to keep correct. The SPA has one.
+
+What is genuinely given up: file-based routing, and the ready-made asset
+manifest a service worker wants. Six screens do not need the first, and
+DECISIONS 0038 covers the second. The back gesture does not move between
+screens until `history.pushState` is wired — about ten lines, and the same
+ten lines under either choice.
+
+The build pipeline follows from Rule 13 rather than from this entry, but it
+is the same seam: the wasm core is built by calling `cargo build` and then
+**the `wasm-bindgen` the flake pins**, not by `wasm-pack`, which fetches a CLI
+of its own choosing and would quietly reintroduce exactly the version skew
+`check-wasm-bindgen` exists to catch. Building it in two steps also gets the
+`wasm-release` profile, which `wasm-pack` has no flag for.
+
+**Rejected.** **SvelteKit + `adapter-static`** — see above; reconsider if a
+public web surface is ever in scope, which Rule 14 currently forbids.
+**A router library** — the screen list is a union type and the switch is an
+`{#if}` chain; a dependency would replace four lines with a concept.
+
+---
+
+## 0038 — The service worker is written by hand
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0003](#0003--ios-ships-as-a-pwa)
+
+**Context.** An installed PWA that opens without network needs a service
+worker; it is also what makes the app installable at all. The choice was
+between writing one and generating it with `vite-plugin-pwa`, which wraps
+Google's Workbox.
+
+**Decision.** **A hand-written `sw.js`**, precaching the app shell from Vite's
+own build manifest.
+
+**Consequences.** The scope is much smaller than it first looks: the service
+worker caches **the application** — HTML, JS, CSS, the wasm module, icons —
+and none of the data, because the recipes and the list are in IndexedDB and
+already work offline. That leaves exactly one strategy, cache-first on a
+versioned shell, where Workbox is built for the case of many: runtime caching
+per route, expiration policies, background sync. None of those exist here and
+none are coming (Rule 14, DECISIONS 0011).
+
+The one genuinely fiddly part is **versioning**: a cache name that does not
+change with the build serves the old app forever, and on an installed iOS PWA
+that is indistinguishable from the app being broken. Vite emits fingerprinted
+filenames and can write a manifest of them, so the precache list and the
+cache name both come from the build rather than from a hand-maintained array.
+That is the part to get right, and it is the part a review should look at.
+
+Reversible at low cost, which is why it is worth trying the small thing
+first: the service worker is one file plus its registration. If iOS update
+behaviour turns out to need more care than this affords, adopting the plugin
+is a contained change rather than a rewrite.
+
+**Rejected.** **`vite-plugin-pwa` / Workbox** — see above. **No service
+worker** — not an option: without one the app is not installable and does not
+open in a shop with no signal, which is the entire point (Rule 6).
