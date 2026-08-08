@@ -14,11 +14,19 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M1 complete — the whole product logic lives in `crates/domain`
-as pure, tested functions: units and exact conversions, recipe scaling, the
-sub-recipe DAG, cart aggregation and check-state derivation. 65 tests green,
-nothing on screen yet. M2 (the Loro document schema) is next. Resuming work:
-the "Resuming work" section of the [ROADMAP](ROADMAP.md).
+**Status**: M2 complete, nothing on screen yet. `crates/domain` holds the
+whole product logic as pure, tested functions — units and exact conversions,
+recipe scaling, the sub-recipe DAG, cart aggregation and check-state
+derivation. `crates/store` persists it: a Loro document, snapshots with
+history compaction, and a `Storage` trait over a file (native) and IndexedDB
+(the PWA). Two replicas that edited while apart converge, including through a
+relay they never used at the same time. 109 tests green. M3 (the app surface)
+is next; resuming work starts at the "Resuming work" section of the
+[ROADMAP](ROADMAP.md).
+
+A family library of 200 recipes is a **154 kB** snapshot that loads in
+**0.4 ms** — which is what makes a plain serialized blob the right shape
+([DECISIONS 0008](docs/DECISIONS.md#0008--serialized-snapshots-not-sqlite)).
 
 ## Getting started
 
@@ -33,12 +41,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 check-wasm-bindgen                        # CLI/crate version match (Rule 13)
 ```
 
-The Android SDK/NDK lives in its own shell so the everyday one stays a small
-download; it is only needed at M7:
+Two things need more than the everyday shell, so they get their own — a
+browser and an Android SDK are both large downloads that most work never
+touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):
 
 ```sh
-nix develop .#android
+nix develop .#wasm-test -c wasm-test      # IndexedDB, in headless chromium
+nix develop .#android                     # SDK/NDK — M7 only
 ```
+
+`wasm-test` is the only thing that *runs* wasm; `wasm-check` proves the
+shared crates compile for it, which is a weaker and much faster claim.
 
 Nothing is needed for iOS: it ships as a PWA, which is also what makes the
 project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-ships-as-a-pwa)).

@@ -38,6 +38,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0026](#0026--the-visual-identity-is-deliberately-deferred) | The visual identity is deliberately deferred | Product |
 | [0027](#0027--license-mit-or-apache-20) | License: MIT OR Apache-2.0 | Legal |
 | [0028](#0028--finishing-a-trip-prunes-the-overlay-selectively) | Finishing a trip prunes the overlay selectively | Product |
+| [0029](#0029--how-the-document-encodes-domain-values) | How the document encodes domain values | Storage |
+| [0030](#0030--indexeddb-is-tested-in-a-real-browser) | IndexedDB is tested in a real browser | Tooling |
 
 ---
 
@@ -625,3 +627,116 @@ flour, and the crepes still need some.
 
 The rule is computable from the cart alone — no re-derivation — because a
 cart line already records which entries asked for it.
+
+---
+
+## 0029 — How the document encodes domain values
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0006](#0006--loro-as-the-crdt), [0008](#0008--serialized-snapshots-not-sqlite)
+
+**Context.** M2 had to put domain values into a Loro document. `LoroValue`
+offers `Null`, `Bool`, `I64`, `Double`, `String`, `Binary`, `List` and `Map`
+— and nothing exact between `I64` and `Double`. Quantities are
+`Ratio<i128>` (Rule 4). Three encoding questions followed, plus one that only
+appeared once the CRDT was real.
+
+**Decision.**
+
+1. **Rationals are strings**, `"numerator/denominator"`. Not `Double`, which
+   would insert a rounding step between two devices that are supposed to
+   agree. Not a pair of `i64`, which overflows on the exact imperial factors
+   that motivated `i128` in the first place. Reading always goes through
+   `Ratio::new`, never `new_raw`, so a value written unreduced by some future
+   writer still compares equal to its own reduced form.
+2. **Enum variants are string tags**, not integer discriminants. A
+   discriminant silently changes meaning when a variant is inserted in the
+   middle of an enum, and this document outlives the build that wrote it. One
+   deliberate asymmetry: an unknown *aisle* degrades to `Other`, because an
+   aisle only decides sort order, while an unknown *unit* refuses — a
+   quantity read wrong is a wrong shopping list.
+3. **Entities are containers; their sub-structures are plain value maps.** An
+   ingredient or a recipe is a container, so two people editing different
+   fields of it merge field by field. A recipe's ingredient lines and steps
+   are value maps inside a movable list: they are edited one line at a time,
+   and 0022 already ruled out two people co-editing a single step. Making
+   those containers too would buy a merge nobody performs, at the cost of a
+   schema no one can read.
+4. **Writes only touch what changed.** Every setter compares before it
+   inserts. This keeps unchanged fields out of the history — which is what
+   has to stay bounded — but the real reason is merge quality: a coarse
+   `put_recipe(&Recipe)` that rewrote every field would turn "one person
+   renames the recipe while the other adds an ingredient" into a conflict and
+   lose the ingredient.
+
+**Consequences.** Read and write are deliberately asymmetric: writes go
+through containers because that is what produces a mergeable operation, reads
+go through `get_deep_value()` so every reader walks plain values instead of
+branching on container-or-value at each level. At 154 kB for the whole
+library, materialising it is not a cost worth optimising against clarity.
+
+Two traps this uncovered, both now load-bearing in the code:
+
+- **`get_or_create_container` is the wrong constructor** and is deprecated
+  for exactly this reason: it gives the child an operation-derived id, so two
+  devices that create the same ingredient while offline end up with two
+  different containers under one key, and the merge keeps one and silently
+  drops the other. `ensure_mergeable_map` derives the child's id from the
+  key, which is what makes the two creations converge.
+- **A Loro map hands its keys back in hash order**, which is not stable
+  between replicas. Every keyed read sorts by id, or two devices show the
+  same library in different orders — a bug that only ever appears on the
+  second device.
+
+The schema is a compatibility surface, not an implementation detail: a phone
+left in a pocket for three weeks must still converge with the relay, so
+changing any of the above is a breaking change under Rule 15. That is what
+the `meta.schema` marker is for, and why a document from the future is
+refused outright rather than read partially — a partial read would drop the
+fields this build cannot see, and the next save would propagate that loss to
+every other device.
+
+---
+
+## 0030 — IndexedDB is tested in a real browser
+
+**Date** 2026-08-08 · **Status** Accepted · **Extends**
+[0013](#0013--nix-flake-with-a-separate-android-shell)
+
+**Context.** M2's `Storage` trait has two implementations. The file backend
+is testable anywhere. The IndexedDB one is not: IndexedDB is a browser API,
+it has no native equivalent, and `wasm-check` only proves the code
+*compiles* for wasm32 — a backend that opens no database and stores no bytes
+would pass it just as happily.
+
+Three options. Mock IndexedDB behind a trait and test against the mock, which
+proves the mock works and nothing else. Ship it untested and find out at M4,
+on the phone, where every bug also looks like a Svelte bug. Or run a real
+browser.
+
+**Decision.** Run a real browser. `#[wasm_bindgen_test]` cases in
+`crates/store/tests/indexeddb.rs`, executed by `wasm-bindgen-test-runner`
+against headless chromium, in a **separate devShell** (`.#wasm-test`) and a
+**separate CI job** (`wasm-storage`).
+
+**Consequences.** Chromium and chromedriver are a large download that the
+everyday gates have no use for, so they follow the rule 0013 already set for
+the Android SDK: their own shell, entered only when needed. The CI job is
+separate for the same reason plus one more — a browser failure then reads as
+a browser failure, instead of turning `fmt` red for reasons nobody can see.
+
+The runner ships inside `wasm-bindgen-cli`, so the Rule 13 pin governs it
+too. That is a benefit rather than an accident: a test runner from a
+different version than the `wasm-bindgen` crate fails exactly the way a
+mismatched release build does — opaquely — except in CI, where there is even
+less to go on.
+
+Scoped to `--test indexeddb` deliberately. The rest of the suite is
+platform-free and already runs natively in milliseconds; building it for
+wasm32 as well would cost minutes per push to re-prove what `wasm-check`
+proves in seconds.
+
+What this buys, concretely: the browser job is what showed the whole vertical
+works — a Loro document, snapshotted, stored in IndexedDB, read back, with
+its exact rationals intact. That is the claim M4 has to be able to assume,
+and now it does not have to assume it.

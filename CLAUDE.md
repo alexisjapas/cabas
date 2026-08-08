@@ -8,10 +8,12 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M1 complete. `crates/domain` holds the whole product logic
-as pure functions, 65 tests green; `store`, `sync`, `app` and `relay` are
-still boundary docs only. **M2 (the Loro document schema) is next** — the
-domain types it maps to and from are settled, so it has a fixed target.
+**Current state**: M0, M1 and M2 complete, CI green on `main`.
+`crates/domain` holds the product logic as pure functions (69 tests);
+`crates/store` holds the Loro schema, the two-way mapping, snapshots,
+compaction and the `Storage` trait over file + IndexedDB (33 native tests, 5
+in a real browser). **M3 (the app surface) is next.** `sync`, `app` and
+`relay` are still boundary docs only.
 
 ## Environment and commands
 
@@ -24,8 +26,14 @@ nix develop -c cargo clippy --workspace --all-targets -- -D warnings
 nix develop -c cargo fmt --all
 nix develop -c wasm-check                     # Rule 8: the 4 shared crates on wasm32
 nix develop -c check-wasm-bindgen             # Rule 13: CLI/crate version match
+nix develop .#wasm-test -c wasm-test          # IndexedDB, in headless chromium
 nix develop .#android                         # Android SDK/NDK shell (M7 only)
 ```
+
+`wasm-check` proves the shared crates *compile* for wasm32; `wasm-test` is
+the only thing that *runs* wasm, and it is scoped to the one test target that
+needs a browser (DECISIONS 0030). Chromium lives in its own shell for the
+same reason the Android SDK does.
 
 CI runs all of these **inside the flake** — deliberately, because Rule 13
 makes nixpkgs authoritative for the `wasm-bindgen-cli` version, and a CI with
@@ -93,10 +101,24 @@ depends only on the ones above it:
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
 | `list` | `ShoppingList`, `ListEntry`, add-purges-overlay |
 | `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
+| `people` | `User`, `Device` — attribution names, not access control |
+| `event` | `Event`, `EventLog` — deletions and edits, capped |
 
 The end-to-end scenario — M1's exit criterion, and the best place to see how
 it all fits — is `crates/domain/tests/shopping_scenario.rs`, which uses the
 public API only.
+
+`crates/store` (M2) — read `schema.rs` first, it is the persisted layout in
+one file and a compatibility surface (DECISIONS 0029):
+
+| Module | Holds |
+|---|---|
+| `schema` | Container and key names, `SCHEMA_VERSION`, the layout diagram |
+| `codec` | `LoroValue` ⇄ primitives: rationals, units, aisles, timestamps |
+| `mapping` | Domain struct ⇄ document, one pair per entity |
+| `document` | `Document`: lifecycle, reads, writes, snapshots, sync bytes |
+| `storage` | `Storage` trait; `MemoryStorage`, `FileStorage` (native), `IndexedDbStorage` (wasm) |
+| `error` | `StoreError` — carries strings, never a `LoroError` (Rule 2) |
 
 Key domain shapes, all settled in DECISIONS:
 
@@ -164,3 +186,24 @@ Key domain shapes, all settled in DECISIONS:
   property test is restricted to mass on purpose.
 - Recent crate versions may have moved since training data: check
   `~/.cargo/registry/src/` or the docs rather than assuming an API.
+- **`LoroMap::get_or_create_container` is the wrong constructor** (and
+  deprecated): it gives the child an operation-derived id, so two devices
+  creating the same entity offline get two containers under one key and one
+  side's fields vanish on merge. Always `ensure_mergeable_*`.
+- **A Loro map returns its keys in hash order**, which differs between
+  replicas. Every keyed read in `store` sorts by id — drop that and two
+  devices show the same library in different orders.
+- **`LoroValue` has no exact numeric type**, only `I64` and `Double`. Every
+  rational is encoded as a `"numer/denom"` string; the guard that keeps it
+  that way is `no_float_ever_reaches_the_document` in `document.rs`.
+- **`js-sys`, `web-sys` and `wasm-bindgen-test` each pin an exact
+  `wasm-bindgen`**, so bumping any of them can drag the lockfile off the
+  flake's CLI version even when nothing else changed. That is why
+  `check-wasm-bindgen` checks `Cargo.lock` and not just `Cargo.toml`; the fix
+  is `cargo update -p js-sys --precise <version matching the CLI>`. The set
+  that currently agrees with CLI 0.2.121: `js-sys` and `web-sys` 0.3.98,
+  `wasm-bindgen-futures` 0.4.71, `wasm-bindgen-test` 0.3.71.
+- **`#[test]` does not run on wasm32** — browser cases need
+  `#[wasm_bindgen_test]`. That is why `wasm-test` targets only
+  `--test indexeddb`, and why `tests/persistence.rs` and
+  `tests/document_size.rs` are `cfg`-gated to native.

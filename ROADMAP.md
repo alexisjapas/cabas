@@ -9,9 +9,9 @@ milestone is not started until the previous one's criterion holds.
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
-| **M0** | Scaffolding: workspace, nix flake, docs, CI | `cargo test --workspace` and `wasm-check` green inside `nix develop`, green CI | 🚧 |
+| **M0** | Scaffolding: workspace, nix flake, docs, CI | `cargo test --workspace` and `wasm-check` green inside `nix develop`, green CI | ✅ |
 | **M1** | Domain: units, conversions, scaling, recipe DAG, cart derivation | Property tests green; a recipe list produces a correct aggregated cart, offline, in `cargo test` | ✅ |
-| **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ⬜ |
+| **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ✅ |
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ⬜ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ⬜ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ⬜ |
@@ -39,6 +39,7 @@ cargo nextest run --workspace                # tests
 wasm-check                                   # Rule 8: the four shared crates on wasm32
 cargo clippy --workspace --all-targets -- -D warnings
 check-wasm-bindgen                           # CLI/crate version match (Rule 13)
+nix develop .#wasm-test -c wasm-test         # IndexedDB, in headless chromium
 ```
 
 All project knowledge lives in the repo: binding rules in
@@ -48,15 +49,15 @@ All project knowledge lives in the repo: binding rules in
 
 **Next actions, in order:**
 
-1. Finish **M0**: confirm the CI is green (`gh auth login`, then
-   `gh run list`, or the Actions tab). Only two things in the workflow can
-   fail there — the `cachix/install-nix-action` version pin, and the
-   cold-cache cost of `nix develop` on a runner.
-2. Start **M2** — the Loro document schema. The domain types it has to map
-   to and from are now settled and tested, so the schema has a fixed target
-   rather than a moving one. Start from `crates/domain/src/lib.rs` for the
-   type surface and `crates/store/src/lib.rs` for the boundary it must
-   respect (Rule 2: no Loro type escapes that crate).
+1. Start **M3** — the app surface. Both layers underneath it are settled:
+   `cabas_domain` for the rules, `cabas_store::Document` for persistence and
+   the sync bytes. M3's job is the command set and the view-models, and the
+   discipline that matters is Rule 9 — the UI gets pushed view-models and
+   emits intents, and computes nothing. Start from
+   `crates/store/src/document.rs` to see the surface `app` wraps, and note
+   that a command usually maps to *two* store calls (the domain rule, then
+   its persisted effect) — `add_to_list` is the worked example, since Rule 3
+   makes it add an entry **and** purge an overlay entry.
 
 ---
 
@@ -73,14 +74,13 @@ All project knowledge lives in the repo: binding rules in
 - [x] `LICENSE-MIT` + `LICENSE-APACHE` (DECISIONS 0027)
 - [x] `CLAUDE.md` session guide
 - [x] Pushed to `github.com/alexisjapas/cabas`
-- [ ] **Green CI confirmed** — unverified so far: `gh` is not authenticated
-      locally, so the first run has to be checked with `gh auth login` or in
-      the Actions tab. Two things can only fail there: the
+- [x] **Green CI confirmed** — the first run passed every gate. The two
+      things that could only fail on a runner, and did not: the
       `cachix/install-nix-action` version pin, and the cold-cache cost of
-      `nix develop` on a runner.
+      `nix develop`.
 
 **Exit**: `cargo test --workspace` and `wasm-check` green inside
-`nix develop`; green CI.
+`nix develop`; green CI. ✅
 
 ## M1 — Domain
 
@@ -102,7 +102,7 @@ This is the dense part of the project (Rule 1).
 
 **Exit**: a shopping list holding recipes, sub-recipes and bare ingredients
 produces a correct aggregated cart in `cargo test`, with no I/O. ✅ —
-`crates/domain/tests/shopping_scenario.rs`, 65 tests green.
+`crates/domain/tests/shopping_scenario.rs`, 69 tests green.
 
 One deliberate gap in the property tests: `scale ∘ aggregate ==
 aggregate ∘ scale` is asserted on mass only. Rounding a countable line up is
@@ -111,15 +111,42 @@ would be asserting a bug.
 
 ## M2 — Store
 
-- [ ] Loro document schema: recipes, ingredients, the single list, the check overlay, users, devices, the event log
-- [ ] Mapping both ways between plain domain structs and the CRDT — no Loro type escapes (Rule 2)
-- [ ] Snapshot serialisation; history compaction so the document does not grow without bound
-- [ ] `Storage` trait; file backend (native) and IndexedDB backend (wasm)
-- [ ] Convergence tests: two in-memory replicas, concurrent edits, including check/uncheck of the same ingredient
-- [ ] Measure a realistic document (≈200 recipes) — snapshot size and load time budget the PWA's cold start
+- [x] **Domain prerequisite**: `User`, `Device` (`people`) and the capped
+      event log (`event`) — the schema has to persist them (DECISIONS 0024)
+      and M1 had only minted their ids. Pure types, so they belong in
+      `domain` rather than being invented by `store`
+- [x] Loro document schema: recipes, ingredients, the single list, the check overlay, users, devices, the event log — laid out in `crates/store/src/schema.rs`, which is the file to read first (DECISIONS 0029)
+- [x] Mapping both ways between plain domain structs and the CRDT — no Loro type escapes (Rule 2), not even on the error path or in the sync surface, where versions travel as opaque bytes
+- [x] Snapshot serialisation; history compaction so the document does not grow without bound (`compacted_snapshot`)
+- [x] `Storage` trait; file backend (native), with an atomic write — a snapshot is the whole library, so a half-finished save is a destroyed one
+- [x] IndexedDB backend (wasm), tested in headless chromium — the only place IndexedDB exists (DECISIONS 0030)
+- [x] Convergence tests: two in-memory replicas, concurrent edits, including check/uncheck of the same ingredient, plus the never-online-together case through a relay
+- [x] Measure a realistic document (≈200 recipes) — snapshot size and load time budget the PWA's cold start
+
+**Measured** (`crates/store/tests/document_size.rs`, 200 recipes over a
+300-ingredient vocabulary, x86-64 release):
+
+| | |
+|---|---|
+| Snapshot | **154 kB** |
+| Compacted snapshot | **101 kB** (−34 %) |
+| `Document::load` | **0.42 ms** |
+| Read the whole library back | **9.8 ms** |
+
+That settles the premise of DECISIONS 0008: the library is a 154 kB blob, so
+a serialized snapshot is the right shape and SQLite would have been solving a
+problem this project does not have. Cold start costs ~10 ms of core time
+natively; the wasm figure will be some multiple of that and gets measured on
+the actual phone at M4, which is the only place the number means anything.
+The debug build is ~10× slower (85 ms to read back) — worth knowing before
+anyone benchmarks a dev build and panics.
 
 **Exit**: persistence round-trips on both backends; two replicas converge on
-concurrent edits.
+concurrent edits. ✅ — round-trip on the file, memory and IndexedDB backends
+(`crates/store/tests/indexeddb.rs` runs in a real browser); convergence in
+`crates/store/tests/persistence.rs`, including the case where the two
+replicas are never online at the same time. 33 native tests plus 5 in
+chromium.
 
 ## M3 — App surface
 
