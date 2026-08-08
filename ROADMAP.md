@@ -74,13 +74,18 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next action: M5 — the relay and sync.** M4 is closed: the app is installed on
-the iPhone, it opens in airplane mode, and its library is there when it does.
-What the device settled, and what it did not, is recorded at the end of the M4
-section below. M5 is the first milestone with two replicas in it and the first
-with cryptography — `cabas-relay` on axum, one shared family key, pairing with
-its recovery phrase, and the sync seam M3 deliberately left unfinished
-(`App::version`, `App::changes_since`, `App::merge`, bytes in and bytes out).
+**Next action: M5, the PWA half.** The Rust half of M5 is done and proven in
+CI: `cabas-sync` holds the key derivation (the 12-word phrase is the single
+canonical secret, DECISIONS 0042), the XChaCha20-Poly1305 seal, the wire
+protocol and the sans-IO client `Session`; `cabas-relay` is a real axum
+process persisting sealed frames per family; and
+`crates/relay/tests/convergence.rs` shows two replicas that are never online
+together converging through it, sealed end to end. What remains is wiring the
+PWA: the `ws_stream_wasm` adapter around `Session`, sync on foreground with a
+live socket while active (DECISIONS 0011), the pairing screens (QR + typed
+phrase, 0021), the users-and-devices screen with the revocation warning 0024
+requires, the event-log screen, and the cursor persisted next to the
+identity. The "Where M5 stands" note in the M5 section below has the detail.
 
 Putting a later build on the phone again is two commands, since the certificate
 is installed and trusted once and for all:
@@ -408,17 +413,41 @@ by then the shell is precached and the question only arises once per install.
 
 ## M5 — Relay and sync
 
-- [ ] `cabas-relay`: axum, WebSocket per family, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
-- [ ] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
+- [x] `cabas-relay`: axum, WebSocket per family, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
+- [x] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
 - [ ] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021)
 - [ ] Users and devices: pairing asks who you are; a device screen that states plainly that revoking means rotating the key and re-pairing everyone
 - [ ] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log is already *written* by every deletion and edit since M3; what is missing is a view-model for it and a screen
-- [ ] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
+- [x] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
 - [ ] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
-- [ ] Test: two replicas that are never online simultaneously still converge through the relay
+- [x] Test: two replicas that are never online simultaneously still converge through the relay
 
 **Exit**: two devices converge in both the simultaneous and the
 never-simultaneous case.
+
+**Where M5 stands.** The Rust half is in, and the exit criterion holds at
+replica level in CI: `crates/relay/tests/convergence.rs` runs two real
+`App`s against a real relay over real WebSockets — the never-simultaneous
+case, the live-broadcast case, and a relay restarted over the same data
+directory — with every payload sealed. What the protocol had to invent, and
+why it looks the way it does, is one DECISIONS entry (0042): the relay
+cannot read a version vector, so it keeps an append-only log of sealed
+frames under relay-assigned sequence numbers, devices carry a cursor, a
+device-pushed snapshot truncates the log, and the 12-word phrase is the one
+canonical secret — key and family id both derive from its BIP39 seed.
+`cabas_sync::Session` is the sans-IO client core both transports will
+share; the convergence test drives it over `tokio-tungstenite` exactly the
+way `session.svelte.ts` will drive it over `ws_stream_wasm`.
+
+What remains is the PWA half, and it is UI work end to end: the wasm
+transport adapter and the foreground sync loop (connect on open and on
+`visibilitychange`, hold the socket while active — DECISIONS 0011), the
+pairing screens (generate/display the phrase and its QR, join by scanning
+or typing, and only then mint the local identity), the device-and-users
+screen with the revocation warning 0024 requires, the event-log view-model
+and screen, and persisting the session cursor and shadow version alongside
+the identity. Then the exit check happens where M4's did: on two real
+devices.
 
 ## M6 — Deployment
 

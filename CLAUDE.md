@@ -8,13 +8,18 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M0 through M4 complete; **M5 (relay and sync) is next**.
-`crates/domain` holds the product logic as pure functions (69 tests);
-`crates/store` holds the Loro schema, the two-way mapping, snapshots,
-compaction and the `Storage` trait over file + IndexedDB; `crates/app` holds
-the command set, the view-models and the wasm binding. 123 native tests plus
-9 in a real browser — 5 over IndexedDB, 4 through the app — and all of them
-run in CI, which was only true from M4 on.
+**Current state**: M0 through M4 complete; **M5 (relay and sync) is half
+done — the Rust half**. `crates/domain` holds the product logic as pure
+functions (69 tests); `crates/store` holds the Loro schema, the two-way
+mapping, snapshots, compaction and the `Storage` trait over file +
+IndexedDB; `crates/app` holds the command set, the view-models and the wasm
+binding; `crates/sync` holds the E2EE core (phrase → key, seal/open, the
+wire protocol, the sans-IO client `Session`); `crates/relay` is a working
+axum broker persisting sealed frames per family. 157 native tests plus 9 in
+a real browser — 5 over IndexedDB, 4 through the app — and all of them run
+in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
+exit criterion at replica level: two devices never online together converge
+through the relay, sealed end to end.
 
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to
@@ -25,8 +30,9 @@ built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
-the device. `sync` and `relay` are still boundary docs only, and that is what
-M5 is. See ROADMAP "Next action".
+the device. What remains of M5 is the PWA half: the `ws_stream_wasm` adapter,
+sync on foreground, the pairing/users/event-log screens, the cursor persisted
+next to the identity. See ROADMAP "Next action".
 
 ## Environment and commands
 
@@ -144,7 +150,24 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | `crates/app` | Commands + view-models — the only surface the UI touches |
 | `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
 
-`domain`, `store` and `app` hold code; `sync` and `relay` are boundary docs.
+Every crate holds code since M5's first half. `crates/sync` — read
+`protocol.rs` first, it is the wire contract and carries the reasoning
+(DECISIONS 0042):
+
+| Module | Holds |
+|---|---|
+| `key` | `FamilyKey`, `FamilyId` — both derived from the 12-word phrase's BIP39 seed |
+| `seal` | XChaCha20-Poly1305 `seal`/`open`, the only cipher anywhere (Rule 7) |
+| `protocol` | `ClientMessage`/`ServerMessage`, `FrameKind`, the postcard codec |
+| `session` | `Session` — the sans-IO client: cursor, epoch reset, seal/push, one `Event` per wire message |
+| `error` | `SyncError` — no vendor type crosses the boundary |
+
+`crates/relay` (binary + lib, never in `wasm-check`): `log.rs` is one
+family's persisted sealed log — append, replay, snapshot-truncate, torn-tail
+recovery, the minted `epoch` — and `server.rs` is the axum WebSocket side:
+replay under the same lock as the subscription, then live forwarding. It
+depends on `cabas-sync` for the protocol types and never for a key.
+
 `crates/domain`'s modules, bottom-up — each depends only on the ones above it:
 
 | Module | Holds |
@@ -339,6 +362,11 @@ Key domain shapes, all settled in DECISIONS:
 - **`getrandom` on wasm32 needs two opt-ins, not one** — the `wasm_js`
   feature *and* `--cfg getrandom_backend="wasm_js"` (in `.cargo/config.toml`).
   Either alone is a `compile_error!`.
+- **`chacha20poly1305`'s default features drag in a second `getrandom`** —
+  the 0.2 line via `rand_core` 0.6, which needs its own, *different* wasm
+  opt-in (`js`) that nothing in this workspace sets. The registry entry turns
+  default features off and `sync` draws nonces from `getrandom` 0.3 directly;
+  re-enabling them breaks `wasm-check`, not the native build.
 - **`serde-wasm-bindgen` serialises `None` as `undefined`**, while the
   generated TypeScript says `| null`. `wasm::to_js` configures
   `serialize_missing_as_null`; use it rather than `to_value`, or the UI ends
