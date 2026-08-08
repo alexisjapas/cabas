@@ -320,6 +320,16 @@ Key domain shapes, all settled in DECISIONS:
   is `cargo update -p js-sys --precise <version matching the CLI>`. The set
   that currently agrees with CLI 0.2.121: `js-sys` and `web-sys` 0.3.98,
   `wasm-bindgen-futures` 0.4.71, `wasm-bindgen-test` 0.3.71.
+- **chromedriver does not read `CHROME_PATH`.** It searches well-known absolute
+  locations first, so on any machine with Google Chrome installed — every GitHub
+  runner — it launches `/opt/google/chrome/chrome` rather than the chromium the
+  flake pins. The versions then disagree, chromedriver answers `session not
+  created`, and the runner carries on using the failed session's id, so every
+  later request returns 404: what surfaces is a bare `http status: 404` naming
+  neither Chrome nor a version. `wasm-test` pins the browser through
+  `goog:chromeOptions.binary`, in a `webdriver.json` it generates and points at
+  with `WASM_BINDGEN_TEST_WEBDRIVER_JSON` — the only channel chromedriver
+  honours. `ui-test` was never affected, because it launches chromium itself.
 - **`#[test]` does not run on wasm32** — browser cases need
   `#[wasm_bindgen_test]`. That is why `wasm-test` names its test targets one
   by one, and why `tests/persistence.rs` and `tests/document_size.rs` are

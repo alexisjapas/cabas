@@ -154,10 +154,27 @@
         wasmTest = pkgs.writeShellScriptBin "wasm-test" ''
           set -euo pipefail
           export CHROMEDRIVER="${pkgs.chromedriver}/bin/chromedriver"
-          # chromedriver launches a browser it finds on PATH; be explicit, so
-          # a runner with some other chrome installed cannot change what is
-          # being tested.
-          export CHROME_PATH="${pkgs.chromium}/bin/chromium"
+
+          # chromedriver chooses the browser itself, and it does *not* read
+          # `CHROME_PATH` — which this script set for years believing it did.
+          # It searches well-known absolute locations first, so on any machine
+          # with Google Chrome installed (every GitHub runner) it launches
+          # /opt/google/chrome/chrome and ignores the chromium this flake pins.
+          # When the two versions disagree it answers `session not created`,
+          # and because the runner carries on with the failed session's id,
+          # what finally surfaces is a bare `http status: 404` that names
+          # neither Chrome nor a version. That is how this job failed on every
+          # run from M2 to M4 while passing on a developer machine, where there
+          # is no second Chrome to find.
+          #
+          # `goog:chromeOptions.binary` is the only thing chromedriver honours,
+          # and it travels in the WebDriver capabilities — hence a file written
+          # here rather than committed, since the value is a store path.
+          caps="$(${pkgs.coreutils}/bin/mktemp -t cabas-webdriver-XXXXXX.json)"
+          trap 'rm -f "$caps"' EXIT
+          printf '{ "goog:chromeOptions": { "binary": "%s" } }\n' \
+            "${pkgs.chromium}/bin/chromium" > "$caps"
+          export WASM_BINDGEN_TEST_WEBDRIVER_JSON="$caps"
           cargo test -p cabas-store \
             --target wasm32-unknown-unknown --test indexeddb "$@"
           cargo test -p cabas-app \
