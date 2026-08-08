@@ -7,5 +7,17 @@ repository.workspace = true
 description = "End-to-end encryption, device pairing and the WebSocket transport to the relay"
 
 [dependencies]
+serde.workspace = true
+thiserror.workspace = true
+chacha20poly1305.workspace = true
+bip39.workspace = true
+postcard.workspace = true
+# Nonces and family-key entropy. On wasm this needs both the `wasm_js`
+# feature below and the `getrandom_backend` cfg set in `.cargo/config.toml`;
+# miss either and the wasm build stops at a compile error (Rule 8).
+getrandom.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
 
 [dev-dependencies]

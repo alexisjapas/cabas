@@ -99,12 +99,21 @@ ts-rs = "12"
 getrandom = "0.3"
 
 # --- M5 · sync (E2EE + transport) ---
-chacha20poly1305 = "0.10"
-argon2 = "0.5"
+# Default features off: they pull `rand_core` 0.6, whose `getrandom` 0.2
+# needs a *second* wasm opt-in (`js`) on top of the 0.3 one this workspace
+# already carries. Nonces come from `getrandom` 0.3 directly instead, so one
+# randomness backend serves the whole workspace (Rule 8).
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 # 12-word recovery phrase: the mandatory fallback to QR pairing, because the
 # camera is historically brittle in an installed iOS PWA (DECISIONS 0021).
+# The mnemonic is the single canonical secret — key and family id are both
+# derived from its seed, and no argon2: 128 machine-generated bits need no
+# stretching (DECISIONS 0042).
 bip39 = "2"
-rand = "0.9"
+# The wire codec for the device↔relay messages: serde-native, binary, no_std.
+# The payloads are ciphertext, so a self-describing format would describe
+# nothing (DECISIONS 0042).
+postcard = { version = "1", default-features = false, features = ["use-std"] }
 futures = "0.3"
 tokio-tungstenite = "0.24"
 ws_stream_wasm = "0.7"
