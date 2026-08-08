@@ -51,6 +51,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0039](#0039--the-editor-names-a-recipe-line-before-the-line-exists) | The editor names a recipe line before the line exists | Architecture |
 | [0040](#0040--the-keyboard-is-a-length-not-a-mode) | The keyboard is a length, not a mode | Stack |
 | [0041](#0041--the-phone-installs-from-a-local-certificate-authority) | The phone installs from a local certificate authority | Tooling |
+| [0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) | The relay keeps a sequenced log it cannot read | Sync |
 
 ---
 
@@ -1274,3 +1275,80 @@ not.
 **Plain HTTP, and testing the offline path in a desktop browser instead** —
 that is what `ui-test` already does, and it is precisely the half that cannot
 answer the question. 0040 makes the same point about the keyboard.
+
+---
+
+## 0042 — The relay keeps a sequenced log it cannot read
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee) · **Relates to**
+[0021](#0021--pairing-by-qr-with-a-mandatory-12-word-fallback),
+[0024](#0024--attribution-is-declarative-not-cryptographic)
+
+**Context.** 0009 settled the shape — a stateful relay persisting ciphertext,
+XChaCha20-Poly1305 under one family key — but not the protocol. The constraint
+that shapes everything: Loro's own sync model is version-vector based ("here
+is my version, send me what I lack"), and **the relay cannot read a version
+vector**, because it cannot read anything. Whatever coordination the protocol
+needs has to come from something the relay can hold without understanding.
+
+**Decision.** Per family, the relay keeps an **append-only log of sealed
+frames** and assigns each one a **sequence number** — the only ordering in the
+protocol, and the relay's only contribution to it. A device remembers the last
+sequence it has applied; on connect it says `since N`, the relay replays
+everything after N and then forwards new frames live. A device pushes its own
+changes as a sealed delta — `changes_since(version at its last push)`, sealed
+before it leaves (Rule 7) — and the relay acknowledges with the assigned
+sequence. Loro import is idempotent and commutative, so an overlapping or
+replayed delta is harmless by construction, and a delta that includes ops the
+receiver already merged costs bytes, not correctness.
+
+**Compaction is device-driven**, because the relay cannot merge what it cannot
+read: a device that has applied the log up to N may push a sealed **snapshot
+declaring it covers N**, and the relay then drops every frame at or below N.
+The frame kind — delta or snapshot — and the covered sequence are therefore
+**plaintext metadata**, the irreducible minimum the relay needs to truncate;
+payload sizes and timing it would see anyway. A client treats both kinds
+identically on receipt, since Loro import accepts either.
+
+**The 12-word BIP39 mnemonic is the single canonical secret** (0021). The
+family key is the first 32 bytes of the standard BIP39 seed; the **family
+id** — the relay's routing and storage key — is the next 16, hex-encoded.
+PBKDF2's output blocks are independent, so publishing the id reveals nothing
+of the key, and every device derives both from the same phrase with no second
+channel. The id is unguessable, and that is the relay's entire access story:
+whoever holds it may read ciphertext (which is the security model working)
+and may append frames — a frame that fails to open is dropped by the client,
+counted, never merged. The wordlist is BIP39 English even though the UI is
+French: it is the list every backup tool understands, its words are unique in
+four letters, and the phrase carries its own checksum.
+
+**No argon2.** Key stretching defends low-entropy passwords; this seed is 128
+machine-generated bits, and no amount of stretching improves on that. The
+registry entry is removed rather than left as a note.
+
+**Consequences.** The never-online-together case — the reason the relay is
+stateful at all — falls out of the log: A pushes and leaves, B connects later
+and replays. The simultaneous case falls out of the live forwarding, and
+`checked_by` arriving mid-shop (0024) rides on it. The relay stays small
+enough to audit by reading: append, replay, truncate, forward — no merge, no
+conflict handling, no knowledge of what a shopping list is. Sync state on the
+device — the cursor and the shadow version — is device-local, persisted
+alongside the identity, never synced (Rule 3 applies to it in spirit: it is
+derived coordination state, not a source).
+
+A malicious relay can drop, reorder or withhold frames — availability was
+never the property the seal buys, and between two people who share a kitchen
+that is acceptable; what it cannot do is read or forge one. Protocol messages
+carry a version byte so a future incompatible change is a clean refusal
+rather than a silent misparse.
+
+**Rejected.** **Per-device mailboxes** (pairwise deltas through the relay —
+strictly more state and bookkeeping for zero benefit at two users and a
+handful of devices). **A single replaceable sealed snapshot** (no log at all —
+needs compare-and-swap the moment two devices are online together, and the
+race it loses is exactly the live case that matters in the shop).
+**Relay-side merging** (requires plaintext; the entire point is that hosting
+never requires trust, 0009). **Sealing the version vector and letting devices
+negotiate pairwise** (turns every sync into a round trip between devices that
+are by hypothesis never online together).
