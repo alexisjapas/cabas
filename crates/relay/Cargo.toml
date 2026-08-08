@@ -1,0 +1,11 @@
+[package]
+name = "cabas-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Zero-knowledge sync relay and PWA host — ships as a Home Assistant OS add-on"
+
+[dependencies]
+
+[dev-dependencies]

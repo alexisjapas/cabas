@@ -1,0 +1,93 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/domain",
+    "crates/store",
+    "crates/sync",
+    "crates/app",
+    "crates/relay",
+]
+
+[workspace.package]
+# Semver of the shipped artifact (CONSTITUTION Rule 12). The `-dev` suffix
+# marks a line that never shipped; it drops at the first release.
+version = "0.1.0-dev"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/alexisjapas/cabas"
+
+# Single version registry for the workspace. A crate references an entry with
+# `dep.workspace = true` at the milestone that needs it, and pins nothing
+# locally (Rule 13). Entries below are the *plan*: the exact version is
+# confirmed against the registry when the milestone actually wires it in, so
+# an unused line here is a note to self, not a resolved dependency.
+[workspace.dependencies]
+
+# --- internal crates ---
+cabas-domain = { path = "crates/domain" }
+cabas-store = { path = "crates/store" }
+cabas-sync = { path = "crates/sync" }
+cabas-app = { path = "crates/app" }
+
+# --- M1 · domain ---
+# Exact rational arithmetic for every quantity (Rule 4): scaling a recipe by
+# 3/2 must stay exact, and 1/3 cup must render as 1/3.
+num-rational = { version = "0.4", default-features = false }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+# Property tests for the invariants the constitution states (Rule 11):
+# scale∘aggregate == aggregate∘scale, conversions round-trip, DAG expansion
+# terminates.
+proptest = "1"
+
+# --- M2 · store ---
+# CRDT. Confined to `store` and never exposed (Rule 2) — this entry is the
+# only place in the workspace that may name it.
+loro = "1"
+# `std::time::Instant` panics on wasm32; `web-time` is the drop-in that makes
+# `app` build for both targets (Rule 8).
+web-time = "1"
+
+# --- M3 · app (wasm + native surfaces) ---
+# Version MUST equal the `wasm-bindgen-cli` provided by the flake; the
+# `check-wasm-bindgen` script enforces it in CI (Rule 13). Pinned exactly,
+# because a patch-level drift is enough to break the generated glue.
+wasm-bindgen = "=0.2.121"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = "0.3"
+# Needs the web backend feature on wasm32, otherwise key generation fails to
+# link. Required by the M5 crypto.
+getrandom = "0.3"
+
+# --- M5 · sync (E2EE + transport) ---
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+# 12-word recovery phrase: the mandatory fallback to QR pairing, because the
+# camera is historically brittle in an installed iOS PWA (DECISIONS 0021).
+bip39 = "2"
+rand = "0.9"
+futures = "0.3"
+tokio-tungstenite = "0.24"
+ws_stream_wasm = "0.7"
+
+# --- M5/M6 · relay ---
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+axum = "0.8"
+tower-http = "0.6"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# Embeds the built PWA into the relay binary: one artifact, one add-on image,
+# one origin serving both the static files and the sync WebSocket.
+rust-embed = "8"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# Size-first profile for the wasm core: on the PWA the download is the cost
+# that matters, not the last few percent of speed.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"

@@ -1,0 +1,11 @@
+# Rust stable. Reproducibility on the Nix side comes from flake.lock
+# (rust-overlay); on the rustup side, "stable" tracks the latest release.
+#
+# `wasm32-unknown-unknown` is not optional tooling here: `domain`, `store`,
+# `sync` and `app` must build for it at all times (CONSTITUTION Rule 8) —
+# it is the target the iOS/web PWA ships on.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy", "rust-analyzer", "rust-src"]
+targets = ["wasm32-unknown-unknown"]
+profile = "default"

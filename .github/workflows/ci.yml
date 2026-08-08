@@ -1,0 +1,80 @@
+# Continuous integration — every push to main and every PR must keep all
+# gates green (CONSTITUTION Rules 8, 11, 12, 13).
+#
+# Unlike a plain rustup CI, this one runs *inside the flake*. That is not
+# ceremony: Rule 13 makes nixpkgs authoritative for the `wasm-bindgen-cli`
+# version, so a CI that installed its own toolchain would be checking a
+# different pair than the one developers and the release build actually use —
+# and the check that matters most would be the one that means nothing.
+#
+# One job rather than five: the Nix setup dominates the cost for a workspace
+# this small, so it is paid once. Granularity is preserved through steps —
+# GitHub reports which gate failed.
+#
+# `--locked` everywhere: CI builds exactly what Cargo.lock records, so a
+# drifted lockfile fails loudly instead of resolving silently.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gates:
+    name: fmt · clippy · tests · wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Caches ~/.cargo and target/. The Nix store itself is not cached here;
+      # the toolchain comes down from static.rust-lang.org as a download, not
+      # a build, which keeps the cold cost bounded.
+      - uses: Swatinem/rust-cache@v2
+
+      # Warms the shell so a flake evaluation error is reported on its own
+      # line rather than attributed to whichever gate happened to run first.
+      - name: Build dev shell
+        run: nix develop --command rustc --version
+
+      - name: rustfmt
+        run: nix develop --command cargo fmt --all --check
+
+      - name: clippy (-D warnings)
+        run: nix develop --command cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: tests
+        run: nix develop --command cargo nextest run --locked --workspace
+
+      # Rule 8 — domain, store, sync and app must build for wasm32 at all
+      # times. A regression here surfaces as a blank page on an iPhone, which
+      # is the worst possible place to find it.
+      - name: wasm32 build
+        run: nix develop --command wasm-check --locked
+
+      # Rule 13 — the wasm-bindgen crate and CLI must match exactly; a
+      # mismatch fails at load time with no useful message.
+      - name: wasm-bindgen version match
+        run: nix develop --command check-wasm-bindgen
+
+  # The Android shell is not built here (a multi-GB SDK for a milestone that
+  # has not started), but it must keep *evaluating*: a flake that breaks at
+  # eval is discovered at M7 otherwise, long after the change that broke it.
+  android-shell-eval:
+    name: android shell evaluates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix eval --raw .#devShells.x86_64-linux.android.name

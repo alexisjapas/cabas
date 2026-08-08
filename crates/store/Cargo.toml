@@ -1,0 +1,11 @@
+[package]
+name = "cabas-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CRDT document schema, snapshots and persistence — the only crate that knows Loro exists"
+
+[dependencies]
+
+[dev-dependencies]

@@ -1,0 +1,16 @@
+[package]
+name = "cabas-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UI-agnostic command and view-model layer — the single API surface consumed by the frontend"
+
+[lib]
+# `cdylib` for the wasm-bindgen build consumed by the PWA, `rlib` for the
+# native Tauri build and for `cargo test`.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+
+[dev-dependencies]

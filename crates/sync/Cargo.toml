@@ -1,0 +1,11 @@
+[package]
+name = "cabas-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "End-to-end encryption, device pairing and the WebSocket transport to the relay"
+
+[dependencies]
+
+[dev-dependencies]

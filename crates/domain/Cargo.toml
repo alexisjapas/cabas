@@ -1,0 +1,11 @@
+[package]
+name = "cabas-domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure domain logic: units, quantities, scaling, recipe graph, cart derivation"
+
+[dependencies]
+
+[dev-dependencies]

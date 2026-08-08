@@ -1,0 +1,14 @@
+/target
+/.direnv
+/result
+/result-*
+
+# Frontend build artifacts (ui/ — M4). The production bundle is embedded into
+# the relay binary by the release CI (rust-embed), never committed.
+/ui/node_modules
+/ui/dist
+/ui/.svelte-kit
+
+# Local secrets: pairing keys, tunnel credentials, add-on options.
+*.local
+/secrets
