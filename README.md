@@ -34,8 +34,11 @@ of the thirteen commands is reachable from the UI. It is **installable and it
 opens with the network off**: a hand-written service worker precaches the shell
 from Vite's own build manifest, and `ui-test` proves it by turning the network
 off in the browser and reading a recipe back
-([0038](docs/DECISIONS.md#0038--the-service-worker-is-written-by-hand)). What is
-left is the phone itself — the iOS keyboard, and an iPhone to install it on.
+([0038](docs/DECISIONS.md#0038--the-service-worker-is-written-by-hand)). The soft
+keyboard is handled as a measured length rather than a mode, so a form's last
+field and the recipe editor's mention picker stay above the keys
+([0040](docs/DECISIONS.md#0040--the-keyboard-is-a-length-not-a-mode)). What is
+left is the phone itself: an iPhone to install it on, and a shop to use it in.
 Resuming work starts at the "Resuming work" section of the
 [ROADMAP](ROADMAP.md).
 

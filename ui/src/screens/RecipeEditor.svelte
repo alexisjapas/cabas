@@ -8,6 +8,7 @@
   import type { StepInput } from '../lib/bindings/StepInput';
   import { mintUsageId } from '../lib/core';
   import { byName } from '../lib/format';
+  import { keyboard, reveal } from '../lib/keyboard.svelte';
   import { REF_DISPLAY_LABEL, REF_DISPLAYS } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -230,6 +231,34 @@
   function mentionName(usage: string): string | null {
     return mentionNames.get(usage) ?? null;
   }
+
+  /**
+   * Keeps the picker out from under the keyboard.
+   *
+   * It is the one control in the app that appears *because* of what was typed,
+   * which is exactly the situation where the keyboard is already up and the
+   * caret is on the last line above it — so the list is drawn straight into the
+   * keys. No CSS can tell: to the layout viewport there is plenty of room down
+   * there (`lib/keyboard.svelte.ts`).
+   *
+   * It depends on the inset as well as on the mention, because the two arrive
+   * in either order. Typing "@" into a field that already has focus opens the
+   * picker under a keyboard that is up; tapping into an empty step opens both
+   * at once, and the viewport resizes a beat after the focus lands.
+   *
+   * The node is queried rather than bound, like the textarea in `insert`: one
+   * picker exists at a time, but it belongs to whichever step is being written,
+   * and a `bind:this` inside an each block is at the mercy of the order Svelte
+   * creates and destroys them in.
+   */
+  $effect(() => {
+    if (mention === null) return;
+    const covered = keyboard.inset;
+    void tick().then(() => {
+      const picker = form?.querySelector<HTMLElement>('.picker') ?? null;
+      if (picker !== null) reveal(picker, covered);
+    });
+  });
 
   /**
    * Grows with what is typed: a step is prose, and prose does not fit one row.
@@ -790,6 +819,10 @@
   .picker {
     margin: var(--space-2) 0 0;
     padding: 0;
+    /* The room to leave between the list and the top of the keyboard. Read by
+       `reveal`, which is scrolling for a viewport the browser thinks is not
+       obscured — but the value is a visual one and stays here (Rule 10). */
+    scroll-margin-bottom: var(--space-4);
     list-style: none;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-md);

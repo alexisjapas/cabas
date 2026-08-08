@@ -82,6 +82,13 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+
+  /* How much of the viewport the soft keyboard is covering, written by
+     `lib/keyboard.svelte.ts` — the one length no CSS can work out for itself,
+     because iOS draws the keys over a layout viewport that never changes size.
+     Zero unless something is covering the page, so every expression that reads
+     it is the expression that was there before it existed. */
+  --keyboard-inset: 0px;
 }
 
 @media (prefers-color-scheme: dark) {

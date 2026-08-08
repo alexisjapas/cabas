@@ -66,21 +66,28 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next action: the iPhone.** Everything on the M4 list that does not need the
-device is done — the app is installable, and `ui-test` turns the network off in
-the browser and reads a recipe back out of it. The milestone closes on a phone,
-in a shop, and nowhere else: install it from the home screen, use it, and only
-then decide whether the 713 kB gzipped core needs work.
+**Next action: the iPhone.** Every M4 item that does not need the device is
+done. The app is installable, `ui-test` turns the network off in the browser and
+reads a recipe back out of it, and the keyboard is handled (DECISIONS 0040). The
+milestone closes on a phone, in a shop, and nowhere else: install it from the
+home screen, use it, and only then decide whether the 713 kB gzipped core needs
+work.
 
-Budget a day for the keyboard, not an hour. The step editor is the screen that
-will find every one of its edges, since it is the only one where a soft keyboard
-covers a control (the mention picker) that appears *because* of what was typed.
-`visualViewport` is the API for it; the safe-area insets are already tokens.
+Two things to watch there, neither of which a browser can do more than rehearse.
 
-The other thing the browser cannot rehearse is the iOS update path: a new
-build's worker installs on one launch and takes over on the next, because
-activating early would delete the caches a running page is still loading from.
-Worth watching on the phone, not worth changing before it is seen.
+The **keyboard** is written and tested against a simulated one — the layout
+clears a 300 px inset and the picker climbs out of it — but every number in it
+comes from `visualViewport` on a device nobody has run this on yet. The step
+editor is where to look, because it is the screen with a control that appears
+*because* of what was typed. What would show up as wrong: a tab bar that lags
+the keys going down, a picker that lands under them anyway (the inset is
+arriving late — measure `offsetTop`), or a form whose last field cannot be
+reached (the inset is not arriving at all).
+
+The other is the **iOS update path**: a new build's worker installs on one
+launch and takes over on the next, because activating early would delete the
+caches a running page is still loading from. Worth watching on the phone, not
+worth changing before it is seen.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
@@ -272,8 +279,13 @@ The first genuinely usable artifact.
       the top of a list you were halfway down. `history.scrollRestoration` is
       `manual`: the browser's own restoration aims at a document that has not
       rendered yet, since this one waits for the wasm core
-- [ ] `visualViewport` keyboard handling — budget a day for the iOS keyboard,
-      not an hour. The safe-area insets are already tokens
+- [x] `visualViewport` keyboard handling — the covered height, measured and
+      published as `--keyboard-inset`, which the layout reads through `max()`
+      (DECISIONS 0040). A screen's body pads by the larger of the tab bar and
+      the keyboard, the bar goes down with it, and the mention picker — the one
+      control that opens *because* of what was typed, and so opens into the
+      keys — is scrolled out of them. At `0px` every one of those expressions
+      is the one that was there before, so there is no mode to leave
 - [ ] Installed and tested on the actual iPhone, in airplane mode
 
 **Exit**: installed on the iPhone from the home screen, fully usable offline,
@@ -284,17 +296,17 @@ data survives a cold restart of the app.
 | | |
 |---|---|
 | wasm core | **1.81 MB**, 713 kB gzipped |
-| JS bundle | 105 kB, **36.2 kB gzipped** |
-| CSS | 26.2 kB, 4.1 kB gzipped |
-| service worker | 0.93 kB, 0.5 kB gzipped |
+| JS bundle | 106 kB, **36.8 kB gzipped** |
+| CSS | 26.5 kB, 4.1 kB gzipped |
+| service worker | 0.97 kB, 0.6 kB gzipped |
 
 The recipe screens cost 5.5 kB gzipped of JS and 1 kB of CSS — the two
 biggest screens in the app, against a core that is twenty times the whole
 frontend put together. The service worker is a rounding error next to the
 thing it exists to keep on the phone.
 
-Four things this half of M4 uncovered, three of them invisible until the network
-is actually off:
+Five things this half of M4 uncovered, three of them invisible until the network
+is actually off and one until a keyboard is in front of it:
 
 - **`Vary` makes a precache miss its own entries.** A server that answers
   `Vary: Origin` — Vite's preview does — makes the Cache API match on the
@@ -321,6 +333,13 @@ is actually off:
   restored. Switching tabs and back landed at the top about half the time.
   `Session` reads the outgoing offset synchronously in `show()` and ignores
   scroll events until the restore has run.
+- **A keyboard cannot be emulated by making the window smaller.** iOS keeps the
+  layout viewport at full height and draws the keys over it, so the interesting
+  case is a page that still believes it is 640 px tall while `visualViewport`
+  says a third of that is gone — and every DevTools command that shrinks
+  anything shrinks the layout viewport, telling the page the truth and testing
+  nothing. Overriding the `height` accessor and firing `resize` is what
+  reproduces the shape (DECISIONS 0040).
 
 The core is the whole download, and Loro is most of the core. That is the
 number to watch on a phone over 4G, and the one to measure on the actual

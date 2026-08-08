@@ -4,6 +4,7 @@
   import ErrorBanner from './components/ErrorBanner.svelte';
   import TabBar from './components/TabBar.svelte';
   import { mintIdentity, readIdentity, rememberIdentity } from './lib/core';
+  import { keyboard } from './lib/keyboard.svelte';
   import { Session } from './lib/session.svelte';
   import Cart from './screens/Cart.svelte';
   import Ingredients from './screens/Ingredients.svelte';
@@ -38,6 +39,11 @@
   }
 
   onMount(() => {
+    // Ahead of the identity check, and not inside `Session`: onboarding is a
+    // form, so the very first screen a new phone shows already has a keyboard
+    // in front of it.
+    keyboard.watch();
+
     const identity = readIdentity();
     if (identity === null) {
       phase = { step: 'onboarding' };

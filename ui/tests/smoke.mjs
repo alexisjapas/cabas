@@ -125,6 +125,29 @@ const HELPERS = `
     if (!option) throw new Error(text + ' missing from ' + selector + ' #' + n);
     __setNode(el, option.value);
   };
+  /**
+   * A soft keyboard, in the shape iOS makes: the layout viewport keeps every
+   * pixel of its height and the visual viewport loses \`px\` off the bottom.
+   *
+   * There is no CDP command for this. \`setDeviceMetricsOverride\` resizes the
+   * layout viewport, which is the one thing a keyboard never does — emulating
+   * it that way would test a page that had been told the truth. Overriding the
+   * accessor is what leaves the page believing it is still 640 px tall while
+   * the API that knows better says otherwise, which is the whole problem.
+   */
+  window.__keyboard = (px) => {
+    const proto = Object.getPrototypeOf(window.visualViewport);
+    window.__vvHeight ??= Object.getOwnPropertyDescriptor(proto, 'height');
+    const real = window.__vvHeight.get;
+    Object.defineProperty(
+      proto,
+      'height',
+      px === 0
+        ? window.__vvHeight
+        : { configurable: true, get() { return real.call(this) - px; } },
+    );
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  };
   window.__count = (selector) => document.querySelectorAll(selector).length;
   window.__click = (selector) => {
     const el = document.querySelector(selector);
@@ -437,6 +460,89 @@ if (!edited.includes('Tomates') || edited.includes('supprimée')) {
 }
 ok('editing an existing recipe keeps its lines and their mentions');
 
+// --- and the keyboard does not sit on top of it -----------------------------
+//
+// The last thing M4 owes the phone. iOS never resizes the page for the
+// keyboard: the layout viewport keeps its height, the keys are drawn over the
+// bottom of it, and a form's last field ends up behind a viewport that still
+// reports itself full size. `lib/keyboard.svelte.ts` measures what is covered
+// and publishes it as `--keyboard-inset`.
+//
+// A browser is not a phone, and none of this is the milestone's exit criterion
+// — the iPhone is, keys and all. What it does pin down is the half that is
+// ours: given a visual viewport 300 px shorter than the page, the layout clears
+// those pixels and the picker climbs out of them.
+
+const KEYBOARD = 300;
+
+await send('Emulation.setDeviceMetricsOverride', {
+  width: 390,
+  height: 640,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+
+await evaluate(`__clickText('button', 'Modifier')`);
+await waitFor(`__text('h1') === 'Modifier'`, 'the editor, with a keyboard coming');
+
+const inset = `getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim()`;
+await evaluate(`__keyboard(${KEYBOARD})`);
+await waitFor(`${inset} === '${KEYBOARD}px'`, 'the keyboard, measured');
+ok(`a visual viewport ${KEYBOARD}px shorter than the page reads as a keyboard`);
+
+// Without this the document simply ends behind the keys and no amount of
+// scrolling brings the last field out — the failure that has no workaround.
+const padding = await evaluate(
+  `Math.round(Number.parseFloat(getComputedStyle(document.querySelector('.body')).paddingBottom))`,
+);
+if (padding < KEYBOARD) {
+  throw new Error(`the form cannot clear the keys: ${padding}px of padding under it`);
+}
+ok(`the form can be scrolled clear of the keyboard (${padding}px under it)`);
+
+await waitFor(
+  `document.querySelector('nav').getBoundingClientRect().top >=
+     document.documentElement.clientHeight - ${KEYBOARD}`,
+  'the tab bar, out of the visible band',
+);
+ok('the tab bar goes down with the keyboard instead of floating over the keys');
+
+// Where iOS leaves a field it has just focused: bottom edge against the top of
+// the keyboard. The picker is drawn *below* that, which is to say into the keys
+// — and it is drawn there because of what was typed, so nothing scrolled it
+// into view on the way in.
+await evaluate(`
+  (() => {
+    const area = document.querySelectorAll('textarea')[0];
+    const visibleBottom = document.documentElement.clientHeight - ${KEYBOARD};
+    window.scrollBy(0, area.getBoundingClientRect().bottom - visibleBottom);
+  })()
+`);
+const before = await evaluate('window.scrollY');
+
+await evaluate(`__setNth('textarea', 0, 'Couper les @t')`);
+await waitFor(`__count('.picker button') === 1`, 'the picker, opening under the keyboard');
+await waitFor(
+  `document.querySelector('.picker').getBoundingClientRect().bottom <=
+     document.documentElement.clientHeight - ${KEYBOARD}`,
+  'the picker, out from under the keyboard',
+);
+
+const after = await evaluate('window.scrollY');
+if (after <= before) {
+  throw new Error(`nothing scrolled: the picker was never under the keyboard (${before}px)`);
+}
+ok(`the mention picker climbs out from under the keys it opened behind (+${after - before}px)`);
+await shot('10-keyboard');
+
+await evaluate(`__keyboard(0)`);
+await waitFor(`${inset} === '0px'`, 'the keyboard, put away');
+ok('and putting it away leaves the layout exactly as it was');
+
+await evaluate(`__clickText('button', 'Annuler')`);
+await waitFor(`__text('h1') === 'Salade de tomates au sel'`, 'the recipe, unedited');
+await send('Emulation.clearDeviceMetricsOverride');
+
 // --- installable, and it opens with the network off -------------------------
 //
 // M4's exit criterion, minus the phone. The data has already been proven to
@@ -569,7 +675,7 @@ if (!offlineProse.includes('Tomates') || offlineProse.includes('supprimée')) {
   throw new Error(`the recipe did not read back offline: ${JSON.stringify(offlineProse)}`);
 }
 ok('and the library is all there — this is the shop with no signal');
-await shot('10-offline');
+await shot('11-offline');
 
 await setOffline(false);
 
@@ -609,7 +715,7 @@ await waitFor('document.querySelector("nav")', 'the app after a cold reload');
 await waitFor(`__text('h1') === 'Ingrédients'`, 'the screen it was left on');
 await waitFor(`window.scrollY === ${left}`, 'the offset, after a cold reload');
 ok('and a cold reload comes back to the same place, not the top');
-await shot('11-scroll-restored');
+await shot('12-scroll-restored');
 
 await send('Emulation.clearDeviceMetricsOverride');
 

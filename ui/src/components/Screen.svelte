@@ -69,7 +69,12 @@
 
   .body {
     padding: var(--space-4);
-    /* Clear of the tab bar, which floats over the scrolling body. */
-    padding-bottom: calc(var(--space-7) + var(--tapsize) + var(--safe-bottom));
+    /* Clear of the tab bar, which floats over the scrolling body — or of the
+       keyboard, which covers more and takes the bar with it. Without the second
+       term the last field of a form is unreachable on iOS: the document simply
+       ends behind the keys, and no amount of scrolling brings it out. */
+    padding-bottom: calc(
+      var(--space-7) + max(var(--tapsize) + var(--safe-bottom), var(--keyboard-inset))
+    );
   }
 </style>

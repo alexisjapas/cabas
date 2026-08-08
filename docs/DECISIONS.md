@@ -1119,3 +1119,70 @@ format the core did not choose.
 **Referencing a line by its position in the recipe** — a reference that breaks
 when a line is reordered or deleted, which is exactly what 0022 rejected
 prose-with-markers for.
+
+## 0040 — The keyboard is a length, not a mode
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0003](#0003--ios-ships-as-a-pwa)
+
+**Context.** iOS does not resize the page when the soft keyboard opens. The
+layout viewport keeps every pixel of its height and the keys are drawn over
+the bottom third of it, so `100dvh`, `position: fixed` and
+`env(safe-area-inset-bottom)` all go on describing a viewport that is no
+longer there. The consequences are not cosmetic: a form's last field sits
+behind the keys with no scroll position that brings it out, because the
+document genuinely ends down there. The recipe editor has the worst case in
+the app — the mention picker is the one control that appears *because* of what
+was typed, which means it is drawn below a caret the keyboard is already
+sitting under, and no `scrollIntoView` will move it, since to the browser it
+is comfortably inside the viewport.
+
+**Decision.** Measure the covered height from `visualViewport` and publish it
+as **one CSS custom property, `--keyboard-inset`**, defaulting to `0px`. The
+layout reads it through `max()`: a screen's body pads by the larger of the tab
+bar and the keyboard, and the tab bar itself translates down by it. One
+function reads the same number back — `reveal`, which scrolls the picker out
+of the keys after it opens.
+
+**Consequences.** The closed state is the layout that was there before any of
+this existed, because every expression that reads the property collapses to
+its old value at `0px`. There is no keyboard mode to enter, nothing to undo,
+and no class whose removal can be missed on a screen that stops being looked
+at — which matters on the platform that backgrounds an app whenever it likes
+(0003). A component that later needs to clear the keyboard reads a length it
+already understands.
+
+The measurement is `clientHeight - (visualViewport.height + offsetTop)`, and
+`offsetTop` is half of it: iOS scrolls the visual viewport up inside the
+layout one to keep the caret above the keys rather than resizing anything. Two
+things that shrink that viewport are deliberately *not* keyboards — a pinched
+page, and chrome an order of magnitude smaller than any keyboard, such as a
+collapsing address bar or an iPad accessory strip.
+
+The padding and the scroll are one mechanism, not two: the picker can only
+climb out of the keys because the padding put scrollable document under it.
+Neither half is worth shipping alone.
+
+Where to leave the gap above the keys stays in CSS, as the picker's own
+`scroll-margin-bottom` — the property already means exactly that, and Rule 10
+does not get an exception for a value that happens to be read by script.
+
+`ui-test` covers this by overriding the `VisualViewport.height` accessor and
+firing `resize`, because no DevTools command produces the shape: emulation
+resizes the *layout* viewport, which is the one thing a keyboard never does,
+and a page told the truth about its own height would not exercise any of the
+above. What that proves is the half that is ours — given a viewport 300 px
+shorter than the page, the layout clears it and the picker climbs out. It is
+not the milestone's exit criterion. **The iPhone is**, keys and all.
+
+**Rejected.** **A `keyboard-open` class on the root** — a mode, with a state
+machine to leave it, on the platform most likely to background the app mid-word
+and least likely to send the event that clears it. The length has no exit.
+**`interactive-widget=resizes-content` in the viewport meta** — the honest
+one-line fix, and iOS Safari does not implement it; relying on it would leave
+the target platform as the only one still broken.
+**`scrollIntoView` on the picker** — measured against the layout viewport, so
+on iOS it is a no-op precisely when it is needed.
+**Leaving it to the browser's own focus scrolling** — that scrolls to the
+*field*, and the thing that needs to be seen is the list drawn underneath it,
+which does not exist yet at the moment the field is focused.

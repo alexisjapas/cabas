@@ -62,6 +62,9 @@
     margin: 0 auto;
     padding: var(--space-6) var(--space-4);
     padding-top: calc(var(--safe-top) + var(--space-7));
+    /* No tab bar on this screen, but the same keyboard: two fields and the
+       button that gets past them, on the first screen the phone ever shows. */
+    padding-bottom: max(var(--space-6), var(--keyboard-inset));
   }
 
   h1 {

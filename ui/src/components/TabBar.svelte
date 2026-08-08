@@ -58,6 +58,14 @@
     padding: var(--space-2) var(--space-2) calc(var(--safe-bottom) + var(--space-2));
     background: var(--surface-raised);
     border-top: 1px solid var(--border);
+    /* The bar belongs at the bottom of the layout viewport, and the keyboard
+       covers the bottom of the layout viewport — so it goes down with it. That
+       holds whichever viewport a browser anchors a fixed element to: where the
+       bar is already hidden behind the keys this changes nothing, and where it
+       would float above them it stops five buttons from sitting on top of the
+       row being typed into. Nobody switches tabs mid-word. */
+    transform: translateY(var(--keyboard-inset));
+    transition: transform var(--duration-base) var(--ease-out);
   }
 
   button {
