@@ -30,10 +30,13 @@ tests green plus 4 in chromium.
 **M4 is in progress**: `ui/` is a working Svelte 5 app — it mints an identity,
 builds a library, writes and reads recipes, derives the cart and survives a
 cold restart, all driven end to end in a real browser by `ui-test`. Every one
-of the thirteen commands is reachable from the UI. What is left before it is
-the thing on a phone is platform rather than product: the service worker and
-manifest that make it installable and openable with no signal, and the iPhone
-itself. Resuming work starts at the "Resuming work" section of the
+of the thirteen commands is reachable from the UI. It is **installable and it
+opens with the network off**: a hand-written service worker precaches the shell
+from Vite's own build manifest, and `ui-test` proves it by turning the network
+off in the browser and reading a recipe back
+([0038](docs/DECISIONS.md#0038--the-service-worker-is-written-by-hand)). What is
+left is the phone itself — the iOS keyboard, and an iPhone to install it on.
+Resuming work starts at the "Resuming work" section of the
 [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
@@ -79,7 +82,16 @@ nix develop .#android                     # SDK/NDK — M7 only
 `wasm-test` is the only thing that *runs* wasm; `wasm-check` proves the
 shared crates compile for it, which is a weaker and much faster claim.
 `ui-test` drives the built PWA over the DevTools protocol: mint an identity,
-build a library, derive the cart, tick a line, reload from IndexedDB.
+build a library, derive the cart, tick a line, reload from IndexedDB, and open
+the whole thing again with the network switched off.
+
+The home-screen icons are committed PNGs, because iOS reads `apple-touch-icon`
+as a bitmap. They are rasterised from the SVG beside them, in the same shell
+that owns the browser:
+
+```sh
+nix develop .#wasm-test -c node ui/tools/render-icons.mjs
+```
 
 The frontend's types are generated from the Rust ones and committed, and CI
 fails if they are stale

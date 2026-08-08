@@ -68,25 +68,24 @@ cargo test -p cabas-app --features typescript export_bindings
 
 **Next actions, in order:**
 
-1. **The service worker and the manifest** — hand-written, precaching the
-   shell from Vite's build manifest (DECISIONS 0038). Until this lands the app
-   is not installable and does not open without network, which is most of what
-   M4 is for. It is now the only thing between the app and an iPhone: every
-   command is reachable from the UI, and the product half of M4 is done.
+1. **The iPhone.** Everything that can be proven without one now is: the app is
+   installable, and `ui-test` turns the network off in the browser and reads a
+   recipe back out of it. What is left needs the device — install it from the
+   home screen, use it in a shop, and only then decide whether the 713 kB
+   gzipped core needs work.
 
-   The fiddly part is versioning, not caching — a cache name that does not
-   change with the build serves the old app forever, and on an installed iOS
-   PWA that is indistinguishable from the app being broken. Vite emits
-   fingerprinted filenames; take the precache list and the cache name from
-   its manifest rather than from a hand-maintained array.
+   Budget a day for the keyboard, not an hour. The step editor is the screen
+   that will find every one of its edges, since it is the only one where a soft
+   keyboard covers a control (the mention picker) that appears *because* of what
+   was typed. `visualViewport` is the API for it; the safe-area insets are
+   already tokens.
 
-2. **The iPhone.** Install it, use it in a shop, and only then decide whether
-   the 713 kB gzipped core needs work. Budget a day for the keyboard — the
-   step editor is the screen that will find every one of its edges, since it
-   is the only one where a soft keyboard covers a control (the mention picker)
-   that appears *because* of what was typed.
+   The one thing the browser cannot rehearse is the iOS update path: a new
+   build's worker installs on one launch and takes over on the next, because
+   activating early would delete the caches a running page is still loading
+   from. Worth watching on the phone, not worth changing before it is seen.
 
-3. **Scroll position**, alongside the persisted screen. Cheap, and the last
+2. **Scroll position**, alongside the persisted screen. Cheap, and the last
    thing on the M4 list that is not the phone itself.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
@@ -264,9 +263,19 @@ The first genuinely usable artifact.
       usages (DECISIONS 0022). A line is named when it is added rather than
       when it is saved, so the whole recipe — lines and the prose pointing at
       them — goes out in one command (DECISIONS 0039)
-- [ ] Service worker, offline-first, IndexedDB; **no user action ever waits on the network** (Rule 6) — hand-written (DECISIONS 0038)
+- [x] Service worker, offline-first; **no user action ever waits on the
+      network** (Rule 6) — hand-written (DECISIONS 0038). Cache-first over a
+      shell precached from the bundle Vite just produced, so the precache list
+      and the cache name are both build outputs and neither can be forgotten.
+      The files copied verbatim out of `public/` are picked up by a runtime
+      cache in the same versioned bucket instead
+- [x] Manifest and icons: `manifest.webmanifest`, an `apple-touch-icon` because
+      iOS ignores SVG for the home screen, and a maskable variant. The PNGs are
+      committed and rasterised from their SVG source by
+      `ui/tools/render-icons.mjs`
 - [ ] Scroll position persisted alongside the screen
-- [ ] Manifest, icons, `visualViewport` keyboard handling — budget a day for the iOS keyboard, not an hour. The safe-area insets are already tokens
+- [ ] `visualViewport` keyboard handling — budget a day for the iOS keyboard,
+      not an hour. The safe-area insets are already tokens
 - [ ] Installed and tested on the actual iPhone, in airplane mode
 
 **Exit**: installed on the iPhone from the home screen, fully usable offline,
@@ -279,10 +288,35 @@ data survives a cold restart of the app.
 | wasm core | **1.81 MB**, 713 kB gzipped |
 | JS bundle | 105 kB, **36.2 kB gzipped** |
 | CSS | 26.2 kB, 4.1 kB gzipped |
+| service worker | 0.93 kB, 0.5 kB gzipped |
 
 The recipe screens cost 5.5 kB gzipped of JS and 1 kB of CSS — the two
 biggest screens in the app, against a core that is twenty times the whole
-frontend put together.
+frontend put together. The service worker is a rounding error next to the
+thing it exists to keep on the phone.
+
+Three things the service worker uncovered, all of them invisible until the
+network is actually off:
+
+- **`Vary` makes a precache miss its own entries.** A server that answers
+  `Vary: Origin` — Vite's preview does — makes the Cache API match on the
+  request's `Origin` header, and the worker fills the precache with requests
+  that have none while the page asks for its JS and CSS with one, because Vite
+  marks both tags `crossorigin`. Every asset present, every lookup a miss, and
+  online it is invisible because the miss falls through to a network that
+  answers. `cache.match(request, { ignoreVary: true })` is the fix and the
+  reason it is not a shortcut: every URL here has exactly one representation.
+- **A build tool that rewrites string literals can hide a placeholder.** The
+  precache list is injected by replacing a token in the built worker, and
+  rolldown's minifier normalises quotes to backticks — a pattern that only knew
+  about `'` matched nothing. The build now fails on a token it cannot find,
+  because the alternative is shipping a worker whose cache is named after the
+  placeholder.
+- **Emulated "offline" is per-target and per-document.** A service worker is
+  its own DevTools target, so a page put offline still has a worker behind it
+  that reaches the network on a cache miss; and the emulation does not survive
+  a navigation. Both are handled in `ui/tests/smoke.mjs`, and until they were,
+  the offline test passed against a server that was up the whole time.
 
 The core is the whole download, and Loro is most of the core. That is the
 number to watch on a phone over 4G, and the one to measure on the actual

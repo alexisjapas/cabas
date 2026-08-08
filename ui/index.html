@@ -26,12 +26,20 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#17161a" />
 
     <!--
-      The home-screen icons and the web manifest land with the service worker
-      (DECISIONS 0038); this is the browser-tab one, and its absence is a 404
-      that `ui-test` treats as a failure — correctly, for an app whose whole
-      point is loading with no network.
+      The browser-tab icon. Its absence is a 404 that `ui-test` treats as a
+      failure — correctly, for an app whose whole point is loading with no
+      network.
     -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <!--
+      The manifest is what makes the app installable everywhere except iOS,
+      which reads the `apple-` meta tags above instead — but names its home
+      screen icon here, as a PNG, because it does not read SVG for that. The
+      other sizes and the maskable variant are in the manifest.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
     <title>cabas</title>
   </head>

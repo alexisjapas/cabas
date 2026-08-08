@@ -1,7 +1,7 @@
 /**
  * The whole vertical, in a real browser: mint an identity, build a library,
  * put something on the list, derive the cart, tick a line, reload from
- * IndexedDB.
+ * IndexedDB, and open the whole thing again with the network turned off.
  *
  * This is the frontend's counterpart to `crates/app/tests/scenario.rs`, and it
  * exists for the same reason `wasm-test` does — everything it covers is
@@ -57,11 +57,15 @@ socket.onmessage = (event) => {
   }
 };
 
-function send(method, params = {}) {
+/**
+ * `sessionId` addresses a target other than the page — the service worker,
+ * which is its own target and does not hear anything sent to the page.
+ */
+function send(method, params = {}, sessionId = undefined) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params }));
+    socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
 }
 
@@ -141,6 +145,55 @@ async function load(url) {
   await send('Page.navigate', { url });
   await waitFor('document.readyState === "complete"', 'document ready');
   await evaluate(HELPERS);
+  // Network emulation does not survive a navigation: the new document comes up
+  // online however the old one was left. Re-applying here is what makes
+  // "offline" mean offline for the reload, which is the only load that matters.
+  if (offline) await setOffline(true);
+}
+
+/** Whether the network is meant to be off, and the worker sessions holding it off. */
+let offline = false;
+const workers = new Set();
+
+/**
+ * Offline, everywhere it has to be.
+ *
+ * Two traps, both of which make an offline test quietly prove nothing.
+ * `Network.emulateNetworkConditions` is scoped to a single target, and a
+ * service worker is a target of its own — so a page put offline on its own
+ * still has a worker behind it that can reach the network on a cache miss. And
+ * the emulation is per-document, so it has to be re-applied after every load.
+ *
+ * @returns the number of worker targets it is holding offline; zero means the
+ * page is the only thing that was switched off, which would prove nothing.
+ */
+async function setOffline(value) {
+  offline = value;
+
+  const { targetInfos } = await send('Target.getTargets');
+  for (const target of targetInfos) {
+    if (target.type !== 'service_worker' || target.attached) continue;
+    const { sessionId } = await send('Target.attachToTarget', {
+      targetId: target.targetId,
+      flatten: true,
+    });
+    workers.add(sessionId);
+  }
+
+  for (const session of [undefined, ...workers]) {
+    await send('Network.enable', {}, session);
+    await send(
+      'Network.emulateNetworkConditions',
+      {
+        offline: value,
+        latency: 0,
+        downloadThroughput: value ? 0 : -1,
+        uploadThroughput: value ? 0 : -1,
+      },
+      session,
+    );
+  }
+  return workers.size;
 }
 
 async function shot(name) {
@@ -383,6 +436,142 @@ if (!edited.includes('Tomates') || edited.includes('supprimée')) {
   throw new Error(`editing broke the reference: ${JSON.stringify(edited)}`);
 }
 ok('editing an existing recipe keeps its lines and their mentions');
+
+// --- installable, and it opens with the network off -------------------------
+//
+// M4's exit criterion, minus the phone. The data has already been proven to
+// survive a reload; what is proven here is that the *app* does — the HTML, the
+// JS, the CSS and the wasm core, which come off the network on every load
+// until a service worker says otherwise (DECISIONS 0038).
+
+await waitFor('navigator.serviceWorker.controller !== null', 'a controlling service worker');
+ok('the service worker registered and took control');
+
+const precache = await evaluate(`
+  (async () => {
+    const names = (await caches.keys()).filter((name) => name.startsWith('cabas-'));
+    if (names.length !== 1) return { names };
+    const cache = await caches.open(names[0]);
+    const keys = await cache.keys();
+    return { name: names[0], paths: keys.map((request) => new URL(request.url).pathname) };
+  })()
+`);
+
+// Exactly one, always: a build owns its cache and deletes every other on
+// activation. Two would mean an old app's assets are still on the phone, which
+// is how a half-updated PWA happens.
+if (!precache.name) {
+  throw new Error(`expected one cabas cache, found ${JSON.stringify(precache.names)}`);
+}
+if (precache.name === 'cabas-__CABAS_BUILD__' || precache.name === 'cabas-undefined') {
+  throw new Error(`the build placeholder was never replaced: ${precache.name}`);
+}
+for (const suffix of ['/', '.js', '.css', '.wasm']) {
+  const found =
+    suffix === '/'
+      ? precache.paths.includes('/')
+      : precache.paths.some((path) => path.endsWith(suffix));
+  if (!found) {
+    throw new Error(`the shell is missing its ${suffix}: ${JSON.stringify(precache.paths)}`);
+  }
+}
+ok(`the shell is precached under ${precache.name} (${precache.paths.length} files)`);
+
+// The manifest and the icons are what make it installable, and a 404 in either
+// is silent — iOS simply declines to offer "add to home screen". Fetching them
+// also puts them in the runtime cache, which is how they survive the reload
+// below: they are copied verbatim out of `public/` and are not in the precache.
+const shellAssets = await evaluate(`
+  (async () => {
+    const paths = [
+      '/manifest.webmanifest',
+      '/favicon.svg',
+      '/icons/icon.svg',
+      '/icons/icon-192.png',
+      '/icons/icon-512.png',
+      '/icons/icon-maskable-512.png',
+      '/icons/apple-touch-icon.png',
+    ];
+    const statuses = {};
+    for (const path of paths) statuses[path] = (await fetch(path)).status;
+    return statuses;
+  })()
+`);
+const missing = Object.entries(shellAssets).filter(([, status]) => status !== 200);
+if (missing.length > 0) {
+  throw new Error(`these are not being served: ${JSON.stringify(missing)}`);
+}
+ok(`the manifest and every icon it names are served (${Object.keys(shellAssets).length} files)`);
+
+const manifest = await evaluate(`fetch('/manifest.webmanifest').then((r) => r.json())`);
+if (manifest.start_url !== '/' || manifest.display !== 'standalone') {
+  throw new Error(`the manifest would not install standalone: ${JSON.stringify(manifest)}`);
+}
+if (!manifest.icons?.some((icon) => icon.purpose === 'maskable')) {
+  throw new Error('the manifest has no maskable icon');
+}
+ok(`the manifest is standalone, scoped to ${manifest.scope}, with a maskable icon`);
+
+// Long enough for the debounced flush of the rename above
+// (Session.FLUSH_DELAY_MS). Everything from here on reloads the page, and the
+// last of those reloads has no network to fall back on.
+await new Promise((resolve) => setTimeout(resolve, 1200));
+
+// The update path, which is the half of a service worker that goes wrong
+// quietly: a build whose cache outlives it serves the old app forever, and on
+// an installed iOS PWA that is indistinguishable from the app being broken.
+// A cache from some previous version stands in for that here — activation has
+// to take the origin down to exactly one, its own.
+await evaluate(`caches.open('cabas-0000stale').then(() => true)`);
+await evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.unregister())`);
+await load(APP);
+await waitFor('navigator.serviceWorker.controller !== null', 'the reinstalled worker');
+const remaining = await evaluate('caches.keys()');
+if (remaining.length !== 1 || remaining[0] !== precache.name) {
+  throw new Error(`activation left caches behind: ${JSON.stringify(remaining)}`);
+}
+ok('installing drops every cache but its own — an old build cannot outlive itself');
+
+const attached = await setOffline(true);
+if (attached === 0) {
+  throw new Error('no service worker target to put offline — it would still serve from the network');
+}
+
+await load(APP);
+if ((await evaluate('navigator.onLine')) !== false) {
+  throw new Error('the browser still thinks it is online — the offline test would prove nothing');
+}
+
+// And the network is genuinely gone, worker included: a request that misses the
+// cache has nowhere to go. Without this the whole section would pass just as
+// well against a server that was up the entire time.
+const probe = `/offline-probe-${Date.now()}`;
+if (await evaluate(`fetch('${probe}').then(() => true, () => false)`)) {
+  throw new Error('a cache miss still reached the network — the service worker is not offline');
+}
+// That failure is the assertion, and the browser logs it as a failed resource.
+// Drop exactly it, rather than loosening the check every other line relies on.
+await new Promise((resolve) => setTimeout(resolve, 200));
+for (let i = consoleErrors.length - 1; i >= 0; i--) {
+  if (consoleErrors[i].includes(probe)) consoleErrors.splice(i, 1);
+}
+ok('the network is gone, for the page and for the worker behind it');
+
+await waitFor('document.querySelector("nav")', 'the app, with no network');
+ok('the app boots with the network off');
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__all('li .name').includes('Salade de tomates au sel')`, 'the recipe, offline');
+await evaluate(`__clickText('li button', 'Salade de tomates au sel')`);
+await waitFor(`__text('h1') === 'Salade de tomates au sel'`, 'the recipe opens offline');
+const offlineProse = await evaluate(`__text('.prose')`);
+if (!offlineProse.includes('Tomates') || offlineProse.includes('supprimée')) {
+  throw new Error(`the recipe did not read back offline: ${JSON.stringify(offlineProse)}`);
+}
+ok('and the library is all there — this is the shop with no signal');
+await shot('10-offline');
+
+await setOffline(false);
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512">
+  <!--
+    The home-screen icon: the same basket as the favicon and the cart tab, on
+    an opaque accent square.
+
+    Opaque on purpose. A transparent home-screen icon composites onto black on
+    iOS, and the corner radius is the platform's to apply — drawing our own
+    would show up as a dark ring inside iOS's mask.
+
+    This file is also the source the PNGs beside it are rasterised from, since
+    iOS reads `apple-touch-icon` as a bitmap and ignores SVG:
+
+      chromium --headless --screenshot=icon-512.png --window-size=512,512 \
+               --force-device-scale-factor=1 <an html wrapper around this file>
+
+    The colours are the light-theme `--accent` and `--surface` of `app.css`.
+    They are literals here for the reason the favicon's are: an asset has no
+    document to inherit custom properties from (Rule 10 governs components).
+  -->
+  <rect width="24" height="24" fill="#3f6f4f" />
+  <g transform="translate(12 12) scale(0.72) translate(-12 -12)">
+    <path
+      fill="none"
+      stroke="#faf9f7"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M4 9h16l-1.4 10.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 9Zm5 0V6a3 3 0 0 1 6 0v3"
+    />
+  </g>
+</svg>

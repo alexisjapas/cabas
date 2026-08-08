@@ -18,8 +18,9 @@ the command set, the view-models and the wasm binding. 123 native tests plus
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to
 end by `ui-test` in headless chromium. **Every command is reachable from the
-UI.** What M4 still needs is platform rather than product: the service worker
-and manifest, the scroll position, and the iPhone itself — see ROADMAP "Next
+UI**, the app is **installable**, and **it opens with the network off** — the
+service worker, the manifest and the icons are done. What M4 still needs is the
+scroll position and the iPhone itself, keyboard included — see ROADMAP "Next
 actions". `sync` and `relay` are still boundary docs only.
 
 ## Environment and commands
@@ -44,11 +45,22 @@ The PWA (M4):
 ```sh
 nix develop -c build-wasm [--dev]             # the core → ui/src/lib/wasm/
 nix develop -c pnpm -C ui install             # once
-nix develop -c pnpm -C ui check               # svelte-check, strict
+nix develop -c pnpm -C ui check               # svelte-check + the worker's own tsc
 nix develop -c pnpm -C ui dev                 # dev server, bound to the LAN
 nix develop -c pnpm -C ui build               # ui/dist
 nix develop .#wasm-test -c ui-test            # the whole vertical, in a browser
+
+nix develop .#wasm-test -c node ui/tools/render-icons.mjs   # the PNG icons
 ```
+
+`pnpm check` runs **two** TypeScript programs: `svelte-check` over the app, and
+`tsc -p tsconfig.sw.json` over `src/sw.js` alone. A service worker's globals
+come from `lib.webworker`, which declares the same names as `lib.dom` with
+different types, so the two cannot share a program — the one file that needs
+the worker library gets its own config rather than the app losing the DOM.
+
+The icon renderer is not part of any loop: the PNGs are committed, because iOS
+reads `apple-touch-icon` as a bitmap. Run it when the drawing changes.
 
 **`build-wasm` first, always.** `ui/src/lib/wasm/` is a build product and is
 gitignored, so a fresh checkout has no glue for `core.ts` to import and
@@ -185,6 +197,10 @@ file:
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
 | `screens/`, `components/` | The screens, and what more than one of them needs |
+| `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
+| `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
+| `public/` | Served verbatim: the manifest, the favicon, the icons |
+| `tools/render-icons.mjs` | SVG → the committed PNGs, over CDP. Not part of any loop |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies |
 
 `screens/Recipes.svelte` is three views behind one tab — the shelf, the one
@@ -355,3 +371,32 @@ Key domain shapes, all settled in DECISIONS:
   also that `form select:nth-of-type(1)` matches *every* first-select-child in
   the form, not the first select in it; `querySelectorAll(...)[n]` is what you
   meant. Both traps are already handled in `ui/tests/smoke.mjs`.
+- **`Vary` makes the precache miss its own entries.** A server answering
+  `Vary: Origin` (Vite's preview does) makes the Cache API match on the
+  request's `Origin` header too. The worker precaches with requests that carry
+  none; the page then asks for its JS and CSS *with* one, because Vite marks
+  both tags `crossorigin`. Every asset cached, every lookup a miss — and
+  online it is invisible, because the miss falls through to a network that
+  answers. `sw.js` reads through `lookup()`, which passes `ignoreVary: true`.
+- **The precache list is injected by replacing a token in the built worker**,
+  and rolldown's minifier rewrites string literals to backticks. The pattern in
+  `vite.config.ts` accepts all three quotes and **the build fails if it matches
+  nothing** — shipping a worker whose cache is named after the placeholder is
+  the failure that has to stay impossible.
+- **Vite emits `index.html` from a plugin of its own**, so a `generateBundle`
+  hook that wants it must declare `order: 'post'`. Without that the bundle has
+  the JS in it and no page.
+- **The service worker must have no imports and no exports.** It is registered
+  as a classic script, because module workers are too recent to rely on across
+  iOS versions; the ES output only stays valid as a classic script while the
+  file is self-contained. `vite.config.ts` fails the build if it stops being.
+- **CDP's offline emulation is per-target and per-document.** A service worker
+  is its own target, so a page put offline still has a worker behind it that
+  reaches the network on a cache miss; and the emulation does not survive a
+  navigation. `smoke.mjs` attaches to the worker target and re-applies after
+  every load — before it did, the offline test passed against a live server.
+- **`--window-size` sizes the window, not the viewport**, so a headless
+  screenshot comes out a browser frame short. `render-icons.mjs` sets the
+  viewport with `Emulation.setDeviceMetricsOverride` instead. An inline `<svg>`
+  also needs `display:block`, or its text baseline overflows the viewport and
+  puts a scrollbar in the icon.

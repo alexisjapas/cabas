@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512">
+  <!--
+    The maskable variant. Same drawing as `icon.svg`, smaller inside the same
+    square: a launcher may crop this to a circle, and only the central 80% is
+    guaranteed to survive. The basket is scaled to sit inside that circle with
+    room to spare, because a launcher that crops to a squircle takes slightly
+    more than a circle does at the corners.
+
+    Kept as a separate file rather than a `purpose` on one image: an icon that
+    is safe under every mask is visibly small when it is not cropped at all,
+    which is what `icon.svg` is for.
+  -->
+  <rect width="24" height="24" fill="#3f6f4f" />
+  <g transform="translate(12 12) scale(0.52) translate(-12 -12)">
+    <path
+      fill="none"
+      stroke="#faf9f7"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M4 9h16l-1.4 10.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 9Zm5 0V6a3 3 0 0 1 6 0v3"
+    />
+  </g>
+</svg>
