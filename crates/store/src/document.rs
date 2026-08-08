@@ -113,9 +113,19 @@ impl Document {
     }
 
     /// Everything this replica knows that the holder of `version` does not.
+    ///
+    /// The empty slice is accepted as "the version of an empty document" —
+    /// everything, from the beginning. That is not a convenience: a device
+    /// that has never pushed has no version bytes to have persisted, and M5's
+    /// sync loop starts its shadow there rather than encoding a sentinel
+    /// (DECISIONS 0042).
     pub fn changes_since(&self, version: &[u8]) -> Result<Vec<u8>> {
         self.doc.commit();
-        let from = VersionVector::decode(version).map_err(snapshot)?;
+        let from = if version.is_empty() {
+            VersionVector::new()
+        } else {
+            VersionVector::decode(version).map_err(snapshot)?
+        };
         self.doc
             .export(ExportMode::Updates {
                 from: Cow::Owned(from),
@@ -525,6 +535,30 @@ mod tests {
         assert_eq!(
             codec::optional(map, schema::meta::SCHEMA),
             Some(&LoroValue::I64(SCHEMA_VERSION))
+        );
+    }
+
+    #[test]
+    fn the_empty_version_means_since_the_beginning() {
+        // A device that has never pushed has no version bytes to have
+        // persisted; the sync loop starts its shadow at the empty slice and
+        // expects the whole history back (DECISIONS 0042).
+        let doc = Document::new();
+        doc.put_ingredient(&Ingredient::new(
+            IngredientId::from_raw("salt"),
+            "Salt",
+            Aisle::Grocery,
+        ))
+        .expect("write");
+
+        let everything = doc.changes_since(&[]).expect("export");
+        let replica = Document::new();
+        replica.merge(&everything).expect("merge");
+        assert_eq!(replica.ingredients().expect("read").len(), 1);
+        // And once caught up, the explicit version asks for nothing new.
+        assert_eq!(
+            doc.changes_since(&replica.version()).expect("export"),
+            doc.changes_since(&doc.version()).expect("export")
         );
     }
 
