@@ -23,19 +23,23 @@
 #![forbid(unsafe_code)]
 
 pub mod cart;
+pub mod event;
 pub mod expand;
 pub mod ingredient;
 pub mod list;
 pub mod overlay;
+pub mod people;
 pub mod quantity;
 pub mod recipe;
 pub mod units;
 
 pub use cart::{Cart, CartError, CartLine, EntryProgress, IngredientIndex, finish_shopping};
+pub use event::{Action, Event, EventLog, Subject};
 pub use expand::{Contribution, ExpandError, RecipeIndex, expand};
 pub use ingredient::{Aisle, Ingredient};
 pub use list::{ListEntry, ListItem, ShoppingList};
 pub use overlay::{CheckState, Explicit, Overlay};
+pub use people::{Device, User};
 pub use quantity::Quantity;
 pub use recipe::{
     Component, IngredientUsage, Recipe, RefDisplay, Segment, Step, SubRecipeAmount, SubRecipeUsage,
