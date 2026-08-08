@@ -13,7 +13,8 @@ made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 `crates/store` holds the Loro schema, the two-way mapping, snapshots,
 compaction and the `Storage` trait over file + IndexedDB; `crates/app` holds
 the command set, the view-models and the wasm binding. 123 native tests plus
-4 in a real browser.
+9 in a real browser — 5 over IndexedDB, 4 through the app — and all of them
+run in CI, which was only true from M4 on.
 
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to

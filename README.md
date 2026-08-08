@@ -26,7 +26,8 @@ surface a frontend can use: thirteen commands in, one complete view-model
 out, with the TypeScript types generated from the Rust ones. A scripted
 shopping trip — build a library, cook for six instead of four, tick things
 off, finish, restart — passes natively **and** in a headless browser. 123
-tests green plus 4 in chromium.
+tests green plus 9 in chromium — 5 over IndexedDB and 4 through the app, and
+since M4 those nine run in CI too rather than only on a developer machine.
 
 **M4 is done**: `ui/` is a working Svelte 5 app — it mints an identity,
 builds a library, writes and reads recipes, derives the cart and survives a
