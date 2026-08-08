@@ -66,27 +66,21 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next actions, in order:**
+**Next action: the iPhone.** Everything on the M4 list that does not need the
+device is done — the app is installable, and `ui-test` turns the network off in
+the browser and reads a recipe back out of it. The milestone closes on a phone,
+in a shop, and nowhere else: install it from the home screen, use it, and only
+then decide whether the 713 kB gzipped core needs work.
 
-1. **The iPhone.** Everything that can be proven without one now is: the app is
-   installable, and `ui-test` turns the network off in the browser and reads a
-   recipe back out of it. What is left needs the device — install it from the
-   home screen, use it in a shop, and only then decide whether the 713 kB
-   gzipped core needs work.
+Budget a day for the keyboard, not an hour. The step editor is the screen that
+will find every one of its edges, since it is the only one where a soft keyboard
+covers a control (the mention picker) that appears *because* of what was typed.
+`visualViewport` is the API for it; the safe-area insets are already tokens.
 
-   Budget a day for the keyboard, not an hour. The step editor is the screen
-   that will find every one of its edges, since it is the only one where a soft
-   keyboard covers a control (the mention picker) that appears *because* of what
-   was typed. `visualViewport` is the API for it; the safe-area insets are
-   already tokens.
-
-   The one thing the browser cannot rehearse is the iOS update path: a new
-   build's worker installs on one launch and takes over on the next, because
-   activating early would delete the caches a running page is still loading
-   from. Worth watching on the phone, not worth changing before it is seen.
-
-2. **Scroll position**, alongside the persisted screen. Cheap, and the last
-   thing on the M4 list that is not the phone itself.
+The other thing the browser cannot rehearse is the iOS update path: a new
+build's worker installs on one launch and takes over on the next, because
+activating early would delete the caches a running page is still loading from.
+Worth watching on the phone, not worth changing before it is seen.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
@@ -273,7 +267,11 @@ The first genuinely usable artifact.
       iOS ignores SVG for the home screen, and a maskable variant. The PNGs are
       committed and rasterised from their SVG source by
       `ui/tools/render-icons.mjs`
-- [ ] Scroll position persisted alongside the screen
+- [x] Scroll position persisted alongside the screen — per screen, so returning
+      to a tab returns to where it was, and a cold reload does not drop you at
+      the top of a list you were halfway down. `history.scrollRestoration` is
+      `manual`: the browser's own restoration aims at a document that has not
+      rendered yet, since this one waits for the wasm core
 - [ ] `visualViewport` keyboard handling — budget a day for the iOS keyboard,
       not an hour. The safe-area insets are already tokens
 - [ ] Installed and tested on the actual iPhone, in airplane mode
@@ -295,8 +293,8 @@ biggest screens in the app, against a core that is twenty times the whole
 frontend put together. The service worker is a rounding error next to the
 thing it exists to keep on the phone.
 
-Three things the service worker uncovered, all of them invisible until the
-network is actually off:
+Four things this half of M4 uncovered, three of them invisible until the network
+is actually off:
 
 - **`Vary` makes a precache miss its own entries.** A server that answers
   `Vary: Origin` — Vite's preview does — makes the Cache API match on the
@@ -317,6 +315,12 @@ network is actually off:
   that reaches the network on a cache miss; and the emulation does not survive
   a navigation. Both are handled in `ui/tests/smoke.mjs`, and until they were,
   the offline test passed against a server that was up the whole time.
+- **A `scroll` event arrives a frame after the scrolling**, so the ones left
+  over from a screen being left are delivered once `screen` already names the
+  one arriving — and recording them overwrites the offset that was about to be
+  restored. Switching tabs and back landed at the top about half the time.
+  `Session` reads the outgoing offset synchronously in `show()` and ignores
+  scroll events until the restore has run.
 
 The core is the whole download, and Loro is most of the core. That is the
 number to watch on a phone over 4G, and the one to measure on the actual

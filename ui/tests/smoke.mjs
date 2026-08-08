@@ -573,6 +573,46 @@ await shot('10-offline');
 
 await setOffline(false);
 
+// --- and it comes back where it was left ------------------------------------
+//
+// The screen is already persisted; this is the offset within it. Same reason
+// (DECISIONS 0003): an iOS cold reload mid-shop otherwise drops you at the top
+// of a list you were halfway down.
+//
+// The viewport is squeezed rather than the library grown — two ingredients do
+// not fill a phone, and a hundred would cost a minute of form filling to prove
+// something about a scrollbar.
+await send('Emulation.setDeviceMetricsOverride', {
+  width: 390,
+  height: 220,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
+await evaluate('window.scrollTo(0, 10000)');
+const left = await evaluate('window.scrollY');
+if (left === 0) {
+  throw new Error('nothing scrolled — the viewport is not small enough to prove anything');
+}
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart screen');
+await waitFor('window.scrollY === 0', 'the cart, at its own offset');
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`window.scrollY === ${left}`, 'the offset the ingredients screen was left at');
+ok(`coming back to a screen returns to where it was (${left}px)`);
+
+await load(APP);
+await waitFor('document.querySelector("nav")', 'the app after a cold reload');
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the screen it was left on');
+await waitFor(`window.scrollY === ${left}`, 'the offset, after a cold reload');
+ok('and a cold reload comes back to the same place, not the top');
+await shot('11-scroll-restored');
+
+await send('Emulation.clearDeviceMetricsOverride');
+
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);
 }

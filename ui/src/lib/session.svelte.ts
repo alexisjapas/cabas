@@ -37,6 +37,7 @@ export type Screen = 'cart' | 'list' | 'recipes' | 'ingredients' | 'settings';
 
 const SCREENS: readonly Screen[] = ['cart', 'list', 'recipes', 'ingredients', 'settings'];
 const SCREEN_KEY = 'cabas.screen';
+const SCROLL_KEY = 'cabas.scroll';
 
 /**
  * Long enough that a burst of taps coalesces, short enough that the write has
@@ -50,6 +51,31 @@ function readScreen(): Screen {
   return SCREENS.find((screen) => screen === stored) ?? 'cart';
 }
 
+/**
+ * How far down each screen was left.
+ *
+ * Validated key by key rather than trusted: this is the one thing the app reads
+ * back that no schema covers, and a hand-edited or half-written entry must cost
+ * a screen its offset, not the launch.
+ */
+function readOffsets(): Partial<Record<Screen, number>> {
+  const offsets: Partial<Record<Screen, number>> = {};
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(SCROLL_KEY) ?? '{}');
+    if (stored === null || typeof stored !== 'object') return offsets;
+    for (const screen of SCREENS) {
+      const offset: unknown = (stored as Record<string, unknown>)[screen];
+      if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
+        offsets[screen] = offset;
+      }
+    }
+  } catch {
+    // Not JSON. Every screen starts at the top, which is where it started
+    // before any of this existed.
+  }
+  return offsets;
+}
+
 export class Session {
   readonly #core: Core;
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -59,6 +85,26 @@ export class Session {
 
   /** Which screen is showing. Device-local, and never synced. */
   screen = $state<Screen>('cart');
+
+  /**
+   * How far down each screen was left. Device-local like the screen itself, and
+   * deliberately not reactive: it is written on every scroll event and read
+   * once per screen change, so tracking it would invalidate a render per frame
+   * to no end.
+   */
+  #offsets: Partial<Record<Screen, number>> = readOffsets();
+
+  /**
+   * Set from the moment a screen changes until its offset has been put back.
+   *
+   * A `scroll` event is delivered a frame after the scrolling, so the ones left
+   * over from the outgoing screen arrive when `screen` already names the
+   * incoming one — and recording those would overwrite the very offset about to
+   * be restored with the outgoing screen's last position. Which is exactly what
+   * happened: switching tabs and switching straight back landed at the top,
+   * about half the time.
+   */
+  #settling = true;
 
   /**
    * The last command that was refused, in the app's own words. English, and
@@ -97,8 +143,33 @@ export class Session {
   }
 
   show(screen: Screen): void {
+    // Read here rather than trusted from the last scroll event: this is the
+    // last instant at which `window.scrollY` still belongs to the screen being
+    // left.
+    this.#offsets[this.screen] = window.scrollY;
+    this.#settling = true;
     this.screen = screen;
     localStorage.setItem(SCREEN_KEY, screen);
+    this.#saveOffsets();
+  }
+
+  /**
+   * Puts the screen back where it was left. Called by `App.svelte` once the
+   * screen has rendered — an offset means nothing before there is something to
+   * scroll.
+   *
+   * Takes the screen it was queued for, because a second tap can land while the
+   * first is still waiting for the DOM, and scrolling the new screen to the old
+   * one's offset is worse than not scrolling at all.
+   */
+  restoreScroll(screen: Screen): void {
+    if (screen !== this.screen) return;
+    window.scrollTo(0, this.#offsets[screen] ?? 0);
+    this.#settling = false;
+  }
+
+  #saveOffsets(): void {
+    localStorage.setItem(SCROLL_KEY, JSON.stringify(this.#offsets));
   }
 
   dismissError(): void {
@@ -123,13 +194,33 @@ export class Session {
   }
 
   #watchPageLifecycle(): void {
-    const flushNow = (): void => void this.#flush();
+    const settle = (): void => {
+      void this.#flush();
+      this.#saveOffsets();
+    };
     // `pagehide` is the one iOS fires reliably when a PWA is backgrounded;
     // `visibilitychange` covers app switching everywhere else. Both, because
     // neither alone catches every way this app stops being looked at.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flushNow();
+      if (document.visibilityState === 'hidden') settle();
     });
-    window.addEventListener('pagehide', flushNow);
+    window.addEventListener('pagehide', settle);
+
+    // Kept in memory on every frame and written down only when a screen is
+    // left or the app is: a `localStorage` write per scroll event is a
+    // synchronous disk touch per frame, on the one device that cannot spare it.
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (this.#settling) return;
+        this.#offsets[this.screen] = window.scrollY;
+      },
+      { passive: true },
+    );
+
+    // The browser's own scroll restoration aims at a document that does not
+    // exist yet — this one renders after the wasm core has loaded. Ours runs
+    // when there is something to scroll; theirs would only be a jump.
+    history.scrollRestoration = 'manual';
   }
 }

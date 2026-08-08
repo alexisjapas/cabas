@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   import ErrorBanner from './components/ErrorBanner.svelte';
   import TabBar from './components/TabBar.svelte';
@@ -44,6 +44,24 @@
       return;
     }
     void openWith(identity);
+  });
+
+  /**
+   * Put each screen back where it was left (DECISIONS 0003, same reasoning as
+   * the persisted screen: an iOS cold reload otherwise drops you at the top of
+   * the list mid-shop).
+   *
+   * After `tick()`, because the offset means nothing until the screen it
+   * belongs to has rendered something to scroll. The effect depends on
+   * `session.screen` and on nothing else — the offsets themselves are a plain
+   * field, so the scroll listener that keeps them current cannot re-trigger
+   * this.
+   */
+  $effect(() => {
+    if (phase.step !== 'ready') return;
+    const session = phase.session;
+    const screen = session.screen;
+    void tick().then(() => session.restoreScroll(screen));
   });
 
   async function register(userName: string, deviceName: string): Promise<void> {
