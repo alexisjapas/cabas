@@ -320,16 +320,6 @@ Key domain shapes, all settled in DECISIONS:
   is `cargo update -p js-sys --precise <version matching the CLI>`. The set
   that currently agrees with CLI 0.2.121: `js-sys` and `web-sys` 0.3.98,
   `wasm-bindgen-futures` 0.4.71, `wasm-bindgen-test` 0.3.71.
-- **`wasm-test` needs `webdriver.json`, and its absence only shows up on CI.**
-  chromedriver launches the browser itself, so the only way to give Chrome a
-  flag is the capabilities file — `WASM_BINDGEN_TEST_WEBDRIVER_JSON` (that exact
-  name; there is no `WASM_BINDGEN_WEBDRIVER_JSON`) points `wasm-test` at the one
-  in the repo root. Without `--no-sandbox` in it Chrome will not start on a
-  runner, and the failure reads `Error: http status: 404` with a `SIGKILL` that
-  is just the runner cleaning up — nothing mentions a sandbox. A desktop with
-  unprivileged user namespaces enabled needs none of this, which is how the job
-  went from M2 to M4 failing on every single push while passing locally every
-  time. `ui-test` was never affected because it passes the flag directly.
 - **`#[test]` does not run on wasm32** — browser cases need
   `#[wasm_bindgen_test]`. That is why `wasm-test` names its test targets one
   by one, and why `tests/persistence.rs` and `tests/document_size.rs` are

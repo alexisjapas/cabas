@@ -153,24 +153,11 @@
         # `wasm-check` proves in seconds.
         wasmTest = pkgs.writeShellScriptBin "wasm-test" ''
           set -euo pipefail
-          root="$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
           export CHROMEDRIVER="${pkgs.chromedriver}/bin/chromedriver"
           # chromedriver launches a browser it finds on PATH; be explicit, so
           # a runner with some other chrome installed cannot change what is
           # being tested.
           export CHROME_PATH="${pkgs.chromium}/bin/chromium"
-          # The capabilities in `webdriver.json` are the only way to pass flags
-          # to the browser *chromedriver* starts — `--no-sandbox` above all,
-          # without which Chrome will not come up on a CI runner and the whole
-          # job fails with `http status: 404` and no mention of a sandbox. A
-          # desktop with unprivileged user namespaces enabled needs none of it,
-          # which is exactly why this stayed invisible locally while CI had
-          # never once passed this job. `ui-test` has always passed the same
-          # flag directly, which is why it was the only browser job that worked.
-          #
-          # Absolute, because the runner looks for the file in the working
-          # directory and a developer will not always be at the repo root.
-          export WASM_BINDGEN_TEST_WEBDRIVER_JSON="$root/webdriver.json"
           cargo test -p cabas-store \
             --target wasm32-unknown-unknown --test indexeddb "$@"
           cargo test -p cabas-app \
