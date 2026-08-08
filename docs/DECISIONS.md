@@ -48,6 +48,9 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0036](#0036--typescript-types-are-generated-behind-a-feature) | TypeScript types are generated, behind a feature | Tooling |
 | [0037](#0037--the-pwa-is-a-plain-vite-spa-not-sveltekit) | The PWA is a plain Vite SPA, not SvelteKit | Stack |
 | [0038](#0038--the-service-worker-is-written-by-hand) | The service worker is written by hand | Stack |
+| [0039](#0039--the-editor-names-a-recipe-line-before-the-line-exists) | The editor names a recipe line before the line exists | Architecture |
+| [0040](#0040--the-keyboard-is-a-length-not-a-mode) | The keyboard is a length, not a mode | Stack |
+| [0041](#0041--the-phone-installs-from-a-local-certificate-authority) | The phone installs from a local certificate authority | Tooling |
 
 ---
 
@@ -1186,3 +1189,88 @@ on iOS it is a no-op precisely when it is needed.
 **Leaving it to the browser's own focus scrolling** — that scrolls to the
 *field*, and the thing that needs to be seen is the list drawn underneath it,
 which does not exist yet at the moment the field is focused.
+
+## 0041 — The phone installs from a local certificate authority
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0003](#0003--ios-ships-as-a-pwa) · **Relates to**
+[0012](#0012--cloudflare-tunnel-on-an-owned-domain)
+
+**Context.** M4's exit criterion is the iPhone — installed from the home
+screen, usable in airplane mode, data surviving a cold restart — and none of it
+is reachable over the address `pnpm dev` prints. A service worker only
+registers in a **secure context**, and `http://192.168.1.x` is not one. The LAN
+dev server can therefore display the app on the phone and can never make it
+installable: no worker, no precache, and airplane mode is a blank page. The
+origin that will serve the app for real is the relay behind a Cloudflare Tunnel
+on a domain we own (0012), and that is M6 — two milestones after the one this
+blocks.
+
+**Decision.** `ui-serve`: a local certificate authority, generated once per
+machine, signing a certificate for that machine's own names, and a
+zero-dependency Node server handing `ui/dist` over TLS. The phone installs the
+CA once, from a plain-HTTP endpoint the same command serves — because it cannot
+fetch the certificate over the HTTPS that certificate is what makes
+trustworthy.
+
+The certificate covers `<hostname>.local` as well as the LAN address, and **the
+mDNS name is the one to install from**. An installed iOS PWA is identified by
+its origin (0012), so an app installed from an address the DHCP lease can move
+loses its IndexedDB the day it moves. iOS resolves such a name over Bonjour with
+nothing configured on the phone — but only if the host actually announces it,
+and NixOS ships avahi with `publish.enable = false`, so out of the box it does
+not. Where that is not turned on the LAN address is the fallback, and the origin
+then has to be made stable some other way: a reserved DHCP lease on the router
+costs nothing and is enough.
+
+**Consequences.** M4 can be exercised on the device, offline, with no internet
+involved anywhere — which is what the milestone actually asks for. The
+certificate is re-signed automatically when the address changes; the CA
+deliberately is not, because re-minting it would mean re-installing a profile
+on every phone that trusted the old one.
+
+The cost is real and worth naming plainly: **a custom root installed on a phone
+trusts this machine to vouch for any site at all.** The CA key is generated per
+machine, `chmod 600`, gitignored, and never travels; if it leaks, whoever holds
+it can impersonate any origin to that phone until the profile is removed. That
+is the price of a secure context on a LAN with no public name, and it is the
+reason the profile should come off the phone once M6's permanent origin exists.
+
+Two iOS specifics, both silent when wrong. Installing a root and trusting it
+are **two separate actions in two different screens** — Settings → Profile
+Downloaded, then General → About → Certificate Trust Settings — and skipping
+the second leaves a certificate that is installed, listed, and still refused;
+the instruction page `ui-serve` hands the phone says so, because that is the
+step that gets missed. And a server certificate iOS will accept has to carry
+`serverAuth` in its extended key usage, live 825 days or fewer, and name its
+hosts in the SAN rather than the common name. Miss any of the three and Safari
+says only that the connection is not private.
+
+What this is verified against, short of the phone: the existing `ui-test` takes
+its target from `APP_URL`, so it runs unchanged against the TLS origin — the
+worker registers and takes control, the shell precaches, and the app boots with
+the network off. That proves the transport, and nothing about the phone.
+
+The phone then answered the rest, on the day this was written: the profile
+installs, iOS accepts the certificate, and the app runs from the home screen
+with the network off. Bonjour was the one part that did not hold — the name
+never resolved, for the reason above — so the install was done from the LAN
+address, whose lease has to be reserved on the router for the origin to stay
+put. See ROADMAP M4.
+
+**Rejected.** **A Cloudflare quick tunnel** (`*.trycloudflare.com`) — nothing
+to install, and a new hostname on every run, which iOS reads as a new app each
+time and whose predecessor's storage it drops (0012). It also puts the family's
+shopping list on a public URL, and needs internet for a test whose whole point
+is not having any.
+**Bringing M6's tunnel forward** — the permanent origin is the right answer and
+it arrives with the add-on, the image and the backup drill. Pulling it in to
+unblock one measurement would mean shipping the deployment milestone in order to
+test the previous one.
+**A self-signed certificate with no CA** — Safari's interstitial offers no
+"proceed anyway" that yields a secure context, so the worker still would not
+register. The exception a desktop browser grants is exactly the one iOS does
+not.
+**Plain HTTP, and testing the offline path in a desktop browser instead** —
+that is what `ui-test` already does, and it is precisely the half that cannot
+answer the question. 0040 makes the same point about the keyboard.

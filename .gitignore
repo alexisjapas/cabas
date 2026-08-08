@@ -13,6 +13,11 @@
 # (DECISIONS 0036).
 /ui/src/lib/wasm
 
+# The local CA and the certificate `ui-serve` signs with it (DECISIONS 0041).
+# The CA key is a trust anchor on every phone that installed its profile, so it
+# is generated per machine and never travels.
+/ui/.certs
+
 # Local secrets: pairing keys, tunnel credentials, add-on options.
 *.local
 /secrets

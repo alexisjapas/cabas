@@ -235,6 +235,106 @@
           node ui/tests/smoke.mjs "$@"
         '';
 
+        # The built PWA, served to a phone over TLS (DECISIONS 0041).
+        #
+        # M4's last item is the iPhone, and it needs HTTPS to exist at all: a
+        # service worker only registers in a secure context, so the LAN address
+        # `pnpm dev` prints can display the app on the phone and can never make
+        # it installable — no worker, no precache, airplane mode is a blank
+        # page. This mints a local CA once, signs a certificate for this
+        # machine's names, and serves `ui/dist` behind it.
+        #
+        # The certificate covers `<hostname>.local` as well as the IP, and the
+        # mDNS name is the one to install from: an installed iOS PWA is
+        # identified by its origin (DECISIONS 0012), so installing from an
+        # address the DHCP lease can change means losing the app's storage the
+        # day it does.
+        #
+        # Like `ui-test`, it expects a built bundle rather than building one.
+        uiServe = pkgs.writeShellScriptBin "ui-serve" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+
+          if [ ! -f ui/dist/index.html ]; then
+            echo "ui-serve: no ui/dist. Build it first:" >&2
+            echo "  build-wasm" >&2
+            echo "  pnpm -C ui build" >&2
+            exit 1
+          fi
+
+          certs="ui/.certs"
+          host="$(${pkgs.coreutils}/bin/uname -n)"
+          # The address this machine reaches the internet from is the one it is
+          # reachable at on the wifi. No packet is sent — `route get` only asks
+          # the kernel which source address it would pick.
+          ip="$(${pkgs.iproute2}/bin/ip -4 -o route get 1.1.1.1 \
+            | ${pkgs.gnugrep}/bin/grep -oP 'src \K[0-9.]+' || true)"
+          if [ -z "$ip" ]; then
+            echo "ui-serve: no route out, so no LAN address to serve on." >&2
+            exit 1
+          fi
+
+          # avahi publishes `<hostname>.local`, which iOS resolves over Bonjour
+          # without any configuration on the phone. `localhost` is in here so
+          # the same certificate works for a desktop browser check.
+          san="DNS:$host.local,DNS:$host,DNS:localhost,IP:$ip,IP:127.0.0.1"
+
+          ${pkgs.coreutils}/bin/mkdir -p "$certs"
+          if [ ! -f "$certs/ca.crt" ]; then
+            # A trust anchor for a phone, so its key stays out of the repo
+            # (gitignored) and off other accounts on this machine. Ten years:
+            # re-installing a profile on the phone is the expensive part, not
+            # generating one here.
+            ${pkgs.openssl}/bin/openssl req -x509 -newkey rsa:2048 -sha256 -nodes \
+              -days 3650 -keyout "$certs/ca.key" -out "$certs/ca.crt" \
+              -subj "/CN=cabas local CA" \
+              -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+              -addext "keyUsage=critical,keyCertSign,cRLSign"
+            ${pkgs.coreutils}/bin/chmod 600 "$certs/ca.key"
+            echo "ui-serve: minted a new local CA — the phone has to install it (see below)."
+          fi
+
+          # Re-sign whenever the names change, which in practice means the
+          # DHCP lease moved. The CA is untouched, so the phone keeps trusting
+          # it and nothing has to be re-installed.
+          if [ ! -f "$certs/server.crt" ] \
+            || [ "$(${pkgs.coreutils}/bin/cat "$certs/san" 2>/dev/null || true)" != "$san" ]; then
+            ${pkgs.openssl}/bin/openssl req -newkey rsa:2048 -nodes \
+              -keyout "$certs/server.key" -out "$certs/server.csr" \
+              -subj "/CN=cabas"
+            # iOS refuses a server certificate that leans on the common name,
+            # that lives longer than 825 days, or that does not say serverAuth
+            # — all three silently, as a plain "connection is not private".
+            #
+            # Written with printf rather than a heredoc: a heredoc's body would
+            # have to be indented against what Nix strips from this string, and
+            # that is a trap for whoever edits it next.
+            printf '%s\n' \
+              "basicConstraints=critical,CA:FALSE" \
+              "keyUsage=critical,digitalSignature,keyEncipherment" \
+              "extendedKeyUsage=serverAuth" \
+              "subjectAltName=$san" > "$certs/ext"
+            ${pkgs.openssl}/bin/openssl x509 -req -in "$certs/server.csr" \
+              -CA "$certs/ca.crt" -CAkey "$certs/ca.key" -CAcreateserial \
+              -sha256 -days 800 -extfile "$certs/ext" \
+              -out "$certs/server.crt"
+            ${pkgs.coreutils}/bin/chmod 600 "$certs/server.key"
+            # The request and the extension file are inputs to the signature and
+            # nothing reads them afterwards; leaving them behind only invites
+            # someone to wonder which of the five files matters.
+            ${pkgs.coreutils}/bin/rm -f "$certs/server.csr" "$certs/ext"
+            printf '%s\n' "$san" > "$certs/san"
+            echo "ui-serve: signed a certificate for $san"
+          fi
+
+          # Printed so the profile the phone is about to trust can be checked
+          # against the one this machine actually holds.
+          ${pkgs.openssl}/bin/openssl x509 -in "$certs/ca.crt" -noout -fingerprint -sha256 \
+            | ${pkgs.gnused}/bin/sed 's/^/  CA /'
+
+          exec node ui/tools/serve.mjs ui/dist "$certs" 8443 8080 "$host.local" "$ip"
+        '';
+
         # Everything the Rust core and the PWA need. Deliberately *not*
         # including the Android SDK: it is a multi-GB download that only M7
         # needs, so it lives in its own shell (`nix develop .#android`).
@@ -253,18 +353,17 @@
             pkgs.pkg-config
           ];
 
-          packages =
-            webPackages
-            ++ [
-              checkWasmBindgen
-              wasmCheck
-              buildWasm
-              pkgs.cargo-nextest
-              # Dependency hygiene (Rule 13): `cargo deny check` in CI, and
-              # the third-party notices the PWA has to ship.
-              pkgs.cargo-deny
-              pkgs.cargo-about
-            ];
+          packages = webPackages ++ [
+            checkWasmBindgen
+            wasmCheck
+            buildWasm
+            uiServe
+            pkgs.cargo-nextest
+            # Dependency hygiene (Rule 13): `cargo deny check` in CI, and
+            # the third-party notices the PWA has to ship.
+            pkgs.cargo-deny
+            pkgs.cargo-about
+          ];
 
           shellHook = ''
             echo "cabas dev shell — $(rustc --version)"
@@ -272,6 +371,7 @@
             echo "  wasm-check                            # Rule 8: the four shared crates on wasm32"
             echo "  check-wasm-bindgen                    # CLI/crate version match"
             echo "  build-wasm [--dev]                    # the wasm core into ui/src/lib/wasm"
+            echo "  ui-serve                              # serve ui/dist over TLS, for the phone"
             echo "  nix develop .#wasm-test -c wasm-test   # IndexedDB in headless chromium"
             echo "  nix develop .#android                 # Android SDK/NDK shell (M7)"
             echo "  wasm-bindgen $(wasm-bindgen --version | ${pkgs.gawk}/bin/awk '{print $2}') · node $(node --version)"
