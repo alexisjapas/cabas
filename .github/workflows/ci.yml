@@ -65,6 +65,35 @@ jobs:
       - name: wasm-bindgen version match
         run: nix develop --command check-wasm-bindgen
 
+  # The IndexedDB backend, in a real browser. A separate job because it needs
+  # a separate shell: chromium is a large download that the everyday gates
+  # have no use for (DECISIONS 0013), and keeping it here means a browser
+  # failure reads as a browser failure instead of poisoning `fmt`.
+  #
+  # This is the only thing in CI that *executes* wasm. `wasm-check` proves the
+  # shared crates compile for wasm32, which is a different claim: IndexedDB
+  # does not exist outside a browser, so nothing short of running one shows
+  # that a snapshot actually survives being stored.
+  wasm-storage:
+    name: IndexedDB in headless chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # A different target and profile from the `gates` job; sharing one
+          # cache key would make each job evict the other's artifacts.
+          key: wasm-storage
+
+      - name: wasm-bindgen-test
+        run: nix develop .#wasm-test --command wasm-test --locked
+
   # The Android shell is not built here (a multi-GB SDK for a milestone that
   # has not started), but it must keep *evaluating*: a flake that breaks at
   # eval is discovered at M7 otherwise, long after the change that broke it.

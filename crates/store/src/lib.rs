@@ -20,12 +20,25 @@
 //!   that a serialized snapshot beats a relational store, and it removes
 //!   schema migrations and a SQLite build on four targets.
 //!
-//! Implementation lands in M2 (see ROADMAP.md).
+//! The persisted layout is documented in [`schema`], which is the file to
+//! read first: it is a compatibility surface, not an implementation detail.
 
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn crate_builds() {}
-}
+mod codec;
+mod document;
+pub mod error;
+mod mapping;
+pub mod schema;
+pub mod storage;
+
+pub use document::Document;
+pub use error::{Result, StoreError};
+pub use schema::SCHEMA_VERSION;
+pub use storage::{MemoryStorage, Storage};
+
+#[cfg(not(target_family = "wasm"))]
+pub use storage::FileStorage;
+
+#[cfg(target_family = "wasm")]
+pub use storage::IndexedDbStorage;

@@ -51,14 +51,44 @@ loro = "1"
 # `app` build for both targets (Rule 8).
 web-time = "1"
 
-# --- M3 · app (wasm + native surfaces) ---
-# Version MUST equal the `wasm-bindgen-cli` provided by the flake; the
-# `check-wasm-bindgen` script enforces it in CI (Rule 13). Pinned exactly,
-# because a patch-level drift is enough to break the generated glue.
+# --- M2 · the IndexedDB storage backend (wasm32 only) ---
+#
+# Arrived a milestone earlier than planned: the `Storage` trait needs a wasm
+# implementation to be worth anything, and IndexedDB is the only durable
+# store an installed PWA has (DECISIONS 0003, 0008).
+#
+# `wasm-bindgen`'s version MUST equal the `wasm-bindgen-cli` the flake
+# provides, or the generated glue fails at load time with no useful message;
+# `check-wasm-bindgen` enforces it in CI (Rule 13). Pinned exactly.
+#
+# The pin propagates: `js-sys`, `web-sys` and `wasm-bindgen-test` each depend
+# on an *exact* `wasm-bindgen`, so bumping any of them can drag the lockfile
+# off the CLI version even though nothing here changed. That is why
+# `check-wasm-bindgen` reads `Cargo.lock` and not only this file.
 wasm-bindgen = "=0.2.121"
-serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
-web-sys = "0.3"
+# Bridges a JS promise to a Rust future — every IndexedDB operation completes
+# on a later turn of the event loop and has no blocking form.
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "DomException",
+    "DomStringList",
+    "Event",
+    "IdbDatabase",
+    "IdbFactory",
+    "IdbObjectStore",
+    "IdbOpenDbRequest",
+    "IdbRequest",
+    "IdbTransaction",
+    "IdbTransactionMode",
+] }
+# Runs `#[wasm_bindgen_test]` cases in a real headless browser. There is no
+# other honest way to test IndexedDB: it does not exist outside one.
+wasm-bindgen-test = "0.3"
+
+# --- M3 · app (wasm + native surfaces) ---
+serde-wasm-bindgen = "0.6"
 # Needs the web backend feature on wasm32, otherwise key generation fails to
 # link. Required by the M5 crypto.
 getrandom = "0.3"

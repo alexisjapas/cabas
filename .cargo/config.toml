@@ -1,0 +1,13 @@
+# A wasm module cannot be executed by `cargo test` on its own — it needs a
+# host. `wasm-bindgen-test-runner` is that host: it drives a headless browser
+# through chromedriver and reports back in cargo's format.
+#
+# The runner ships inside `wasm-bindgen-cli`, so the flake's pin governs it as
+# well (Rule 13) — which is the point. A runner from a different version than
+# the `wasm-bindgen` crate produces the same opaque failure as a mismatched
+# release build, except in CI where it is even less obvious.
+#
+# Only reachable through `nix develop .#wasm-test`, the shell that carries a
+# browser. Everyday builds never see it.
+[target.wasm32-unknown-unknown]
+runner = "wasm-bindgen-test-runner"

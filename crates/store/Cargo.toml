@@ -7,5 +7,19 @@ repository.workspace = true
 description = "CRDT document schema, snapshots and persistence — the only crate that knows Loro exists"
 
 [dependencies]
+cabas-domain.workspace = true
+loro.workspace = true
+thiserror.workspace = true
+
+# The IndexedDB backend. Kept target-specific so a native build (Tauri, the
+# relay, `cargo test`) never pulls a line of browser glue.
+[target.'cfg(target_family = "wasm")'.dependencies]
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys.workspace = true
 
 [dev-dependencies]
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test.workspace = true
