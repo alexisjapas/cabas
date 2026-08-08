@@ -5,6 +5,13 @@ choices behind this plan: [docs/DECISIONS.md](docs/DECISIONS.md). Every
 milestone has a demonstrable goal and a **measurable exit criterion**; a
 milestone is not started until the previous one's criterion holds.
 
+**Closing a milestone includes looking at CI on the commit that closes it.** Not
+at the rule that says it must be green — at the run. From M2 to M4 the browser
+job failed on every single push while these pages said the vertical was
+verified on each one, and nobody was told, because nobody looked. A red gate
+that goes unread is worse than an absent one: it costs the same to run and it
+buys a false belief instead of no belief.
+
 ## Overview (status as of 2026-08-08)
 
 | Milestone | Content | Exit criterion | Status |
@@ -114,10 +121,11 @@ browser, recipe editor included.
 - [x] `LICENSE-MIT` + `LICENSE-APACHE` (DECISIONS 0027)
 - [x] `CLAUDE.md` session guide
 - [x] Pushed to `github.com/alexisjapas/cabas`
-- [x] **Green CI confirmed** — the first run passed every gate. The two
-      things that could only fail on a runner, and did not: the
+- [x] **Green CI confirmed** — the first run passed every gate *that existed
+      then*. The two things that could only fail on a runner, and did not: the
       `cachix/install-nix-action` version pin, and the cold-cache cost of
-      `nix develop`.
+      `nix develop`. The browser job arrived at M2 and did not pass until M4;
+      the note under M2 says why.
 
 **Exit**: `cargo test --workspace` and `wasm-check` green inside
 `nix develop`; green CI. ✅
@@ -188,6 +196,17 @@ concurrent edits. ✅ — round-trip on the file, memory and IndexedDB backends
 replicas are never online at the same time. 33 native tests plus 5 in
 chromium.
 
+**That last figure was a local one until M4.** CI ran the browser job from the
+day this milestone wrote it and it failed on every push, for a reason with
+nothing to do with the tests: chromedriver launches the browser it finds, not
+the one the flake pins, so on a runner it started Google Chrome 150 against
+chromedriver 151 and refused the session. The runner then carried on with the
+failed session's id, so the only thing reaching the log was `http status: 404`
+— naming neither Chrome nor a version. Fixed at M4 in 41444f7. For twelve
+commits the claim above was true on a developer machine and untrue in CI, which
+is the exact shape of failure the note at the top of this file now guards
+against.
+
 ## M3 — App surface
 
 - [x] Command set — 13 of them, coarse-grained on purpose (Rule 9): the
@@ -214,7 +233,9 @@ chromium.
 
 **Exit**: both targets build in CI; the scenario test passes on both. ✅ —
 121 native tests plus 3 in chromium (`crates/app/tests/scenario.rs` is the
-same file on both targets).
+same file on both targets). Half of that was CI's word and half was not: both
+targets did build there, but the chromium half only *ran* in CI from M4 on —
+see the note under M2.
 
 **The transport trait is deliberately absent.** M3 was to put the two swaps
 of DECISIONS 0005 behind traits, and it did: storage is `store`'s `Storage`,
