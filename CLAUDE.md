@@ -8,7 +8,7 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M0 through M3 complete; **M4 (the PWA) is in progress**.
+**Current state**: M0 through M4 complete; **M5 (relay and sync) is next**.
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way mapping, snapshots,
 compaction and the `Storage` trait over file + IndexedDB; `crates/app` holds
@@ -19,10 +19,13 @@ the command set, the view-models and the wasm binding. 123 native tests plus
 (list, reader and editor), the ingredient library and settings, driven end to
 end by `ui-test` in headless chromium. **Every command is reachable from the
 UI**, the app is **installable**, **it opens with the network off**, and the
-soft keyboard no longer covers what is being typed into. What M4 still needs is
-**the iPhone itself** — every remaining item is a measurement on the device, and
-none of it can be rehearsed in a browser. See ROADMAP "Next action". `sync` and
-`relay` are still boundary docs only.
+soft keyboard no longer covers what is being typed into. `ui-serve` serves the
+built bundle over TLS from a local CA, which is what makes the app installable
+on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
+in airplane mode, its library survives a cold restart, the cold start is
+instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
+the device. `sync` and `relay` are still boundary docs only, and that is what
+M5 is. See ROADMAP "Next action".
 
 ## Environment and commands
 
@@ -50,9 +53,17 @@ nix develop -c pnpm -C ui check               # svelte-check + the worker's own 
 nix develop -c pnpm -C ui dev                 # dev server, bound to the LAN
 nix develop -c pnpm -C ui build               # ui/dist
 nix develop .#wasm-test -c ui-test            # the whole vertical, in a browser
+nix develop -c ui-serve                       # ui/dist over TLS, for the phone
 
 nix develop .#wasm-test -c node ui/tools/render-icons.mjs   # the PNG icons
 ```
+
+`ui-serve` is the only way onto the phone: a service worker needs a secure
+context, so the LAN address `pnpm dev` prints can display the app and never
+install it. It mints a local CA once into `ui/.certs/` (gitignored), signs a
+certificate for `<hostname>.local` and the LAN IP, serves `ui/dist` on 8443 and
+hands the CA out over plain HTTP on 8080 — the phone cannot fetch it over the
+HTTPS it does not trust yet (DECISIONS 0041).
 
 `pnpm check` runs **two** TypeScript programs: `svelte-check` over the app, and
 `tsc -p tsconfig.sw.json` over `src/sw.js` alone. A service worker's globals
@@ -203,6 +214,7 @@ file:
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
 | `tools/render-icons.mjs` | SVG → the committed PNGs, over CDP. Not part of any loop |
+| `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies |
 
 `screens/Recipes.svelte` is three views behind one tab — the shelf, the one
@@ -426,6 +438,33 @@ Key domain shapes, all settled in DECISIONS:
   difference instead. The padding and the scroll are one mechanism: the picker
   can only climb out because `Screen`'s `padding-bottom` put scrollable document
   underneath it.
+- **A service worker only registers in a secure context**, so the LAN address
+  `pnpm dev` prints can show the app on a phone and can never make it
+  installable — no worker, no precache, and airplane mode is a blank page. That
+  is what `ui-serve` exists for (DECISIONS 0041), and it is why nothing about
+  M4's remaining item can be rehearsed over `http://192.168.…`.
+- **`<hostname>.local` does not resolve just because avahi is running.** NixOS
+  enables it as a resolver and leaves `publish.enable` off, so the host never
+  announces its own name; `avahi-resolve -n $(uname -n).local` times out locally,
+  which is the fast way to tell. The LAN address is the fallback, and then the
+  DHCP lease has to be reserved — whichever address the phone installs from
+  becomes the app's identity (DECISIONS 0012, 0041).
+- **iOS rejects a server certificate on three silent grounds**: no `serverAuth`
+  in the extended key usage, a validity longer than 825 days, or hosts named in
+  the common name instead of the SAN. All three surface only as "the connection
+  is not private". `ui-serve` produces all three correctly; anything that
+  regenerates a certificate by hand has to keep doing so.
+- **Installing a root on iOS and trusting it are two different screens.**
+  Settings → Profile Downloaded installs it; General → About → Certificate Trust
+  Settings is what makes it count. Skipping the second leaves a certificate that
+  is installed, listed, and still refused — the single most likely reason the
+  phone will not open the app.
+- **`ui-test` takes its target from `APP_URL`**, which is how the whole
+  end-to-end suite was run against `ui-serve`'s TLS origin without touching it.
+  Chromium needs the leaf's SPKI pinned with
+  `--ignore-certificate-errors-spki-list` for that — unlike
+  `--ignore-certificate-errors`, it leaves the origin a secure context, which is
+  the entire property under test.
 - **`--window-size` sizes the window, not the viewport**, so a headless
   screenshot comes out a browser frame short. `render-icons.mjs` sets the
   viewport with `Emulation.setDeviceMetricsOverride` instead. An inline `<svg>`

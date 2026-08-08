@@ -14,7 +14,8 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M3 complete, M4 usable on a desktop browser. `crates/domain` holds the
+**Status**: M0–M4 complete — the app is installed on an iPhone, opens in
+airplane mode, and its library survives a cold restart. `crates/domain` holds the
 whole product logic as pure, tested functions — units and exact conversions,
 recipe scaling, the sub-recipe DAG, cart aggregation and check-state
 derivation. `crates/store` persists it: a Loro document, snapshots with
@@ -27,7 +28,7 @@ shopping trip — build a library, cook for six instead of four, tick things
 off, finish, restart — passes natively **and** in a headless browser. 123
 tests green plus 4 in chromium.
 
-**M4 is in progress**: `ui/` is a working Svelte 5 app — it mints an identity,
+**M4 is done**: `ui/` is a working Svelte 5 app — it mints an identity,
 builds a library, writes and reads recipes, derives the cart and survives a
 cold restart, all driven end to end in a real browser by `ui-test`. Every one
 of the thirteen commands is reachable from the UI. It is **installable and it
@@ -37,10 +38,14 @@ off in the browser and reading a recipe back
 ([0038](docs/DECISIONS.md#0038--the-service-worker-is-written-by-hand)). The soft
 keyboard is handled as a measured length rather than a mode, so a form's last
 field and the recipe editor's mention picker stay above the keys
-([0040](docs/DECISIONS.md#0040--the-keyboard-is-a-length-not-a-mode)). What is
-left is the phone itself: an iPhone to install it on, and a shop to use it in.
-Resuming work starts at the "Resuming work" section of the
-[ROADMAP](ROADMAP.md).
+([0040](docs/DECISIONS.md#0040--the-keyboard-is-a-length-not-a-mode)). And
+`ui-serve` hands the built bundle to the phone over TLS, which is what a service
+worker needs to exist at all
+([0041](docs/DECISIONS.md#0041--the-phone-installs-from-a-local-certificate-authority)).
+On the device itself the cold start is instantaneous, which closes the question
+of the 713 kB core, and the keyboard behaves as it was designed to. **Next is
+M5**: the relay, end-to-end encryption and sync between two phones. Resuming
+work starts at the "Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -67,10 +72,71 @@ build product and is not committed:
 ```sh
 build-wasm [--dev]                        # the core → ui/src/lib/wasm/
 pnpm -C ui install                        # once
-pnpm -C ui dev                            # dev server, reachable from a phone
+pnpm -C ui dev                            # dev server, bound to the LAN
 pnpm -C ui check                          # types, against the generated bindings
 pnpm -C ui build                          # ui/dist
 ```
+
+### Installing it on a phone
+
+`pnpm dev` is reachable from a phone but the app is **not installable over it**:
+a service worker only registers in a secure context, and a LAN address over
+plain HTTP is not one. `ui-serve` serves the built bundle over TLS instead,
+signing a certificate with a local CA it generates once per machine
+([0041](docs/DECISIONS.md#0041--the-phone-installs-from-a-local-certificate-authority)):
+
+```sh
+build-wasm && pnpm -C ui build            # what actually gets installed
+ui-serve                                  # TLS on 8443, the CA on 8080
+```
+
+Both ports have to be reachable from the phone, and a host firewall is the
+first thing that silently is not — the symptom is a phone that cannot load
+either address while the desktop loads both. On NixOS with the default iptables
+firewall, for one session:
+
+```sh
+sudo iptables -I nixos-fw -p tcp --dport 8080 -j nixos-fw-accept
+sudo iptables -I nixos-fw -p tcp --dport 8443 -j nixos-fw-accept
+```
+
+or `networking.firewall.allowedTCPPorts = [ 8080 8443 ];` to keep it.
+
+**`<hostname>.local` does not resolve out of the box.** NixOS enables avahi as a
+resolver but not as a publisher (`services.avahi.publish.enable` defaults to
+`false`, and `publish.addresses` with it), so the host answers nobody's query
+for its own name — `avahi-resolve -n $(uname -n).local` timing out locally is
+the quick check. Either turn publishing on:
+
+```nix
+services.avahi = {
+  enable = true;
+  nssmdns4 = true;
+  publish = { enable = true; addresses = true; };
+};
+```
+
+or install from the LAN address instead and make *that* stable, by reserving the
+machine's DHCP lease on the router. Both give a permanent origin, which is the
+only property that matters here (0012); the name is merely nicer to type.
+
+On the phone, on the same wifi, open the `:8080` address and follow the two
+steps it lists — install the certificate, **then** trust it under Settings →
+General → About → Certificate Trust Settings. They are separate screens, and
+until the second one is done Safari refuses the origin with nothing more
+specific than "not private".
+
+Then open the `https://<hostname>.local:8443` address and add it to the home
+screen. Prefer that name over the IP: an installed PWA is identified by its
+origin, so an app installed from an address DHCP can move loses its stored
+library the day it moves
+([0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)). The
+certificate covers both, and is re-signed automatically when the address
+changes — the CA is not, so the phone keeps trusting it.
+
+The CA's private key is a trust anchor on every phone that installed it. It is
+generated per machine into `ui/.certs/` (gitignored), never travels, and the
+profile is worth removing from the phone once M6's permanent origin exists.
 
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never

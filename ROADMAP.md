@@ -13,7 +13,7 @@ milestone is not started until the previous one's criterion holds.
 | **M1** | Domain: units, conversions, scaling, recipe DAG, cart derivation | Property tests green; a recipe list produces a correct aggregated cart, offline, in `cargo test` | ✅ |
 | **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ✅ |
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
-| **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | 🚧 |
+| **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ⬜ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
@@ -48,6 +48,7 @@ pnpm -C ui check                             # types, against the generated bind
 pnpm -C ui dev                               # dev server, reachable from the phone
 pnpm -C ui build                             # ui/dist
 nix develop .#wasm-test -c ui-test           # the whole vertical, in a browser
+ui-serve                                     # serve ui/dist over TLS, for the phone
 ```
 
 `build-wasm` comes before anything that type-checks the frontend: the glue it
@@ -66,28 +67,31 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next action: the iPhone.** Every M4 item that does not need the device is
-done. The app is installable, `ui-test` turns the network off in the browser and
-reads a recipe back out of it, and the keyboard is handled (DECISIONS 0040). The
-milestone closes on a phone, in a shop, and nowhere else: install it from the
-home screen, use it, and only then decide whether the 713 kB gzipped core needs
-work.
+**Next action: M5 — the relay and sync.** M4 is closed: the app is installed on
+the iPhone, it opens in airplane mode, and its library is there when it does.
+What the device settled, and what it did not, is recorded at the end of the M4
+section below. M5 is the first milestone with two replicas in it and the first
+with cryptography — `cabas-relay` on axum, one shared family key, pairing with
+its recovery phrase, and the sync seam M3 deliberately left unfinished
+(`App::version`, `App::changes_since`, `App::merge`, bytes in and bytes out).
 
-Two things to watch there, neither of which a browser can do more than rehearse.
+Putting a later build on the phone again is two commands, since the certificate
+is installed and trusted once and for all:
 
-The **keyboard** is written and tested against a simulated one — the layout
-clears a 300 px inset and the picker climbs out of it — but every number in it
-comes from `visualViewport` on a device nobody has run this on yet. The step
-editor is where to look, because it is the screen with a control that appears
-*because* of what was typed. What would show up as wrong: a tab bar that lags
-the keys going down, a picker that lands under them anyway (the inset is
-arriving late — measure `offsetTop`), or a form whose last field cannot be
-reached (the inset is not arriving at all).
+```sh
+build-wasm && pnpm -C ui build     # the artifact that gets installed
+ui-serve                           # prints both URLs and the CA fingerprint
+```
 
-The other is the **iOS update path**: a new build's worker installs on one
-launch and takes over on the next, because activating early would delete the
-caches a running page is still loading from. Worth watching on the phone, not
-worth changing before it is seen.
+Install from **the same address every time**: the origin is the app's identity
+on iOS (DECISIONS 0012), and a different one is a different app with empty
+storage.
+
+One thing M4 could not observe, because it takes a *second* build: the **iOS
+update path**. A new build's worker installs on one launch and takes over on the
+next, since activating early would delete the caches a running page is still
+loading from. The next time a build goes onto the phone is the first chance to
+watch it, and it is not worth changing before it is seen.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
@@ -286,12 +290,45 @@ The first genuinely usable artifact.
       control that opens *because* of what was typed, and so opens into the
       keys — is scrolled out of them. At `0px` every one of those expressions
       is the one that was there before, so there is no mode to leave
-- [ ] Installed and tested on the actual iPhone, in airplane mode
+- [x] `ui-serve` — the built PWA over TLS, from a local CA signed for this
+      machine's `<hostname>.local` and its LAN address, plus the plain-HTTP
+      endpoint the phone installs that CA from (DECISIONS 0041). Without a
+      secure context there is no service worker at all, so the LAN dev server
+      could show the app on the phone and never make it installable. Verified
+      by running `ui-test` unchanged against the TLS origin through `APP_URL`
+- [x] Installed and tested on the actual iPhone, in airplane mode
 
 **Exit**: installed on the iPhone from the home screen, fully usable offline,
-data survives a cold restart of the app.
+data survives a cold restart of the app. ✅ — installed from the home screen,
+a library built on the device, then airplane mode and a force-quit: the app
+opened and everything was there.
 
-**Measured so far** (release build, `wasm-release` + `wasm-opt -Oz`):
+**What the device settled.** Three questions had been left open on purpose,
+because a browser can only rehearse them:
+
+- The **cold start is instantaneous** on the phone. That closes the size
+  question this milestone was told to defer: 713 kB gzipped of wasm is not worth
+  working on, and the core stays as it is. M2's premise held at both ends — the
+  document is small, and the engine, while not small, is not the problem either.
+- The **keyboard behaves as designed** — fields stay visible, the mention picker
+  opens above the keys, the tab bar goes down with them. Every number behind
+  that came from `visualViewport` on a simulated keyboard until now
+  (DECISIONS 0040), so this is the first evidence any of it was right.
+- The **install works**, with one correction to how it is reached: see below.
+
+**What it corrected.** `<hostname>.local` was the recommended origin and it does
+not resolve, because NixOS enables avahi as a resolver and leaves
+`publish.enable` off — the host never announces its own name, and
+`avahi-resolve -n $(uname -n).local` times out on the machine itself. The app is
+therefore installed from the LAN address, which makes the DHCP lease part of the
+app's identity (DECISIONS 0012): **reserve it on the router, or the app loses
+its library the day the lease moves.** Turning avahi publishing on is the other
+answer and is written up in the README.
+
+The **iOS update path** stays unobserved, and cannot be observed until a second
+build reaches the phone. It is the one M4 question carried into M5.
+
+**Measured** (release build, `wasm-release` + `wasm-opt -Oz`):
 
 | | |
 |---|---|
@@ -341,10 +378,12 @@ is actually off and one until a keyboard is in front of it:
   nothing. Overriding the `height` accessor and firing `resize` is what
   reproduces the shape (DECISIONS 0040).
 
-The core is the whole download, and Loro is most of the core. That is the
-number to watch on a phone over 4G, and the one to measure on the actual
-device before deciding whether it needs work — M2's premise was that the
-*document* is small (154 kB), and it is; the *engine* is not.
+The core is the whole download, and Loro is most of the core — M2's premise was
+that the *document* is small (154 kB), and it is; the *engine* is not. That was
+the number to watch, and the device answered it: the cold start is
+instantaneous, so the size stays as it is. What is still untested is the
+*first* download over 4G rather than over the LAN, which is an M6 concern —
+by then the shell is precached and the question only arises once per install.
 
 ## M5 — Relay and sync
 
