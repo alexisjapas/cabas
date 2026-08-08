@@ -8,9 +8,10 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M0 (scaffolding). No product code yet — the crates carry
-their boundary docs and nothing else. M1 (domain) is next, starting with
-units and quantities, on which everything else depends.
+**Current state**: M1 complete. `crates/domain` holds the whole product logic
+as pure functions, 65 tests green; `store`, `sync`, `app` and `relay` are
+still boundary docs only. **M2 (the Loro document schema) is next** — the
+domain types it maps to and from are settled, so it has a fixed target.
 
 ## Environment and commands
 
@@ -79,6 +80,24 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | `crates/app` | Commands + view-models — the only surface the UI touches |
 | `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
 
+`crates/domain` is the only one with code (M1). Its modules, bottom-up — each
+depends only on the ones above it:
+
+| Module | Holds |
+|---|---|
+| `units` | `Dimension`, `Unit`, exact conversion factors, `convert` |
+| `quantity` | `Quantity`, scaling, addition, `ceil_to_whole`, `humanized` |
+| `ingredient` | `Ingredient`, `Aisle`, cross-dimension conversion, `resolve` |
+| `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs` |
+| `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
+| `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
+| `list` | `ShoppingList`, `ListEntry`, add-purges-overlay |
+| `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
+
+The end-to-end scenario — M1's exit criterion, and the best place to see how
+it all fits — is `crates/domain/tests/shopping_scenario.rs`, which uses the
+public API only.
+
 Key domain shapes, all settled in DECISIONS:
 
 - A recipe has `servings` **and an optional `yield`** — without a yield a
@@ -90,7 +109,12 @@ Key domain shapes, all settled in DECISIONS:
 - Cart state = explicit overlay entry, else a derived default: `AutoChecked`
   for a staple sourced only from recipes, `ToBuy` otherwise (0019, 0023).
 - A list entry disappears once **all** its ingredient contributions are
-  checked; purge is deferred to "finish shopping" so undo survives (0020).
+  checked; purge is deferred to "finish shopping" so undo survives (0020),
+  and that purge is *selective* — an ingredient shared with an unfinished
+  entry keeps its check (0028).
+- When coefficients allow a choice, merging prefers **count over mass over
+  volume** (`Dimension::MERGE_PREFERENCE`): "5 tomatoes" is what you can act
+  on in a shop, "680 g of tomatoes" is not.
 
 ## Conventions
 
@@ -127,5 +151,16 @@ Key domain shapes, all settled in DECISIONS:
   visible again (Rule 3).
 - **The `.#android` shell pins are unvalidated** until M7 opens; nothing
   depends on them before then.
+- **`Ratio::new_raw` does not reduce the fraction, and `Ratio`'s equality
+  compares numerator and denominator directly.** An unreduced constant
+  silently fails to equal its own reduced form. Always `Ratio::new` — which
+  is why the factor helper in `units.rs` is not a `const fn`.
+- **Quantities are `Ratio<i128>`, not `i64`.** The exact imperial factors
+  (1 oz = 28.349523125 g) overflow 64 bits when multiplied during conversion.
+- **A method named `from_*` must not take `self`** — clippy's
+  `wrong_self_convention` rejects it, and `-D warnings` makes that an error.
+- `scale ∘ aggregate == aggregate ∘ scale` holds for mass and volume but
+  **not for counts**: rounding a countable line up is not linear. The
+  property test is restricted to mass on purpose.
 - Recent crate versions may have moved since training data: check
   `~/.cargo/registry/src/` or the docs rather than assuming an API.

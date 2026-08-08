@@ -14,10 +14,11 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M0 — scaffolding. The workspace, the Nix dev environment and the
-project documents are in place; `cargo test` and the wasm32 build are green.
-No product code yet. Resuming work: the "Resuming work" section of the
-[ROADMAP](ROADMAP.md).
+**Status**: M1 complete — the whole product logic lives in `crates/domain`
+as pure, tested functions: units and exact conversions, recipe scaling, the
+sub-recipe DAG, cart aggregation and check-state derivation. 65 tests green,
+nothing on screen yet. M2 (the Loro document schema) is next. Resuming work:
+the "Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 ## Getting started
 

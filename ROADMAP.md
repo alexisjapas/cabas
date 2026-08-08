@@ -48,13 +48,15 @@ All project knowledge lives in the repo: binding rules in
 
 **Next actions, in order:**
 
-1. Finish **M0**: create the GitHub remote, push, and confirm the CI is
-   green. Two things in the workflow are unverified until that first run —
-   the `cachix/install-nix-action` version, and how long a cold
-   `nix develop` takes on a runner.
+1. Finish **M0**: confirm the CI is green (`gh auth login`, then
+   `gh run list`, or the Actions tab). Only two things in the workflow can
+   fail there — the `cachix/install-nix-action` version pin, and the
+   cold-cache cost of `nix develop` on a runner.
 2. Start **M2** — the Loro document schema. The domain types it has to map
    to and from are now settled and tested, so the schema has a fixed target
-   rather than a moving one.
+   rather than a moving one. Start from `crates/domain/src/lib.rs` for the
+   type surface and `crates/store/src/lib.rs` for the boundary it must
+   respect (Rule 2: no Loro type escapes that crate).
 
 ---
 
@@ -70,7 +72,12 @@ All project knowledge lives in the repo: binding rules in
 - [x] GitHub Actions CI **running inside the flake**: `fmt`, `clippy -D warnings`, tests, `wasm-check`, `check-wasm-bindgen`, plus an eval-only guard on the Android shell
 - [x] `LICENSE-MIT` + `LICENSE-APACHE` (DECISIONS 0027)
 - [x] `CLAUDE.md` session guide
-- [ ] Pushed to a remote, green CI
+- [x] Pushed to `github.com/alexisjapas/cabas`
+- [ ] **Green CI confirmed** — unverified so far: `gh` is not authenticated
+      locally, so the first run has to be checked with `gh auth login` or in
+      the Actions tab. Two things can only fail there: the
+      `cachix/install-nix-action` version pin, and the cold-cache cost of
+      `nix develop` on a runner.
 
 **Exit**: `cargo test --workspace` and `wasm-check` green inside
 `nix develop`; green CI.
@@ -95,7 +102,7 @@ This is the dense part of the project (Rule 1).
 
 **Exit**: a shopping list holding recipes, sub-recipes and bare ingredients
 produces a correct aggregated cart in `cargo test`, with no I/O. ✅ —
-`crates/domain/tests/shopping_scenario.rs`, 64 tests green.
+`crates/domain/tests/shopping_scenario.rs`, 65 tests green.
 
 One deliberate gap in the property tests: `scale ∘ aggregate ==
 aggregate ∘ scale` is asserted on mass only. Rounding a countable line up is
