@@ -1,12 +1,13 @@
 //! The client half of a sync connection, with no socket in sight.
 //!
-//! Sans-IO on purpose: the PWA speaks WebSocket through `ws_stream_wasm`,
-//! the native hosts through `tokio-tungstenite`, and everything the two
-//! would otherwise duplicate — sealing, opening, cursor discipline, the
-//! epoch reset — lives here as plain synchronous calls on bytes. The
-//! transport adapters stay so thin they are written next to their event
-//! loops rather than behind a trait invented before its second user
-//! (the M3 note in ROADMAP makes the same argument for storage).
+//! Sans-IO on purpose: the PWA speaks WebSocket through the browser's own
+//! API, from the frontend (DECISIONS 0043), the native hosts through
+//! `tokio-tungstenite`, and everything the two would otherwise duplicate —
+//! sealing, opening, cursor discipline, the epoch reset — lives here as
+//! plain synchronous calls on bytes. The transport adapters stay so thin
+//! they are written next to their event loops rather than behind a trait
+//! invented before its second user (the M3 note in ROADMAP makes the same
+//! argument for storage).
 //!
 //! The caller owns the replica. This type never sees `App` or `Document`;
 //! it turns wire bytes into "merge this plaintext" and local deltas into

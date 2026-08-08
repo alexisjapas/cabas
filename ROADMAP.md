@@ -81,11 +81,14 @@ protocol and the sans-IO client `Session`; `cabas-relay` is a real axum
 process persisting sealed frames per family; and
 `crates/relay/tests/convergence.rs` shows two replicas that are never online
 together converging through it, sealed end to end. What remains is wiring the
-PWA: the `ws_stream_wasm` adapter around `Session`, sync on foreground with a
-live socket while active (DECISIONS 0011), the pairing screens (QR + typed
-phrase, 0021), the users-and-devices screen with the revocation warning 0024
-requires, the event-log screen, and the cursor persisted next to the
-identity. The "Where M5 stands" note in the M5 section below has the detail.
+PWA, and the transport question it opens with is answered: the socket is the
+frontend's, the browser's own WebSocket driving the session across the wasm
+boundary (DECISIONS 0043). So: the session binding and its TypeScript engine,
+sync on foreground with a live socket while active (0011), the pairing screens
+(QR + typed phrase, 0021), the users-and-devices screen with the revocation
+warning 0024 requires, the event-log screen, and the phrase, relay URL, cursor
+and shadow version persisted next to the identity. The "Where M5 stands" note
+in the M5 section below has the detail.
 
 Putting a later build on the phone again is two commands, since the certificate
 is installed and trusted once and for all:
@@ -437,17 +440,30 @@ device-pushed snapshot truncates the log, and the 12-word phrase is the one
 canonical secret — key and family id both derive from its BIP39 seed.
 `cabas_sync::Session` is the sans-IO client core both transports will
 share; the convergence test drives it over `tokio-tungstenite` exactly the
-way `session.svelte.ts` will drive it over `ws_stream_wasm`.
+way the frontend will drive it over the browser's own WebSocket.
 
-What remains is the PWA half, and it is UI work end to end: the wasm
-transport adapter and the foreground sync loop (connect on open and on
-`visibilitychange`, hold the socket while active — DECISIONS 0011), the
-pairing screens (generate/display the phrase and its QR, join by scanning
-or typing, and only then mint the local identity), the device-and-users
-screen with the revocation warning 0024 requires, the event-log view-model
-and screen, and persisting the session cursor and shadow version alongside
-the identity. Then the exit check happens where M4's did: on two real
-devices.
+**Where the socket lives is now settled** (DECISIONS 0043): on the PWA it is
+the frontend's, a small TypeScript engine next to `session.svelte.ts` using
+the browser's WebSocket, with the wasm binding exposing the session — hello,
+handle, delta, snapshot — and bytes crossing as `Uint8Array`. Plaintext never
+crosses the boundary: a frame that opens is merged inside the core, and JS
+receives the same whole `StateView` every other mutation pushes. That puts
+reconnection, backoff and the foreground rule in the file that already owns
+`visibilitychange` and `pagehide`, and keeps timers and `spawn_local` out of
+the wasm module. `ws_stream_wasm` has left the dependency plan.
+
+What remains is the PWA half, and it is UI work end to end: the wasm session
+binding and the TypeScript transport around it, the foreground sync loop
+(connect on open and on `visibilitychange`, hold the socket while active —
+DECISIONS 0011), the pairing screens (generate/display the phrase and its QR,
+join by scanning or typing, and only then mint the local identity), the
+device-and-users screen with the revocation warning 0024 requires, the
+event-log view-model and screen, and persisting the phrase, the relay URL,
+the session cursor and the shadow version alongside the identity in
+`localStorage` (0031). The relay URL defaults to the app's own origin, since
+M6 serves the PWA and the socket from one (0012); development needs the
+Settings override, because `ui-serve` and the relay are two processes there.
+Then the exit check happens where M4's did: on two real devices.
 
 ## M6 — Deployment
 

@@ -114,9 +114,11 @@ bip39 = "2"
 # The payloads are ciphertext, so a self-describing format would describe
 # nothing (DECISIONS 0042).
 postcard = { version = "1", default-features = false, features = ["use-std"] }
+# The native transport, and the socket the convergence test drives. There is
+# no wasm counterpart to pin: `Session` is sans-IO, and on the PWA the
+# WebSocket is the browser's own, owned by the frontend (DECISIONS 0043).
 futures = "0.3"
 tokio-tungstenite = "0.24"
-ws_stream_wasm = "0.7"
 
 # --- M5/M6 · relay ---
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

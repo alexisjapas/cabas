@@ -52,6 +52,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0040](#0040--the-keyboard-is-a-length-not-a-mode) | The keyboard is a length, not a mode | Stack |
 | [0041](#0041--the-phone-installs-from-a-local-certificate-authority) | The phone installs from a local certificate authority | Tooling |
 | [0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) | The relay keeps a sequenced log it cannot read | Sync |
+| [0043](#0043--the-pwas-websocket-lives-in-the-frontend) | The PWA's WebSocket lives in the frontend | Sync |
 
 ---
 
@@ -1352,3 +1353,49 @@ race it loses is exactly the live case that matters in the shop).
 never requires trust, 0009). **Sealing the version vector and letting devices
 negotiate pairwise** (turns every sync into a round trip between devices that
 are by hypothesis never online together).
+
+---
+
+## 0043 — The PWA's WebSocket lives in the frontend
+
+**Date** 2026-08-09 · **Status** Accepted · **Implements**
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) · **Relates to**
+[0011](#0011--no-background-sync-no-push-in-v1),
+[0031](#0031--the-devices-identity-comes-from-the-host) · **Supersedes** the
+`ws_stream_wasm` line of the M5 dependency plan
+
+**Context.** The Rust half of M5 ended with a sans-IO client
+(`cabas_sync::Session`): sealing, cursor discipline and the epoch reset as
+plain calls on bytes, transport deliberately left to whoever owns an event
+loop. The PWA needs that transport now, and the boundary doc's original plan
+— `ws_stream_wasm` inside the crate — predates the sans-IO shape.
+
+**Decision.** On the PWA, **the WebSocket is the frontend's**: the browser's
+own API, owned by a small TypeScript engine next to `session.svelte.ts`. The
+wasm binding exposes the session — hello, handle, delta, snapshot — with
+bytes crossing as `Uint8Array`. **Plaintext never crosses the boundary**: a
+frame that opens is merged inside the core, and what JS receives is the same
+whole `StateView` every other mutation pushes (Rule 9's shape, unchanged).
+
+The phrase, the relay URL, the cursor and the shadow version persist in
+`localStorage` next to the identity (0031) — the device is the trust
+boundary and it holds the full replica anyway. The relay URL defaults to the
+app's own origin, because M6 serves the PWA and the sync socket from one
+origin (0012); a Settings override exists for development, where the bundle
+is served by `ui-serve` and the relay is a separate process.
+
+**Consequences.** Reconnection, backoff and the foreground rule live where
+`visibilitychange` and `pagehide` are already handled — 0011 is a
+DOM-lifecycle policy and now sits in the file that owns the DOM lifecycle.
+The wasm module stays free of timers and `spawn_local` machinery. The native
+hosts (M7/M8) drive the same `Session` with `tokio-tungstenite` in Rust: two
+thin adapters, one client, which is what 0042 built the session for.
+`ws_stream_wasm` leaves the dependency plan.
+
+**Rejected.** **The socket inside the wasm module** (`ws_stream_wasm` + a
+`spawn_local` loop): duplicates scheduling and visibility handling the
+frontend already owns, for no isolation gain — the UI renders the data, so
+"plaintext hidden from JS" was never a property on this side of the relay.
+**A worker-owned socket** (SharedWorker/ServiceWorker): background sync is
+explicitly out (0011), and worker lifetimes on iOS are the exact time sink
+that decision exists to avoid.

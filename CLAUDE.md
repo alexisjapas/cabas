@@ -30,9 +30,10 @@ built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
-the device. What remains of M5 is the PWA half: the `ws_stream_wasm` adapter,
-sync on foreground, the pairing/users/event-log screens, the cursor persisted
-next to the identity. See ROADMAP "Next action".
+the device. What remains of M5 is the PWA half: the wasm session binding and
+the frontend's own WebSocket engine around it (DECISIONS 0043), sync on
+foreground, the pairing/users/event-log screens, the cursor persisted next to
+the identity. See ROADMAP "Next action".
 
 ## Environment and commands
 
