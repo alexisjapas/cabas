@@ -109,8 +109,38 @@ jobs:
           # cache key would make each job evict the other's artifacts.
           key: wasm-storage
 
-      - name: wasm-bindgen-test
+      # TEMPORARY — diagnostics only, to be removed with this branch.
+      #
+      # This job has failed on every run since M2 introduced it, always with
+      # `Error: http status: 404` and never with a reason. The same command
+      # passes locally every time, on the same chromedriver and the same
+      # chromium (151.0.7922.75 both sides), so the difference is the runner
+      # and nothing in the tree. These three steps ask the runner directly.
+
+      # 1. Can the browser start here at all? If this fails, nothing about
+      #    webdriver matters and the answer is in its output.
+      - name: can chromium start on this runner
+        run: |
+          nix develop .#wasm-test --command chromium \
+            --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --dump-dom about:blank | head -5
+          echo "exit: $?"
+
+      # 2. The failing run, with both sides talking. `RUST_LOG=debug` prints
+      #    every webdriver request, so the 404 gets a path instead of being
+      #    anonymous; `CHROMEDRIVER_ARGS` is read by wasm-bindgen's driver
+      #    discovery and is how chromedriver is asked to explain itself.
+      - name: wasm-bindgen-test (verbose)
+        env:
+          RUST_LOG: debug
+          CHROMEDRIVER_ARGS: "--verbose --log-path=/tmp/chromedriver.log"
         run: nix develop .#wasm-test --command wasm-test --locked
+
+      # 3. chromedriver's own account, which is where a browser that starts and
+      #    then dies says why. Runs even when step 2 fails — especially then.
+      - name: chromedriver log
+        if: always()
+        run: tail -c 100000 /tmp/chromedriver.log || echo "no chromedriver log"
 
   # The PWA: that it type-checks against the generated bindings, that it
   # builds, and that it actually works in a browser.
