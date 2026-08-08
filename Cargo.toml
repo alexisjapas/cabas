@@ -89,6 +89,11 @@ wasm-bindgen-test = "0.3"
 
 # --- M3 · app (wasm + native surfaces) ---
 serde-wasm-bindgen = "0.6"
+# Generates the frontend's TypeScript types from the Rust ones (Rule 9: the
+# types are generated, never hand-written). Optional, behind `cabas-app`'s
+# `typescript` feature, so nothing of it reaches the shipped wasm: it exists
+# to run `cargo test --features typescript` and write `.ts` files.
+ts-rs = "12"
 # Needs the web backend feature on wasm32, otherwise key generation fails to
 # link. Required by the M5 crypto.
 getrandom = "0.3"

@@ -296,6 +296,30 @@ impl Document {
         Ok(())
     }
 
+    /// Replaces an entry in place, keeping its position in the list.
+    ///
+    /// Rewrites the whole value rather than one field, which is what the
+    /// schema already implies for a list entry: it is a plain value map, so
+    /// two concurrent edits of the same entry resolve last-writer-wins
+    /// (DECISIONS 0029). That is the right trade here — the edit is "serve 6
+    /// instead of 4", and there is no half of it worth merging — but it is
+    /// also why this is `set` and not a re-`push`: re-adding would move the
+    /// entry to the end of the list, and changing a serving count must not
+    /// reorder the shopping list under the other person's thumb.
+    ///
+    /// An entry that is no longer there is not an error: the other device may
+    /// have removed it, and the domain reports rather than prevents that
+    /// (DECISIONS 0022).
+    pub fn update_list_entry(&self, entry: &ListEntry) -> Result<()> {
+        let list = self.doc.get_movable_list(schema::root::LIST);
+        for index in self.list_positions(&list, &entry.id)? {
+            list.set(index, mapping::list_entry_value(entry))
+                .map_err(crdt)?;
+        }
+        self.doc.commit();
+        Ok(())
+    }
+
     pub fn remove_list_entry(&self, id: &ListEntryId) -> Result<()> {
         let list = self.doc.get_movable_list(schema::root::LIST);
         // Back to front, so each removal leaves the earlier indices valid.

@@ -1,3 +1,18 @@
+# Where `ts-rs` writes the frontend's types, and how it spells the wide
+# integer ones.
+#
+# `bigint` is its default for `i64`/`u64`/`usize`, and it would be wrong here:
+# `serde-wasm-bindgen` hands those to JS as plain numbers unless told
+# otherwise, so a declaration promising `bigint` would typecheck against
+# values that are not. Timestamps in milliseconds and counts of shopping list
+# lines are nowhere near the 2^53 where that distinction starts to matter.
+#
+# Only read when `cabas-app` is built with its `typescript` feature; every
+# other build ignores both.
+[env]
+TS_RS_EXPORT_DIR = { value = "ui/src/lib/bindings", relative = true }
+TS_RS_LARGE_INT = "number"
+
 # A wasm module cannot be executed by `cargo test` on its own — it needs a
 # host. `wasm-bindgen-test-runner` is that host: it drives a headless browser
 # through chromedriver and reports back in cargo's format.
@@ -11,3 +26,12 @@
 # browser. Everyday builds never see it.
 [target.wasm32-unknown-unknown]
 runner = "wasm-bindgen-test-runner"
+
+# `getrandom` has no default source of randomness on `wasm32-unknown-unknown`:
+# the target has no OS, so the crate refuses to guess and asks to be told that
+# a browser (`crypto.getRandomValues`) is what it will run in. Both halves are
+# required — this cfg *and* the `wasm_js` feature on the dependency — and
+# neither alone is enough. Missing them is not a soft failure: the wasm build
+# stops with a `compile_error!`, which is the good case, and M5's key
+# generation would be the bad one.
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

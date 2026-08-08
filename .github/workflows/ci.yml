@@ -54,6 +54,21 @@ jobs:
       - name: tests
         run: nix develop --command cargo nextest run --locked --workspace
 
+      # Rule 9 — the frontend's types are generated from the Rust ones, never
+      # hand-written. Regenerating them must be a no-op: a diff here means the
+      # command or view surface moved and the committed `.ts` files did not,
+      # which the frontend would discover as a type error at M4 or, worse, not
+      # at all.
+      - name: typescript bindings are up to date
+        run: |
+          nix develop --command cargo test --locked -p cabas-app \
+            --features typescript export_bindings
+          # Staged, then compared: a plain `git diff` would miss a *new* type,
+          # whose file is untracked and therefore invisible to it — and a new
+          # type is exactly the case where the frontend has not been told.
+          git add --all ui/src/lib/bindings
+          git diff --cached --exit-code ui/src/lib/bindings
+
       # Rule 8 — domain, store, sync and app must build for wasm32 at all
       # times. A regression here surfaces as a blank page on an iPhone, which
       # is the worst possible place to find it.
@@ -65,17 +80,20 @@ jobs:
       - name: wasm-bindgen version match
         run: nix develop --command check-wasm-bindgen
 
-  # The IndexedDB backend, in a real browser. A separate job because it needs
-  # a separate shell: chromium is a large download that the everyday gates
-  # have no use for (DECISIONS 0013), and keeping it here means a browser
-  # failure reads as a browser failure instead of poisoning `fmt`.
+  # The two claims only a browser can settle: that a snapshot survives
+  # IndexedDB, and that the app layer *runs* on wasm32 — a missing `getrandom`
+  # web backend or a clock that panics are invisible natively and fatal on a
+  # phone.
+  #
+  # A separate job because it needs a separate shell: chromium is a large
+  # download that the everyday gates have no use for (DECISIONS 0013), and
+  # keeping it here means a browser failure reads as a browser failure instead
+  # of poisoning `fmt`.
   #
   # This is the only thing in CI that *executes* wasm. `wasm-check` proves the
-  # shared crates compile for wasm32, which is a different claim: IndexedDB
-  # does not exist outside a browser, so nothing short of running one shows
-  # that a snapshot actually survives being stored.
+  # shared crates compile for wasm32, which is a strictly weaker claim.
   wasm-storage:
-    name: IndexedDB in headless chromium
+    name: wasm in headless chromium
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

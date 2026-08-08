@@ -12,5 +12,45 @@ description = "UI-agnostic command and view-model layer — the single API surfa
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+cabas-domain.workspace = true
+cabas-store.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+# Wall clock. `std::time::SystemTime::now()` panics on wasm32; this is the
+# drop-in that makes one `Platform` implementation serve both targets (Rule 8).
+web-time.workspace = true
+# Identifiers only — the key material of M5 is `sync`'s business. On wasm this
+# needs both the `wasm_js` feature below and the `getrandom_backend` cfg set in
+# `.cargo/config.toml`; miss either and the wasm build stops at a link error.
+getrandom.workspace = true
+# Only ever enabled by the `typescript` feature below.
+ts-rs = { workspace = true, optional = true }
+
+[features]
+# Generates `ui/src/lib/bindings/*.ts` from the command and view types, as a
+# test (`cargo test --features typescript export_bindings`). Off by default
+# and never enabled for a shipped build: the frontend consumes the generated
+# files, not the generator.
+typescript = ["dep:ts-rs"]
+
+# The PWA's edge of the world: commands arrive as JS objects and view-models
+# leave as JS objects. Native hosts (Tauri, tests) never compile a line of it.
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
 
 [dev-dependencies]
+
+# The scenario test runs on both targets (ROADMAP M3): natively under nextest,
+# and in headless chromium, which is where a wasm-only failure — a missing
+# `getrandom` backend, a clock that panics — actually shows up.
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test.workspace = true
+# The browser test drives `CabasApp` the way JS does, so it needs to build a
+# command as a JS object, read a state back out of one, and look at a raw
+# property to check that an absent value is `null` rather than `undefined`.
+js-sys.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true

@@ -50,7 +50,7 @@
           cli="$(wasm-bindgen --version | ${pkgs.gawk}/bin/awk '{print $2}')"
           crate="$(${pkgs.gnugrep}/bin/grep -oP '^wasm-bindgen\s*=\s*"=?\K[0-9.]+' Cargo.toml || true)"
           if [ -z "$crate" ]; then
-            echo "check-wasm-bindgen: no wasm-bindgen entry in [workspace.dependencies] yet (pre-M3) — skipping declaration check"
+            echo "check-wasm-bindgen: no wasm-bindgen entry in [workspace.dependencies] — skipping the declaration check"
           elif [ "$cli" != "$crate" ]; then
             echo "check-wasm-bindgen: MISMATCH — CLI $cli vs Cargo.toml $crate" >&2
             echo "Align [workspace.dependencies].wasm-bindgen onto the CLI version." >&2
@@ -79,10 +79,17 @@
             --target wasm32-unknown-unknown "$@"
         '';
 
-        # The IndexedDB backend, in a real browser — the only place it exists.
-        # Scoped to that one test target on purpose: the rest of the suite is
-        # platform-free and already runs natively, and building it for wasm
-        # would only slow the job down to re-prove what `wasm-check` proves.
+        # The two things that only a browser can answer, in a real browser.
+        #
+        # `store`'s IndexedDB backend, because IndexedDB exists nowhere else;
+        # and `app`'s scenario, because a missing `getrandom` web backend or a
+        # clock that panics on wasm32 are invisible natively and fatal on a
+        # phone — a blank page with nothing in the console.
+        #
+        # Scoped to those two test targets on purpose: the rest of the suite
+        # is platform-free and already runs natively in milliseconds, and
+        # building it for wasm would only slow the job down to re-prove what
+        # `wasm-check` proves in seconds.
         wasmTest = pkgs.writeShellScriptBin "wasm-test" ''
           set -euo pipefail
           export CHROMEDRIVER="${pkgs.chromedriver}/bin/chromedriver"
@@ -90,8 +97,10 @@
           # a runner with some other chrome installed cannot change what is
           # being tested.
           export CHROME_PATH="${pkgs.chromium}/bin/chromium"
-          exec cargo test -p cabas-store \
+          cargo test -p cabas-store \
             --target wasm32-unknown-unknown --test indexeddb "$@"
+          cargo test -p cabas-app \
+            --target wasm32-unknown-unknown --test scenario "$@"
         '';
 
         # Everything the Rust core and the PWA need. Deliberately *not*
