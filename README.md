@@ -14,15 +14,19 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M2 complete, nothing on screen yet. `crates/domain` holds the
+**Status**: M3 complete, nothing on screen yet. `crates/domain` holds the
 whole product logic as pure, tested functions — units and exact conversions,
 recipe scaling, the sub-recipe DAG, cart aggregation and check-state
 derivation. `crates/store` persists it: a Loro document, snapshots with
 history compaction, and a `Storage` trait over a file (native) and IndexedDB
 (the PWA). Two replicas that edited while apart converge, including through a
-relay they never used at the same time. 109 tests green. M3 (the app surface)
-is next; resuming work starts at the "Resuming work" section of the
-[ROADMAP](ROADMAP.md).
+relay they never used at the same time. `crates/app` turns that into the
+surface a frontend can use: thirteen commands in, one complete view-model
+out, with the TypeScript types generated from the Rust ones. A scripted
+shopping trip — build a library, cook for six instead of four, tick things
+off, finish, restart — passes natively **and** in a headless browser. 121
+tests green plus 3 in chromium. M4 (the PWA) is next; resuming work starts at
+the "Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -46,12 +50,20 @@ browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):
 
 ```sh
-nix develop .#wasm-test -c wasm-test      # IndexedDB, in headless chromium
+nix develop .#wasm-test -c wasm-test      # store + app, in headless chromium
 nix develop .#android                     # SDK/NDK — M7 only
 ```
 
 `wasm-test` is the only thing that *runs* wasm; `wasm-check` proves the
 shared crates compile for it, which is a weaker and much faster claim.
+
+The frontend's types are generated from the Rust ones and committed, and CI
+fails if they are stale
+([0036](docs/DECISIONS.md#0036--typescript-types-are-generated-behind-a-feature)):
+
+```sh
+cargo test -p cabas-app --features typescript export_bindings
+```
 
 Nothing is needed for iOS: it ships as a PWA, which is also what makes the
 project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-ships-as-a-pwa)).
@@ -80,7 +92,7 @@ project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-sh
 | `crates/sync` | E2EE, pairing, WebSocket transport | the only crate with cryptography |
 | `crates/app` | Commands and view-models | must build for wasm32 **and** native |
 | `crates/relay` | Sync broker + PWA host (HA add-on) | never sees plaintext |
-| `ui/` | Svelte frontend | holds no business state |
+| `ui/` | Svelte frontend, and the generated types it is written against | holds no business state; owns every word, no number |
 
 Four ideas carry the design, each with its rationale recorded:
 

@@ -8,12 +8,13 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M0, M1 and M2 complete, CI green on `main`.
+**Current state**: M0 through M3 complete, CI green on `main`.
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way mapping, snapshots,
-compaction and the `Storage` trait over file + IndexedDB (33 native tests, 5
-in a real browser). **M3 (the app surface) is next.** `sync`, `app` and
-`relay` are still boundary docs only.
+compaction and the `Storage` trait over file + IndexedDB; `crates/app` holds
+the command set, the view-models and the wasm binding. 121 native tests plus
+3 in a real browser. **M4 (the PWA) is next** — `ui/` holds nothing but the
+generated TypeScript types. `sync` and `relay` are still boundary docs only.
 
 ## Environment and commands
 
@@ -26,14 +27,21 @@ nix develop -c cargo clippy --workspace --all-targets -- -D warnings
 nix develop -c cargo fmt --all
 nix develop -c wasm-check                     # Rule 8: the 4 shared crates on wasm32
 nix develop -c check-wasm-bindgen             # Rule 13: CLI/crate version match
-nix develop .#wasm-test -c wasm-test          # IndexedDB, in headless chromium
+nix develop .#wasm-test -c wasm-test          # store + app, in headless chromium
 nix develop .#android                         # Android SDK/NDK shell (M7 only)
+
+nix develop -c cargo test -p cabas-app --features typescript export_bindings
 ```
 
 `wasm-check` proves the shared crates *compile* for wasm32; `wasm-test` is
-the only thing that *runs* wasm, and it is scoped to the one test target that
-needs a browser (DECISIONS 0030). Chromium lives in its own shell for the
-same reason the Android SDK does.
+the only thing that *runs* wasm, and it is scoped to the two test targets
+that need a browser — `store`'s IndexedDB and `app`'s scenario (DECISIONS
+0030). Chromium lives in its own shell for the same reason the Android SDK
+does.
+
+The last command regenerates `ui/src/lib/bindings/*.ts` from the Rust types.
+It is not part of the everyday loop, but **CI fails if its output is stale**,
+so run it after touching anything in `command.rs`, `view.rs` or `tags.rs`.
 
 CI runs all of these **inside the flake** — deliberately, because Rule 13
 makes nixpkgs authoritative for the `wasm-bindgen-cli` version, and a CI with
@@ -88,8 +96,8 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | `crates/app` | Commands + view-models — the only surface the UI touches |
 | `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
 
-`crates/domain` is the only one with code (M1). Its modules, bottom-up — each
-depends only on the ones above it:
+`domain`, `store` and `app` hold code; `sync` and `relay` are boundary docs.
+`crates/domain`'s modules, bottom-up — each depends only on the ones above it:
 
 | Module | Holds |
 |---|---|
@@ -119,6 +127,26 @@ one file and a compatibility surface (DECISIONS 0029):
 | `document` | `Document`: lifecycle, reads, writes, snapshots, sync bytes |
 | `storage` | `Storage` trait; `MemoryStorage`, `FileStorage` (native), `IndexedDbStorage` (wasm) |
 | `error` | `StoreError` — carries strings, never a `LoroError` (Rule 2) |
+
+`crates/app` (M3) — read `view.rs` first, it is the screen list; then
+`tests/scenario.rs`, which is the whole vertical through the public surface:
+
+| Module | Holds |
+|---|---|
+| `command` | `Command` and the input types — intents, coarse-grained (Rule 9) |
+| `view` | `StateView` and everything under it — pushed whole, every time |
+| `app` | `App`: `open`, `apply` (sync), `persist` (async), the sync seam |
+| `project` | Library → views; triages the list so a derivation cannot fail |
+| `library` | The whole document, read into plain domain values |
+| `number` | Text ⇄ exact rational, and the two renderings (pretty, lossless) |
+| `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
+| `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` |
+| `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
+
+The shape to keep in mind: **`apply` is synchronous and returns the whole new
+state; `persist` writes.** A render never waits on storage, and the borrow is
+released before anything is awaited — which is what keeps a second tap from
+panicking at the wasm boundary (DECISIONS 0032).
 
 Key domain shapes, all settled in DECISIONS:
 
@@ -204,6 +232,24 @@ Key domain shapes, all settled in DECISIONS:
   that currently agrees with CLI 0.2.121: `js-sys` and `web-sys` 0.3.98,
   `wasm-bindgen-futures` 0.4.71, `wasm-bindgen-test` 0.3.71.
 - **`#[test]` does not run on wasm32** — browser cases need
-  `#[wasm_bindgen_test]`. That is why `wasm-test` targets only
-  `--test indexeddb`, and why `tests/persistence.rs` and
-  `tests/document_size.rs` are `cfg`-gated to native.
+  `#[wasm_bindgen_test]`. That is why `wasm-test` names its test targets one
+  by one, and why `tests/persistence.rs` and `tests/document_size.rs` are
+  `cfg`-gated to native. `crates/app/tests/scenario.rs` is the pattern for a
+  file that runs on both: one `async fn` body, two thin wrappers.
+- **`getrandom` on wasm32 needs two opt-ins, not one** — the `wasm_js`
+  feature *and* `--cfg getrandom_backend="wasm_js"` (in `.cargo/config.toml`).
+  Either alone is a `compile_error!`.
+- **`serde-wasm-bindgen` serialises `None` as `undefined`**, while the
+  generated TypeScript says `| null`. `wasm::to_js` configures
+  `serialize_missing_as_null`; use it rather than `to_value`, or the UI ends
+  up testing for a value that never arrives.
+- **Never hold a `RefCell` borrow of the app across an `await`.** An exported
+  async method keeps its borrow for as long as its promise is pending, so the
+  second tap panics. `CabasApp::flush` shows the shape: take the snapshot in
+  a statement that ends, *then* await the write.
+- **An edit form must render with `number::render_lossless`, not `render`.**
+  `render` rounds when a value has no tidy form, and a form that displays a
+  rounded amount writes it back on the next save.
+- **The `.ts` files under `ui/src/lib/bindings/` are generated and CI
+  checks them.** Touching `command.rs`, `view.rs` or `tags.rs` means
+  rerunning the export command above.

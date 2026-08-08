@@ -40,6 +40,12 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0028](#0028--finishing-a-trip-prunes-the-overlay-selectively) | Finishing a trip prunes the overlay selectively | Product |
 | [0029](#0029--how-the-document-encodes-domain-values) | How the document encodes domain values | Storage |
 | [0030](#0030--indexeddb-is-tested-in-a-real-browser) | IndexedDB is tested in a real browser | Tooling |
+| [0031](#0031--the-devices-identity-comes-from-the-host) | The device's identity comes from the host | Architecture |
+| [0032](#0032--applying-a-command-and-saving-are-two-steps) | Applying a command and saving are two steps | Architecture |
+| [0033](#0033--one-state-pushed-whole-rebuilt-from-the-document) | One state, pushed whole, rebuilt from the document | Architecture |
+| [0034](#0034--a-broken-reference-is-a-warning-not-an-empty-screen) | A broken reference is a warning, not an empty screen | Product |
+| [0035](#0035--the-app-owns-every-number-the-frontend-owns-every-word) | The app owns every number; the frontend owns every word | Architecture |
+| [0036](#0036--typescript-types-are-generated-behind-a-feature) | TypeScript types are generated, behind a feature | Tooling |
 
 ---
 
@@ -740,3 +746,230 @@ What this buys, concretely: the browser job is what showed the whole vertical
 works — a Loro document, snapshotted, stored in IndexedDB, read back, with
 its exact rationals intact. That is the claim M4 has to be able to assume,
 and now it does not have to assume it.
+
+---
+
+## 0031 — The device's identity comes from the host
+
+**Date** 2026-08-08 · **Status** Accepted · **Extends**
+[0024](#0024--attribution-is-declarative-not-cryptographic)
+
+**Context.** Every write carries an author: a list entry has `added_by`, a
+checked line has `checked_by`, the event log has `by`. So `app` needs to know
+which user and which device it is running as, and that answer has to survive
+a restart — a replica that mints a fresh identity on every launch would fill
+the roster with ghosts and attribute each trip to a different stranger.
+
+The family document is the wrong place to keep it. It holds the `User` and
+`Device` *records*, which are shared, but "which of these am I" is a fact
+about one device, and the document is the one thing that is identical on all
+of them.
+
+**Decision.** [`Identity`] is a parameter of `App::open`, minted once by
+`Identity::mint` and persisted by the **host**: `localStorage` in the PWA, a
+config file under Tauri. On open, `app` writes the matching `User` and
+`Device` into the document if they are not already there, and never
+overwrites them.
+
+**Consequences.** The one piece of state the frontend legitimately holds is
+four opaque strings it does not read, which is as close to Rule 9 as this can
+get: the alternative is a second storage seam in `Storage` for device-local
+data, on a trait whose entire virtue is that it stores one blob.
+
+"Never overwrites" is load-bearing in the other direction too. The name in
+the document wins over the one the host passes in, because the other device
+may have renamed the person since this one last launched — and a launch is
+not a rename.
+
+`Identity::mint` needs randomness, which is what puts `getrandom` in this
+crate a milestone before the crypto needs it. That is a benefit: the wasm
+backend it requires is configured and *proven by a browser test* now, rather
+than discovered at M5 as a link error.
+
+**Rejected.** **Deriving the identity from the Loro peer id** — it is Loro's
+internal business, 0024 keeps attribution out of it, and it is not stable
+across a reinstall either. **Minting inside `app` on first run and storing it
+in the document** — every device would then read every other device's
+"self", and the first merge would have to pick one.
+
+---
+
+## 0032 — Applying a command and saving are two steps
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee)
+
+**Context.** `Storage` is async, because IndexedDB has no blocking form
+(0030). The obvious `async fn dispatch(command) -> State` would therefore
+make every user action await a browser transaction before anything renders.
+
+**Decision.** `App::apply` is **synchronous** and returns the new state;
+`App::persist` is async and writes. `App::dispatch` is the convenience that
+does both, for native hosts and tests. The PWA binding exposes the two halves
+separately, and the frontend renders on `apply` and lets `flush` resolve
+whenever it does.
+
+**Consequences.** Rule 6 says no user action waits on the network; this is
+the same argument one layer down, and it matters for the same reason — a tick
+in a shop happens on a five-year-old phone with a cold IndexedDB.
+
+It also removes a trap that would otherwise sit exactly where nobody is
+watching for it. An exported async method holds its borrow of the app for as
+long as its promise is pending, so an `apply` that awaited its own save would
+panic on the second tap of an impatient thumb. With the mutation synchronous,
+the borrow is released before anything is awaited.
+
+The cost is that a save can be forgotten. It is bounded: `pending_snapshot`
+reports the revision it hands out and `mark_saved` only clears up to that
+revision, so a command applied while a write is in flight stays pending
+rather than being counted as saved. What is *not* bounded is a host that
+never calls `flush` at all — which is why the native `dispatch` exists and
+why the browser test asserts that the second `flush` writes nothing.
+
+**Rejected.** **Saving inside `apply` and returning a promise** — see the
+borrow above. **A background write loop** — a timer the UI cannot see is a
+worse contract than a promise it can ignore.
+
+---
+
+## 0033 — One state, pushed whole, rebuilt from the document
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0004](#0004--svelte-5-as-the-frontend-framework)
+
+**Context.** Rule 9 says the frontend renders view-models and holds no
+business state. That leaves two questions: how much state travels per change,
+and where it is computed from.
+
+**Decision.** Every state change returns a **complete** `StateView` — cart,
+list, library, the open recipe, and whatever could not be made sense of. It
+is rebuilt by reading the whole document into plain domain values and
+deriving from that, on every command.
+
+**Consequences.** The screen cannot show two things that disagree, because it
+only ever received one thing. There is no getter surface to grow, no
+invalidation to get wrong, and no incremental update path that can drift from
+the document.
+
+Affordable because M2 measured it: 200 recipes are 154 kB of CRDT and read
+back in about 10 ms natively. The wasm figure is some multiple of that and
+gets measured on the actual phone at M4 — which is also the only place it
+means anything. If it is too slow there, the fix is an incremental read
+*behind the same seam* (`Library::read`), not a redesign of the API.
+
+Two commands deliberately return a state without touching the document at
+all: opening and closing a recipe. Which recipe is open is device-local — two
+people reading different recipes is not a conflict — so it lives in `App` and
+is never persisted or synced.
+
+**Rejected.** **Deltas or patches** — the diffing would be business logic
+that has to be right on both sides of an FFI boundary, to save bytes that
+never leave the process. **A getter per screen** — three fine calls in a row
+are three chances for the UI to decide what happens between them.
+
+---
+
+## 0034 — A broken reference is a warning, not an empty screen
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0022](#0022--instruction-steps-are-segments-referencing-ingredient-usages)
+
+**Context.** `cart::derive` refuses a list that names a recipe or an
+ingredient it cannot find. That is right for a pure function and wrong for a
+screen: under a CRDT, one device deleting a recipe while the other has it on
+the list is not an error state, it is Tuesday. An `Err` reaching the frontend
+would blank the entire cart because of one row.
+
+**Decision.** `app` triages the list before deriving. An entry whose recipe
+is gone — or whose expansion hits a cycle, a depth bound or a missing yield —
+is set aside and reported as a `ProblemView`. An **ingredient** that is gone
+is replaced by a placeholder carrying its own id as a name, so its line stays
+in the cart. What is left cannot fail to derive.
+
+**Consequences.** The user sees a warning and eight ingredients rather than a
+warning and nothing, which is the difference between a shopping trip that
+works and one that does not. The two failures are handled differently on
+purpose: a missing recipe contributes nothing that could be shown, while a
+missing ingredient still has a quantity somebody has to buy.
+
+`ProblemView` carries the domain's own message as an English `detail`. That
+is a diagnostic, not UI copy — the frontend shows its own sentence per kind
+(0035) and keeps the detail for a details view.
+
+The residual `Err` from `derive` is still handled rather than unwrapped:
+"unreachable" is a claim about today's domain code, and this is a screen
+either way.
+
+---
+
+## 0035 — The app owns every number; the frontend owns every word
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0026](#0026--the-visual-identity-is-deliberately-deferred)
+
+**Context.** Rule 9 puts all business logic in `app`, and the app is
+French-only for now while everything persisted in the repo is English. Both
+cannot be true of a view-model that contains the sentence a user reads.
+
+**Decision.** A view-model carries **rendered numbers** and **machine tags**.
+`{ amount: "1 1/2", unit: "kg", approximate: false }`, never "1,5 kg". The
+frontend maps `"kg"` to its label, `"produce"` to *Rayon frais*,
+`"missing_recipe"` to a sentence. The app writes no prose a user reads.
+
+**Consequences.** Every quantity, conversion, scaling and rounding stays in
+Rust where the tests are — the frontend cannot compute an amount because it
+never receives the pieces to compute one from. And the eventual translation
+is a frontend change, not a core change, which is what makes deferring i18n
+cheap rather than expensive.
+
+The seam is not free of judgement: the decimal separator is the frontend's
+(it renders "1.3" as *1,3*), and so is the choice of "≈" for an approximate
+amount. Both are presentation. What is not presentation, and stays here, is
+*which* rendering is faithful — a quantity that had to be rounded says so,
+because the cart is still adding up the exact value underneath.
+
+One consequence worth stating plainly: an edit form is rendered by a
+different function than a screen. `render` may round; `render_lossless` never
+does, falling back to a raw `28349523125/1000000000` when the pretty form
+would lie. An editor that displayed the rounded text would write it back on
+the next save, and a quantity would quietly become 28.35 g because somebody
+fixed a typo in the title.
+
+---
+
+## 0036 — TypeScript types are generated, behind a feature
+
+**Date** 2026-08-08 · **Status** Accepted · **Implements**
+[0004](#0004--svelte-5-as-the-frontend-framework)
+
+**Context.** Rule 9 requires the frontend's types to be generated from Rust
+rather than hand-written. Two ways to do it: `tsify`, which extends the
+`wasm-bindgen` glue, or `ts-rs`, which derives an exporter and writes `.ts`
+files from a test.
+
+**Decision.** `ts-rs`, behind `cabas-app`'s optional `typescript` feature.
+`cargo test -p cabas-app --features typescript export_bindings` writes
+`ui/src/lib/bindings/*.ts`; the files are committed, and CI regenerates them
+and fails on a diff.
+
+**Consequences.** Nothing of the generator reaches the shipped wasm — the
+feature is off for every real build — and the types describe the *serde*
+shape, which is exactly what crosses the boundary, on both transports. Tauri
+(M7) gets the same declarations for free, which `tsify` would not have given:
+its output is tied to the wasm-bindgen glue that Tauri does not use.
+
+Two settings make the declarations true rather than merely plausible, both in
+`.cargo/config.toml`: `TS_RS_LARGE_INT = "number"`, because
+`serde-wasm-bindgen` hands `i64` to JS as a plain number, and — on the other
+side — the serializer is configured with `serialize_missing_as_null`, because
+the generated types say `| null` and the default is `undefined`. A
+declaration that disagrees with the runtime is worse than no declaration: it
+is a test that always passes.
+
+Committing generated files is a deliberate cost. The alternative is a
+frontend build that needs a Rust toolchain, and the drift it risks is exactly
+what the CI check removes.
+
+**Rejected.** **`tsify`** — see above. **Hand-written types** — Rule 9.
+**Generating into `ui/` at build time** — makes the frontend unbuildable
+without the whole Nix shell, for no gain over a committed file plus a check.
