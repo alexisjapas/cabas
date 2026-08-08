@@ -10,7 +10,7 @@ milestone is not started until the previous one's criterion holds.
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
 | **M0** | Scaffolding: workspace, nix flake, docs, CI | `cargo test --workspace` and `wasm-check` green inside `nix develop`, green CI | 🚧 |
-| **M1** | Domain: units, conversions, scaling, recipe DAG, cart derivation | Property tests green; a recipe list produces a correct aggregated cart, offline, in `cargo test` | ⬜ |
+| **M1** | Domain: units, conversions, scaling, recipe DAG, cart derivation | Property tests green; a recipe list produces a correct aggregated cart, offline, in `cargo test` | ✅ |
 | **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ⬜ |
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ⬜ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ⬜ |
@@ -52,8 +52,9 @@ All project knowledge lives in the repo: binding rules in
    green. Two things in the workflow are unverified until that first run —
    the `cachix/install-nix-action` version, and how long a cold
    `nix develop` takes on a runner.
-2. Start **M1** — the units and quantities module first, since every other
-   part of the domain depends on it.
+2. Start **M2** — the Loro document schema. The domain types it has to map
+   to and from are now settled and tested, so the schema has a fixed target
+   rather than a moving one.
 
 ---
 
@@ -79,20 +80,27 @@ All project knowledge lives in the repo: binding rules in
 Goal: the whole product logic, correct and tested, with nothing on screen.
 This is the dense part of the project (Rule 1).
 
-- [ ] **Units and quantities**: `Dimension` (mass / volume / count / unmeasured), unit variants carrying their locale (FR vs US tablespoon, metric vs US cup — Rule 5), exact rationals throughout (Rule 4), conversion within a dimension
-- [ ] **Cross-dimension conversion**: per-ingredient density (g/ml) and unit weight (g/piece); absent the coefficient, amounts stay on separate lines — never a guess
-- [ ] **Ingredient**: canonical entity, aliases, aisle (the cart's sort order), `staple` flag
-- [ ] **Recipe**: ingredient usages, `servings`, optional **`yield`** — without a yield a sub-recipe is not scalable (DECISIONS 0017)
-- [ ] **Instruction steps as segments**: `Text` | `IngredientRef { usage, display }`, so quantities re-render at the scaled amount; dangling refs render as a warning, never panic and never block deletion (DECISIONS 0022)
-- [ ] **Sub-recipe DAG**: expansion with cycle detection and a depth bound
-- [ ] **Scaling**: by servings or by yield, exact
-- [ ] **Cart aggregation**: group by (ingredient, dimension), sum in base units, sort by aisle; `Count` rounds up in the cart while the recipe keeps the exact value (DECISIONS 0016)
-- [ ] **Check-state derivation** (Rule 3): explicit overlay wins; default is `AutoChecked` for a staple sourced only from recipes, `ToBuy` otherwise; explicit `Unchecked` is persisted; adding an ingredient to the list purges its overlay entry
-- [ ] **List entry completion**: an entry disappears once all its ingredient contributions are checked; a recipe shows partial progress meanwhile (DECISIONS 0020)
-- [ ] Property tests (Rule 11): `scale ∘ aggregate == aggregate ∘ scale`, conversions round-trip, expansion terminates, `Unchecked` survives re-derivation
+- [x] **Units and quantities**: `Dimension` (mass / volume / count / unmeasured), unit variants carrying their locale (FR vs US tablespoon, metric vs US cup — Rule 5), exact rationals throughout (Rule 4), conversion within a dimension
+- [x] **Cross-dimension conversion**: per-ingredient density (g/ml) and unit weight (g/piece); absent the coefficient, amounts stay on separate lines — never a guess
+- [x] **Ingredient**: canonical entity, aliases, aisle (the cart's sort order), `staple` flag
+- [x] **Recipe**: ingredient usages, `servings`, optional **`yield`** — without a yield a sub-recipe is not scalable (DECISIONS 0017)
+- [x] **Instruction steps as segments**: `Text` | `IngredientRef { usage, display }`, so quantities re-render at the scaled amount; dangling refs render as a warning, never panic and never block deletion (DECISIONS 0022)
+- [x] **Sub-recipe DAG**: expansion with cycle detection and a depth bound
+- [x] **Scaling**: by servings or by yield, exact
+- [x] **Cart aggregation**: group by (ingredient, dimension), sum in base units, sort by aisle; `Count` rounds up in the cart while the recipe keeps the exact value (DECISIONS 0016)
+- [x] **Check-state derivation** (Rule 3): explicit overlay wins; default is `AutoChecked` for a staple sourced only from recipes, `ToBuy` otherwise; explicit `Unchecked` is persisted; adding an ingredient to the list purges its overlay entry
+- [x] **List entry completion**: an entry disappears once all its ingredient contributions are checked; a recipe shows partial progress meanwhile (DECISIONS 0020)
+- [x] Property tests (Rule 11): `scale ∘ aggregate == aggregate ∘ scale`, conversions round-trip, expansion terminates, `Unchecked` survives re-derivation
+- [x] `finish_shopping`, pruning the overlay selectively so a partially bought entry keeps its progress (DECISIONS 0028)
 
 **Exit**: a shopping list holding recipes, sub-recipes and bare ingredients
-produces a correct aggregated cart in `cargo test`, with no I/O.
+produces a correct aggregated cart in `cargo test`, with no I/O. ✅ —
+`crates/domain/tests/shopping_scenario.rs`, 64 tests green.
+
+One deliberate gap in the property tests: `scale ∘ aggregate ==
+aggregate ∘ scale` is asserted on mass only. Rounding a countable line up is
+not linear, so the identity genuinely does not hold there — asserting it
+would be asserting a bug.
 
 ## M2 — Store
 

@@ -7,5 +7,8 @@ repository.workspace = true
 description = "Pure domain logic: units, quantities, scaling, recipe graph, cart derivation"
 
 [dependencies]
+num-rational.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true

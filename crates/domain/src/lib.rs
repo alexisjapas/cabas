@@ -18,10 +18,44 @@
 //!   ingredient's explicit coefficient, or the quantities stay on separate
 //!   lines.
 //!
-//! Implementation lands in M1 (see ROADMAP.md); this file currently carries
-//! only the identifiers, which every later milestone already depends on.
+//! Implementation is M1 (see ROADMAP.md).
 
 #![forbid(unsafe_code)]
+
+pub mod cart;
+pub mod expand;
+pub mod ingredient;
+pub mod list;
+pub mod overlay;
+pub mod quantity;
+pub mod recipe;
+pub mod units;
+
+pub use cart::{Cart, CartError, CartLine, EntryProgress, IngredientIndex, finish_shopping};
+pub use expand::{Contribution, ExpandError, RecipeIndex, expand};
+pub use ingredient::{Aisle, Ingredient};
+pub use list::{ListEntry, ListItem, ShoppingList};
+pub use overlay::{CheckState, Explicit, Overlay};
+pub use quantity::Quantity;
+pub use recipe::{
+    Component, IngredientUsage, Recipe, RefDisplay, Segment, Step, SubRecipeAmount, SubRecipeUsage,
+};
+pub use units::{Dimension, MassUnit, Unit, VolumeUnit, convert};
+
+/// Every magnitude in the domain, exact (Rule 4).
+///
+/// `i128` rather than `i64` because the exact imperial factors have large
+/// denominators — one ounce is 28.349523125 g — and products of those
+/// overflow 64 bits during conversion.
+pub type Rational = num_rational::Ratio<i128>;
+
+/// A wall-clock instant, in milliseconds since the Unix epoch.
+///
+/// The domain never *reads* a clock (Rule 1): a timestamp is always supplied
+/// by the caller, which is what keeps every derivation here a pure function
+/// of its inputs and therefore reproducible in a test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Timestamp(pub i64);
 
 /// Stable identifiers. Opaque on purpose: they are minted once and travel
 /// through the CRDT, so their representation is a `store` concern and must
@@ -40,6 +74,12 @@ macro_rules! id_type {
 
             pub fn as_str(&self) -> &str {
                 &self.0
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(&self.0)
             }
         }
     };

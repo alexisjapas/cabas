@@ -37,6 +37,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0025](#0025--this-log-is-append-only) | This log is append-only | Process |
 | [0026](#0026--the-visual-identity-is-deliberately-deferred) | The visual identity is deliberately deferred | Product |
 | [0027](#0027--license-mit-or-apache-20) | License: MIT OR Apache-2.0 | Legal |
+| [0028](#0028--finishing-a-trip-prunes-the-overlay-selectively) | Finishing a trip prunes the overlay selectively | Product |
 
 ---
 
@@ -600,3 +601,27 @@ and the Rust ecosystem default, and compatible with Loro (MIT).
 before the first release. `LICENSE-MIT` and `LICENSE-APACHE` are in the tree
 under this assumption; changing the licence means replacing them and adding
 that superseding entry.
+
+---
+
+## 0028 — Finishing a trip prunes the overlay selectively
+
+**Date** 2026-08-08 · **Status** Accepted · **Refines** [0020](#0020--list-entries-vanish-on-completion-purge-is-deferred)
+
+**Context.** 0020 settled that "finish shopping" removes completed entries and
+clears the overlay. Implementing it in M1 exposed a case the original wording
+did not cover: the trip where you *could not* finish an entry, because the
+shop was out of one item. Clearing the overlay wholesale would reset the five
+things you did buy back to unchecked, on a recipe that stays on the list.
+
+**Decision.** Remove the completed entries, and drop an overlay entry **only
+when every list entry that asked for that ingredient is going away** — which
+is exactly when its cart line disappears too. Everything else keeps its state.
+
+**Consequences.** A partially bought recipe keeps its checks and its progress
+across the end of a trip. An ingredient shared between a finished and an
+unfinished entry keeps its check, which is the right answer: you did buy the
+flour, and the crepes still need some.
+
+The rule is computable from the cart alone — no re-derivation — because a
+cart line already records which entries asked for it.
