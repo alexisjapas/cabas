@@ -25,8 +25,14 @@ surface a frontend can use: thirteen commands in, one complete view-model
 out, with the TypeScript types generated from the Rust ones. A scripted
 shopping trip — build a library, cook for six instead of four, tick things
 off, finish, restart — passes natively **and** in a headless browser. 121
-tests green plus 3 in chromium. M4 (the PWA) is next; resuming work starts at
-the "Resuming work" section of the [ROADMAP](ROADMAP.md).
+tests green plus 3 in chromium.
+
+**M4 is in progress**: `ui/` is a working Svelte 5 app — it mints an identity,
+builds a library, derives the cart and survives a cold restart, all driven end
+to end in a real browser by `ui-test`. Still to come before it is the thing on
+a phone: the recipe view and editor, and the service worker that makes it
+installable and openable with no signal. Resuming work starts at the
+"Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
