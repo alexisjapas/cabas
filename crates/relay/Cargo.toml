@@ -7,5 +7,26 @@ repository.workspace = true
 description = "Zero-knowledge sync relay and PWA host — ships as a Home Assistant OS add-on"
 
 [dependencies]
+# Protocol types and the family id — never a key: what the relay cannot
+# name it cannot misuse (Rule 7).
+cabas-sync.workspace = true
+axum = { workspace = true, features = ["ws"] }
+tokio = { workspace = true, features = ["net", "sync"] }
+# The log's on-disk record format, same codec as the wire (DECISIONS 0042).
+postcard.workspace = true
+serde.workspace = true
+# Mints a family log's epoch — the number that tells devices their cursor
+# survived, or did not.
+getrandom.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# The convergence test drives two real replicas through a real socket —
+# M5's exit criterion lives in tests/convergence.rs.
+cabas-app.workspace = true
+cabas-store.workspace = true
+cabas-domain.workspace = true
+tokio-tungstenite.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["net", "sync", "time"] }

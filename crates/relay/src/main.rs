@@ -1,24 +1,44 @@
-//! Zero-knowledge relay, and host of the PWA.
+//! The relay process: bind, serve, and log just enough to be debugged.
 //!
-//! Runs on the RPi4 as a Home Assistant OS add-on. It does two things from a
-//! single origin: serve the static PWA bundle (embedded in this binary at
-//! build time) and broker encrypted sync messages between devices.
+//! Configuration is two environment variables, because the Home Assistant
+//! add-on frame (M6) passes configuration that way and a flag parser would
+//! be a dependency spent on nothing:
 //!
-//! # Boundaries (CONSTITUTION Rules 6, 7)
-//!
-//! - **It cannot read anything.** Payloads arrive sealed and are stored
-//!   sealed. It holds no key.
-//! - **It is stateful, and that is the point.** A pure broadcast relay would
-//!   never reconcile two devices that are never online at the same time — the
-//!   normal case for a phone in a shop and a laptop at home. It persists the
-//!   encrypted snapshot and the deltas.
-//! - **`/data` is the durable volume.** Home Assistant's own backups cover
-//!   it, which makes the relay the recovery point if every device is lost.
-//!
-//! Implementation lands in M5, packaging in M6 (see ROADMAP.md).
+//! - `CABAS_RELAY_DATA` — where the sealed logs live. Defaults to `/data`,
+//!   the add-on's durable volume, covered by HA's own backups.
+//! - `CABAS_RELAY_ADDR` — listen address, default `0.0.0.0:8787`; the
+//!   Cloudflare Tunnel (DECISIONS 0012) terminates in front of this.
 
-#![forbid(unsafe_code)]
+use std::path::PathBuf;
 
-fn main() {
-    eprintln!("cabas-relay: not implemented yet (M5) — see ROADMAP.md");
+use cabas_relay::{Relay, router};
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt().with_target(false).init();
+
+    let data =
+        PathBuf::from(std::env::var("CABAS_RELAY_DATA").unwrap_or_else(|_| "/data".to_string()));
+    let addr = std::env::var("CABAS_RELAY_ADDR").unwrap_or_else(|_| "0.0.0.0:8787".to_string());
+
+    let relay = match Relay::open(data.clone()) {
+        Ok(relay) => relay,
+        Err(e) => {
+            tracing::error!(error = %e, path = %data.display(), "data directory unusable");
+            std::process::exit(1);
+        }
+    };
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            tracing::error!(error = %e, addr, "cannot bind");
+            std::process::exit(1);
+        }
+    };
+
+    tracing::info!(addr, data = %data.display(), "cabas-relay up");
+    if let Err(e) = axum::serve(listener, router(relay)).await {
+        tracing::error!(error = %e, "server stopped");
+        std::process::exit(1);
+    }
 }
