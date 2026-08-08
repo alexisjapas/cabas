@@ -25,7 +25,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0013](#0013--nix-flake-with-a-separate-android-shell) | Nix flake with a separate Android shell | Tooling |
 | [0014](#0014--quantities-are-exact-rationals) | Quantities are exact rationals | Domain |
 | [0015](#0015--no-cross-dimension-conversion-without-an-explicit-coefficient) | No cross-dimension conversion without an explicit coefficient | Domain |
-| [0016](#0016--unit-locale-variants-and-count-rounds-up-in-the-cart) | Unit locale variants; count rounds up in the cart | Domain |
+| [0016](#0016--unit-locale-variants-count-rounds-up-in-the-cart) | Unit locale variants; count rounds up in the cart | Domain |
 | [0017](#0017--recipes-carry-servings-and-an-optional-yield) | Recipes carry servings and an optional yield | Domain |
 | [0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items) | Scope cuts: no pantry, a single list, no ad-hoc cart items | Product |
 | [0019](#0019--the-cart-is-derived-the-overlay-stores-only-explicit-actions) | The cart is derived; the overlay stores only explicit actions | Architecture |
