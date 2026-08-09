@@ -10,10 +10,12 @@ made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 **Current state**: **M0 through M5 complete** — the exit criterion was met on
 an iPhone and a Pixel 8, which pair with twelve words and converge both while
-both are open and while neither is ever open with the other. **Next is M6**:
-the Home Assistant add-on, the arm64 image, backups and the Cloudflare Tunnel —
-because everything works today only on one wifi, behind a hand-installed
-certificate authority, with the relay in a terminal.
+both are open and while neither is ever open with the other. **M6 is under
+way**: the Svelte bundle is now compiled into `cabas-relay` by its build
+script, so one binary serves the app and `/sync` on one origin (DECISIONS
+0048). Still to do: the Home Assistant add-on, the arm64 image, backups and the
+Cloudflare Tunnel — because everything works today only on one wifi, behind a
+hand-installed certificate authority, with the relay in a terminal.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -22,7 +24,8 @@ IndexedDB; `crates/app` holds the command set, the view-models and the wasm
 binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
-axum broker persisting sealed frames per family. 163 native tests plus 10 in
+axum broker persisting sealed frames per family **and serving the PWA out of
+its own binary**. 172 native tests plus 10 in
 a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
@@ -183,6 +186,12 @@ family's persisted sealed log — append, replay, snapshot-truncate, torn-tail
 recovery, the minted `epoch` — and `server.rs` is the axum WebSocket side:
 replay under the same lock as the subscription, then live forwarding. It
 depends on `cabas-sync` for the protocol types and never for a key.
+`assets.rs` is the static half — the PWA, served from the same origin as
+`/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
+0048). It shares nothing with the sync side but the port. **A missing
+`ui/dist` embeds nothing and is not an error**, which is what keeps `cargo
+clippy --workspace` working in a fresh checkout; the release image sets
+`CABAS_EMBED_UI=required` so an image with no app in it fails on the runner.
 
 `crates/domain`'s modules, bottom-up — each depends only on the ones above it:
 
@@ -268,7 +277,7 @@ file:
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
 | `tools/render-icons.mjs` | SVG → the committed PNGs, over CDP. Not part of any loop |
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
-| `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against a real relay `ui-test` starts on 8788 |
+| `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
 
 `screens/Settings.svelte` is three views behind one tab — itself, the roster
 and the log — and
@@ -430,12 +439,19 @@ Key domain shapes, all settled in DECISIONS:
 - **`ui/pnpm-workspace.yaml` is committed on purpose.** pnpm writes it when
   the machine has a global minimum-release-age policy and a pinned dependency
   is newer than it; deleting the file just makes the next install recreate it.
-- **`ui-test` refuses to start if 4173 or 9222 is already bound**, and that is
+- **`ui-test` refuses to start if 8788 or 9222 is already bound**, and that is
   the point: attaching to a browser some earlier run left behind means
   reporting on a page this run never opened. If it says so, `pkill -f
-  'remote-debugging-port=9222'` and check `ss -lptn 'sport = :4173'`. The
+  'remote-debugging-port=9222'` and check `ss -lptn 'sport = :8788'`. The
   script itself no longer leaks — `exec`ing the harness would have replaced
-  the shell and skipped its own cleanup trap.
+  the shell and skipped its own cleanup trap. It waits on `/` and not
+  `/healthz`, because a relay built with no bundle answers the second and
+  would leave the suite to fail one screen at a time.
+- **The relay's copy of the app is compiled in, so a running one cannot see a
+  new `pnpm build`.** `build.rs` declares `rerun-if-changed` on `ui/dist`, so
+  the *rebuild* is automatic — but the process already running is not, and
+  neither is a container image. `ui-serve` reads from disk and behaves the
+  opposite way, which is exactly the confusion to expect: restart the relay.
 - **A step can only reference an *ingredient* line.** `Recipe::usage` searches
   `Component::Ingredient` and nothing else, so a segment naming a sub-recipe
   usage renders as `Missing` — not an error, just permanently a warning. The
@@ -460,12 +476,15 @@ Key domain shapes, all settled in DECISIONS:
   the form, not the first select in it; `querySelectorAll(...)[n]` is what you
   meant. Both traps are already handled in `ui/tests/smoke.mjs`.
 - **`Vary` makes the precache miss its own entries.** A server answering
-  `Vary: Origin` (Vite's preview does) makes the Cache API match on the
+  `Vary: Origin` (Vite's preview does; the relay deliberately does not) makes
+  the Cache API match on the
   request's `Origin` header too. The worker precaches with requests that carry
   none; the page then asks for its JS and CSS *with* one, because Vite marks
   both tags `crossorigin`. Every asset cached, every lookup a miss — and
   online it is invisible, because the miss falls through to a network that
-  answers. `sw.js` reads through `lookup()`, which passes `ignoreVary: true`.
+  answers. `sw.js` reads through `lookup()`, which passes `ignoreVary: true`,
+  and `assets.rs` has a test that nothing it serves ever varies — a tunnel or
+  a future proxy can still put one back, which is why both ends hold.
 - **The precache list is injected by replacing a token in the built worker**,
   and rolldown's minifier rewrites string literals to backticks. The pattern in
   `vite.config.ts` accepts all three quotes and **the build fails if it matches

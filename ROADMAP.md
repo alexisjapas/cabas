@@ -22,7 +22,7 @@ buys a false belief instead of no belief.
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
-| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | ⬜ |
+| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
@@ -74,15 +74,26 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next action: M6, deployment.** M5 is closed, on two phones: an iPhone and
-a Pixel 8 pair with twelve words, converge while both are open and while
-neither ever meets the other, and read each other's names off the roster and
-the journal. Everything the family needs now exists — and it only exists on one
-wifi, behind a certificate authority installed by hand, with the relay running
-in a terminal on a laptop. M6 is what turns that into something that survives
-the laptop being closed: the Home Assistant add-on, an arm64 image built by CI,
-`/data` covered by HA's own backups, and the Cloudflare Tunnel onto an owned
-domain.
+**M6 has started, and its first piece is in: the relay serves the app.** The
+Svelte bundle is compiled into `cabas-relay` by a build script — no dependency,
+and a missing `ui/dist` embeds nothing rather than breaking a fresh checkout's
+`cargo clippy` (DECISIONS 0048). One binary now answers both the page and
+`/sync` on one origin, which is what 0012 requires and what the add-on image
+will be. `ui-test` runs against it rather than against `pnpm preview`, so the
+end-to-end suite is also the proof that the shipped artifact has an app in it.
+
+**Next action: the add-on itself** — the repo layout, `config.yaml` and
+`build.yaml`, then the arm64 image built by CI and pushed to ghcr.io with
+`CABAS_EMBED_UI=required` set, so an image with no bundle fails on the runner
+and not on the Pi. After that: `/data` under HA's backups, the abandoned-log
+decision, the Cloudflare Tunnel, and the restore drill.
+
+M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
+converge while both are open and while neither ever meets the other, and read
+each other's names off the roster and the journal. Everything the family needs
+exists — and it still only exists on one wifi, behind a certificate authority
+installed by hand, with the relay running in a terminal on a laptop. M6 is what
+turns that into something that survives the laptop being closed.
 
 Two things carried out of M5 that belong to M6's first hour. **The origin is
 permanent** (DECISIONS 0012) — the day the tunnel's domain serves the app is
@@ -491,8 +502,15 @@ closed could not reach a relay at all.
 
 ## M6 — Deployment
 
+- [x] **The relay serves the PWA from its own binary.** `crates/relay/build.rs`
+      compiles `ui/dist` in — no dependency, and a missing bundle is an empty
+      table rather than a broken `cargo clippy` in a fresh checkout (DECISIONS
+      0048). `assets.rs` holds the three rules that matter: `assets/*`
+      immutable and everything else revalidating, no `Vary` ever, and a 404
+      for an unknown path. `ui-test` now runs against it instead of `pnpm
+      preview`, on one origin, which is the topology that ships
 - [ ] Home Assistant OS add-on: repo layout, `config.yaml`, `build.yaml`
-- [ ] CI builds the arm64 image (Svelte bundle embedded into the binary via `rust-embed`) and pushes to ghcr.io; the add-on references the prebuilt image rather than building on the Pi
+- [ ] CI builds the arm64 image and pushes to ghcr.io; the add-on references the prebuilt image rather than building on the Pi. The image build passes `CABAS_EMBED_UI=required`, so a bundle that was never built fails there instead of on the Pi
 - [ ] Data in `/data` so HA's own backups cover it — the recovery point if all devices are lost
 - [ ] Decide what happens to an **abandoned family log**. Rotating the phrase (M5's answer to a lost device) moves everyone to a new family id and leaves the old log on disk, sealed and orphaned: nothing prunes it, and the relay cannot tell an abandoned family from a quiet one. A hand-run command is probably enough; the point is that it is a decision and not an oversight
 - [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)

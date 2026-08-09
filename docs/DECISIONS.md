@@ -57,6 +57,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0045](#0045--a-cursor-is-not-resumed-on-a-replica-that-never-had-it) | A cursor is not resumed on a replica that never had it | Sync |
 | [0046](#0046--a-u64-crosses-the-wasm-boundary-as-text) | A `u64` crosses the wasm boundary as text | Architecture |
 | [0047](#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours) | The QR is shown, never scanned, and the encoder is ours | Product |
+| [0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script) | The bundle is compiled into the relay, by a build script | Deployment |
 
 ---
 
@@ -1624,3 +1625,95 @@ against arithmetic that is fully specified and now pinned by a test.
 scanning work today with no decoder at all, and it would write the family key
 into browser history, the camera app's log, and whatever the tap passes it
 through. The phrase is the key (0042); it goes on a screen, not in a URL.
+
+---
+
+## 0048 — The bundle is compiled into the relay, by a build script
+
+**Date** 2026-08-09 · **Status** Accepted · **Implements**
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on) · **Relates to**
+[0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0038](#0038--the-service-worker-is-written-by-hand),
+[0044](#0044--in-development-the-sync-socket-goes-through-ui-serve)
+
+**Context.** 0010 said the relay serves the PWA as well as brokering sync, and
+0012 said why it has to be the same host: an installed PWA *is* its origin, so
+the app and the socket it talks to cannot live at two addresses without one of
+them being the app's identity and the other a permanent CORS problem. M6 is
+where that stops being a sentence and becomes an image on a Raspberry Pi.
+
+Two ways to put the bundle in the image. Copy `ui/dist` into the container next
+to the binary and read it from disk, or compile it in. The first needs a path
+that is right in the container and in a `cargo run` on a laptop, and it makes
+the add-on two artifacts that can disagree about which build they are. The
+second makes `cabas-relay` one file that either works or does not.
+
+`rust-embed` is the usual way to do the second, and the workspace registry
+planned for it since M0. It does not fit: its derive macro reads the folder at
+compile time, and `ui/dist` is a gitignored build product. A fresh checkout —
+CI's own `gates` job included — would fail `cargo clippy --workspace` until
+someone had run `pnpm build`, which makes the Rust gates depend on the
+frontend's toolchain for no reason any of them can see.
+
+**Decision.** `crates/relay/build.rs` walks `ui/dist` and writes a table of
+`include_bytes!` into `OUT_DIR`; `assets.rs` includes it and serves it. No
+dependency.
+
+**A missing bundle is an empty table, not an error.** `cargo clippy
+--workspace` works in a fresh checkout, and the binary it produces is a sync
+broker that serves no app — which is exactly what development wants, because
+development serves the app from `ui-serve` over TLS (0041) and proxies `/sync`
+to a relay in a terminal (0044). The process says how many files it embedded on
+its first line, because "the app does not load" and "this build has no app in
+it" are one symptom from a phone.
+
+The release image passes `CABAS_EMBED_UI=required`, and then a missing
+`index.html` fails the build. An image with no app in it is the one case where
+quiet is unacceptable, and it is invisible until a phone asks for the page.
+
+Three serving rules come with it, and each is a bug already paid for elsewhere
+in this repo:
+
+- **`assets/*` is immutable for a year; everything else is `no-cache`.** Vite
+  content-hashes what it compiles. `index.html`, `sw.js`, the manifest and the
+  icons have stable names — and `sw.js` above all, since the browser decides
+  there is a new build by fetching that one file and comparing its bytes
+  (0038). A cached service worker is an app that can never update.
+- **No `Vary`, ever.** `Vary: Origin` makes the Cache API match on the
+  request's `Origin` header; the worker precaches with requests that carry
+  none, and the page asks for its `crossorigin` JS and CSS with one. Every
+  asset cached, every lookup a miss — invisible online, a blank page offline.
+  The worker already defends itself with `ignoreVary`; the server it was
+  written against should not need it to.
+- **An unknown path is a 404, not the page.** Which screen is open is core
+  state and never a URL (0037), so there is no route to fall back for, and
+  answering `index.html` to a mistyped asset name turns a missing file into a
+  page that loads and does nothing.
+
+**Consequences.** `ui-test` now runs against the relay instead of `pnpm
+preview`, on one origin, which is the production topology and one process
+fewer. That makes the end-to-end suite the proof that the shipped artifact
+serves an app at all — previously nothing would have noticed an empty bundle
+until the Pi was flashed. It also removes the preview server's `Vary: Origin`,
+which was the reason the worker needed `ignoreVary` in the first place; the
+worker keeps it, because a tunnel or a future proxy may put it back.
+
+Rebuilding the relay after `pnpm build` is not optional, and is not a step
+anyone has to remember: `build.rs` declares `rerun-if-changed` on `ui/dist`, so
+Cargo rebuilds the binary when the bundle changes. The cost is that a frontend
+change relinks the relay, which is a second on a laptop.
+
+The binary carries ~2.9 MB of bundle, source maps included. Excluding the maps
+would save 0.9 MB and invent a second definition of "the bundle"; on a
+Raspberry Pi it buys nothing, and it costs a debuggable production app.
+
+**Rejected.** **`rust-embed`** — the compile-time folder requirement above,
+paid for with a dependency, to generate the same `include_bytes!` table.
+**`tower-http`'s `ServeDir`** — reads from disk, which is the two-artifact
+problem, and the caching policy would still have been written by hand.
+**Serving the bundle from Cloudflare and only `/sync` from the Pi** — two
+origins, and 0012 says why that is the one thing that cannot be changed later.
+**Precompressing with gzip or brotli at build time** — a compression
+dependency for a LAN, when the tunnel already compresses everything that
+crosses the internet; worth revisiting if the wasm ever ships uncompressed to
+4G and feels it.

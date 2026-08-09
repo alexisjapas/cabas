@@ -64,10 +64,16 @@ both while both are open and while neither is ever open with the other. The
 same PWA runs on both, so M7's Android app is a better wrapper rather than a
 requirement.
 
-**Next is M6.** All of this lives on one wifi today, behind a certificate
+**M6 is under way.** All of this lives on one wifi today, behind a certificate
 authority installed by hand, with the relay in a terminal — deployment is what
-makes it survive the laptop being closed. Resuming work starts at the "Resuming
-work" section of the [ROADMAP](ROADMAP.md).
+makes it survive the laptop being closed. The first piece is in: the Svelte
+bundle is compiled into `cabas-relay` by a build script, so one binary answers
+both the page and `/sync` on one origin
+([0048](docs/DECISIONS.md#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)),
+which is the shape the Home Assistant add-on image needs and the shape
+[0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain) requires.
+Next is the add-on itself. Resuming work starts at the "Resuming work" section
+of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -273,10 +279,18 @@ nix develop .#android                     # SDK/NDK — M7 only
 shared crates compile for it, which is a weaker and much faster claim.
 `ui-test` drives the built PWA over the DevTools protocol: mint an identity,
 build a library, derive the cart, tick a line, reload from IndexedDB, and open
-the whole thing again with the network switched off. It then starts **a real
-relay** on 8788 and syncs against it — the app pushes its library, loses its
-replica, and gets everything back from the relay alone, with nothing in the
-relay's log readable as text.
+the whole thing again with the network switched off. It syncs too — the app
+pushes its library, loses its replica, gets everything back from the relay
+alone, and a second device joins by typing the twelve words, with nothing in
+the relay's log readable as text.
+
+It runs all of that against **a real relay on 8788, with the bundle compiled
+into it** — the app and the socket on one origin, exactly as in production
+([0048](docs/DECISIONS.md#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)).
+So the suite is also what proves the shipped artifact serves an app at all;
+nothing else would notice an empty bundle before the Pi was flashed. That is
+why it builds the relay after the frontend, and why there is no preview server
+in it.
 
 The home-screen icons are committed PNGs, because iOS reads `apple-touch-icon`
 as a bitmap. They are rasterised from the SVG beside them, in the same shell
