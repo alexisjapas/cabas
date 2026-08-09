@@ -461,9 +461,12 @@ device-and-users screen with the revocation warning 0024 requires, the
 event-log view-model and screen, and persisting the phrase, the relay URL,
 the session cursor and the shadow version alongside the identity in
 `localStorage` (0031). The relay URL defaults to the app's own origin, since
-M6 serves the PWA and the socket from one (0012); development needs the
-Settings override, because `ui-serve` and the relay are two processes there.
-Then the exit check happens where M4's did: on two real devices.
+M6 serves the PWA and the socket from one (0012) — and development now has
+that same single origin too: `ui-serve` proxies `/sync` to the relay, because
+the installed PWA is served over TLS and a page in a secure context may not
+open a `ws:` (DECISIONS 0044). The Settings override stays, for pointing a
+device at some other relay. Then the exit check happens where M4's did: on two
+real devices.
 
 ## M6 — Deployment
 

@@ -13,7 +13,8 @@
  *
  * Two servers, on purpose:
  *
- *   - **HTTPS** serves `ui/dist`. This is the origin the phone installs.
+ *   - **HTTPS** serves `ui/dist`, and proxies `/sync` to the relay (DECISIONS
+ *     0044). This is the origin the phone installs.
  *   - **HTTP** serves the CA certificate and nothing else, because the phone
  *     cannot fetch it over the HTTPS it does not trust yet — Safari's
  *     certificate interstitial has no "download anyway".
@@ -25,6 +26,7 @@
 
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { connect } from 'node:net';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 
@@ -36,6 +38,20 @@ if (dist === undefined || certs === undefined || httpsPort === undefined || http
 
 const root = resolve(dist);
 const ca = join(certs, 'ca.crt');
+
+/**
+ * Where the relay listens, as `host:port`. Matches `CABAS_RELAY_ADDR`'s
+ * default on the relay side; override with `CABAS_RELAY` to reach one
+ * somewhere else on the network.
+ *
+ * Parsed through `URL` for the one case a split on `:` gets wrong — an IPv6
+ * literal — whose brackets belong to the URL syntax and not to the address
+ * `connect` wants.
+ */
+const authority = process.env.CABAS_RELAY ?? '127.0.0.1:8787';
+const relay = new URL(`tcp://${authority}`);
+const relayHost = relay.hostname.replace(/^\[|\]$/g, '');
+const relayPort = Number(relay.port === '' ? 8787 : relay.port);
 
 /**
  * What a browser is told each file is.
@@ -127,6 +143,99 @@ async function serve(request, response) {
     // at M6.
   });
   response.end(request.method === 'HEAD' ? undefined : body);
+}
+
+/**
+ * The sync socket, handed to the relay (DECISIONS 0044).
+ *
+ * A page served over `https:` may not open a `ws:` — the browser blocks it as
+ * mixed content — and the relay terminates no TLS, because in production the
+ * Cloudflare Tunnel does that in front of it (0012). Without this, the one
+ * configuration M5 has to be proven in, an installed PWA on a phone, is the one
+ * configuration that cannot reach a development relay. Proxying here also keeps
+ * the two sides on **one origin**, which is what production looks like, so the
+ * relay URL defaulting to the app's own origin (0043) is exercised rather than
+ * first attempted at M6.
+ *
+ * This speaks no WebSocket. It forwards the handshake verbatim and copies bytes
+ * in both directions afterwards, so there is no frame parser to get wrong, no
+ * dependency to add, and nothing here that could read the payload if it were
+ * not already sealed (Rule 7).
+ */
+https.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '/', 'https://cabas.invalid');
+  if (url.pathname !== '/sync') {
+    socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
+    return;
+  }
+
+  // A foreground session holds this open for as long as the app is on screen
+  // (DECISIONS 0011), idle between edits. Neither half may time it out, and
+  // small frames should not wait on Nagle.
+  socket.setNoDelay(true);
+  socket.setTimeout(0);
+
+  const upstream = connect(relayPort, relayHost);
+  upstream.setNoDelay(true);
+  upstream.setTimeout(0);
+
+  let piping = false;
+  upstream.on('connect', () => {
+    upstream.write(handshake(request));
+    // Bytes the parser read past the headers. Empty in practice — a client
+    // waits for `101` before framing anything — but dropping them would be a
+    // corruption that only appears under load.
+    if (head.length > 0) upstream.write(head);
+    socket.pipe(upstream);
+    upstream.pipe(socket);
+    piping = true;
+  });
+
+  upstream.on('error', (error) => {
+    // Once frames are flowing, an HTTP response written into this socket
+    // reaches the client as garbage inside a WebSocket. Dropping the
+    // connection is both correct and what the frontend already handles: a
+    // relay restarted mid-session is an ordinary event here.
+    if (piping) {
+      socket.destroy();
+      return;
+    }
+    // Before the handshake there is still an HTTP conversation to answer, and
+    // this is the failure by a wide margin — with a phone in hand — so it says
+    // what to start rather than which errno came back.
+    console.error(`\n  /sync → ${authority}: ${error.message}`);
+    console.error('  the relay does not seem to be running:');
+    console.error('    CABAS_RELAY_DATA=.relay cargo run -p cabas-relay\n');
+    socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+  });
+
+  // `pipe` forwards the end of a stream but not the death of one, and half a
+  // proxied socket is worse than none: the app would hold a connection whose
+  // other end is gone instead of reconnecting.
+  socket.on('error', () => upstream.destroy());
+  socket.on('close', () => upstream.destroy());
+  upstream.on('close', () => socket.destroy());
+});
+
+/**
+ * The client's upgrade request, rebuilt on the wire.
+ *
+ * `rawHeaders` keeps what arrived, in order and in case, which matters because
+ * these headers are a handshake: `Sec-WebSocket-Key` is answered with a hash of
+ * itself. Only `Host` is rewritten — the relay routes on the path and would not
+ * notice, but a proxy that tells an upstream it is someone else is a debugging
+ * session waiting to happen.
+ *
+ * @param {import('node:http').IncomingMessage} request
+ * @returns {string}
+ */
+function handshake(request) {
+  const lines = [`${request.method} ${request.url} HTTP/1.1`];
+  const raw = request.rawHeaders;
+  for (let i = 0; i < raw.length; i += 2) {
+    lines.push(raw[i].toLowerCase() === 'host' ? `Host: ${authority}` : `${raw[i]}: ${raw[i + 1]}`);
+  }
+  return `${lines.join('\r\n')}\r\n\r\n`;
 }
 
 /**
@@ -227,4 +336,6 @@ console.log('\n  the certificate  ← open this on the phone first');
 for (const host of list) console.log(`                   http://${host}:${httpPort}/`);
 console.log('\n  the app          ← once the certificate is installed *and* trusted');
 for (const host of list) console.log(`                   https://${host}:${httpsPort}/`);
+console.log(`\n  the sync socket  ← /sync on that same origin, proxied to ${authority}`);
+console.log('                   CABAS_RELAY moves it elsewhere');
 console.log('\n  ctrl-c to stop\n');

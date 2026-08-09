@@ -71,7 +71,9 @@ context, so the LAN address `pnpm dev` prints can display the app and never
 install it. It mints a local CA once into `ui/.certs/` (gitignored), signs a
 certificate for `<hostname>.local` and the LAN IP, serves `ui/dist` on 8443 and
 hands the CA out over plain HTTP on 8080 — the phone cannot fetch it over the
-HTTPS it does not trust yet (DECISIONS 0041).
+HTTPS it does not trust yet (DECISIONS 0041). It also proxies `/sync` on the
+same origin to the relay (`CABAS_RELAY`, default `127.0.0.1:8787`), which is
+how a phone reaches a development relay at all (DECISIONS 0044).
 
 `pnpm check` runs **two** TypeScript programs: `svelte-check` over the app, and
 `tsc -p tsconfig.sw.json` over `src/sw.js` alone. A service worker's globals
@@ -483,6 +485,13 @@ Key domain shapes, all settled in DECISIONS:
   installable — no worker, no precache, and airplane mode is a blank page. That
   is what `ui-serve` exists for (DECISIONS 0041), and it is why nothing about
   M4's remaining item can be rehearsed over `http://192.168.…`.
+- **A secure context cannot open a `ws:`**, so the TLS that makes the app
+  installable is also what stops it reaching a relay listening in plaintext —
+  and the relay terminates no TLS, because in production the tunnel does. It is
+  invisible until a phone is in hand: `ui-test` runs over `http://localhost`,
+  where `ws:` is same-scheme. `ui-serve` proxies `/sync` for that reason
+  (DECISIONS 0044), which also keeps development on the single origin
+  production has.
 - **`<hostname>.local` does not resolve just because avahi is running.** NixOS
   enables it as a resolver and leaves `publish.enable` off, so the host never
   announces its own name; `avahi-resolve -n $(uname -n).local` times out locally,

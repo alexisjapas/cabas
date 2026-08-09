@@ -139,6 +139,28 @@ The CA's private key is a trust anchor on every phone that installed it. It is
 generated per machine into `ui/.certs/` (gitignored), never travels, and the
 profile is worth removing from the phone once M6's permanent origin exists.
 
+### Reaching a development relay from the phone
+
+`ui-serve` also proxies `/sync` on that same origin to the relay, by default at
+`127.0.0.1:8787` and elsewhere with `CABAS_RELAY`
+([0044](docs/DECISIONS.md#0044--in-development-the-sync-socket-goes-through-ui-serve)):
+
+```sh
+CABAS_RELAY_DATA=.relay cargo run -p cabas-relay    # in another shell
+ui-serve                                            # /sync now reaches it
+```
+
+The proxy is not a convenience. A page served over `https:` may not open a
+`ws:` — the browser blocks it as mixed content — and the relay terminates no
+TLS, because in production the tunnel does that in front of it (0012). Without
+this the phone, which is the only place M5 can be closed, could not reach a
+relay at all. It also keeps development on **one origin**, as production will
+be, so the app's default relay URL is the one being exercised.
+
+The relay's own port therefore stays on the loopback and needs no firewall
+rule; the phone only ever talks to 8443. If the relay is down, the socket is
+refused with a `502` and `ui-serve` prints the command that starts it.
+
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):

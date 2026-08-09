@@ -53,6 +53,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0041](#0041--the-phone-installs-from-a-local-certificate-authority) | The phone installs from a local certificate authority | Tooling |
 | [0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) | The relay keeps a sequenced log it cannot read | Sync |
 | [0043](#0043--the-pwas-websocket-lives-in-the-frontend) | The PWA's WebSocket lives in the frontend | Sync |
+| [0044](#0044--in-development-the-sync-socket-goes-through-ui-serve) | In development the sync socket goes through `ui-serve` | Tooling |
 
 ---
 
@@ -1399,3 +1400,70 @@ frontend already owns, for no isolation gain — the UI renders the data, so
 **A worker-owned socket** (SharedWorker/ServiceWorker): background sync is
 explicitly out (0011), and worker lifetimes on iOS are the exact time sink
 that decision exists to avoid.
+
+---
+
+## 0044 — In development the sync socket goes through `ui-serve`
+
+**Date** 2026-08-09 · **Status** Accepted · **Implements**
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend) · **Relates to**
+[0041](#0041--the-phone-installs-from-a-local-certificate-authority),
+[0012](#0012--cloudflare-tunnel-on-an-owned-domain)
+
+**Context.** 0043 puts the WebSocket in the frontend, which subjects it to the
+browser's rules about origins — and M5's exit criterion is two *real* devices,
+so the page opening that socket is the installed PWA. An installed PWA needs a
+secure context, a secure context on this LAN means `ui-serve`'s TLS (0041), and
+**a page served over `https:` may not open a `ws:`** — the browser blocks it as
+mixed content. The relay, meanwhile, listens in plaintext on 8787 and terminates
+no TLS at all, deliberately: in production the Cloudflare Tunnel does that in
+front of it (0012).
+
+So the one configuration M5 has to close on is the one configuration that does
+not work, and nothing earlier says so. `ui-test` drives the app over
+`http://localhost:4173`, where `ws:` is same-scheme and passes; the desktop
+browser is the half that cannot answer the question, exactly as in 0041 and
+0040. The failure would first appear with a phone in hand.
+
+**Decision.** `ui-serve` **proxies the WebSocket upgrade on `/sync`** to the
+relay — `CABAS_RELAY`, default `127.0.0.1:8787` — by piping raw sockets. It
+parses no frame and speaks no WebSocket: the handshake headers are forwarded
+verbatim and the bytes after it are copied in both directions, so the sealed
+payload passes through something that could not read it even if it were not
+sealed (Rule 7), and the file keeps its zero dependencies.
+
+Development therefore has **one origin, which is the shape production will
+have**. The relay URL keeps defaulting to the app's own origin (0043) on both.
+
+**Consequences.** The default path is the tested path: `wss://<origin>/sync`
+is what runs in development, rather than being tried for the first time at M6.
+The Settings override becomes what it should be — an escape hatch for pointing
+a device at some other relay — instead of the ordinary way the app is
+configured.
+
+Nothing changes on the phone. The CA is installed and trusted once, and 0041
+already records that installing a root and trusting it are two screens and that
+the second is the one that gets missed; a second certificate would be a second
+occasion to miss it.
+
+The proxy is development-only and M6 removes the need for it, since the relay
+will serve the bundle and the socket from one origin. It does not become
+useless then: debugging sync on a phone against a *development* relay after M6
+— M7's parity work, any change to the protocol — needs the same path, and the
+alternative is developing against the family's live data.
+
+The native hosts are untouched by all of this. M7 and M8 drive the same
+`Session` over `tokio-tungstenite` in Rust (0043): no origin, no mixed-content
+rule, nothing to proxy.
+
+**Rejected.** **TLS in the relay** — code the production binary would never
+execute, since the tunnel terminates in front of it, carried for the benefit of
+one development machine. **A second certificate and a terminator in front of
+the relay** — the CA already installed would sign it happily, but it makes
+development a two-origin topology that production is not, which is precisely
+the thing that leaves the single-origin default unexercised. **Testing sync
+between two desktop browsers over plain HTTP and calling M5 closed** — that
+runs in `ui-test` already and says nothing about the installed app on iOS,
+which is the artifact the milestone is about. **Bringing M6's tunnel forward**
+— rejected once in 0041 for the same reason and it has not changed: it means
+shipping the deployment milestone in order to test the previous one.
