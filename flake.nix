@@ -247,7 +247,14 @@
           cleanup() {
             kill "$server" "$browser" "$relay" 2>/dev/null || true
             wait "$server" "$browser" "$relay" 2>/dev/null || true
-            rm -rf "$profile" "$relaydata"
+            # Best effort, and deliberately so. Chromium's renderer children
+            # are not ours to wait for: they outlive the process this killed by
+            # a moment and are still writing into the profile, so a plain
+            # `rm -rf` loses the race often enough to matter — on a runner it
+            # failed *after* the suite had printed `ui-test: ok`, and `set -e`
+            # inside a trap turned a passing run into a red one. Both
+            # directories come from `mktemp -d`; the machine reclaims them.
+            rm -rf "$profile" "$relaydata" 2>/dev/null || true
           }
           trap cleanup EXIT INT TERM
 
