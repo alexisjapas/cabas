@@ -64,16 +64,18 @@ both while both are open and while neither is ever open with the other. The
 same PWA runs on both, so M7's Android app is a better wrapper rather than a
 requirement.
 
-**M6 is under way.** All of this lives on one wifi today, behind a certificate
-authority installed by hand, with the relay in a terminal — deployment is what
-makes it survive the laptop being closed. The first piece is in: the Svelte
-bundle is compiled into `cabas-relay` by a build script, so one binary answers
-both the page and `/sync` on one origin
+**M6 is under way, and the artifact exists.** All of this lives on one wifi
+today, behind a certificate authority installed by hand, with the relay in a
+terminal — deployment is what makes it survive the laptop being closed. The
+Svelte bundle is compiled into `cabas-relay` by a build script, so one binary
+answers both the page and `/sync` on one origin
 ([0048](docs/DECISIONS.md#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)),
-which is the shape the Home Assistant add-on image needs and the shape
-[0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain) requires.
-Next is the add-on itself. Resuming work starts at the "Resuming work" section
-of the [ROADMAP](ROADMAP.md).
+which is the shape [0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)
+requires; that binary is cross-compiled to static musl and published by CI as a
+Home Assistant add-on image, and this repository is the add-on repository
+([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
+Next is running it on the Pi, then the tunnel. Resuming work starts at the
+"Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -264,6 +266,35 @@ the socket is up.
 That is M5. What it deliberately does not cover is reaching the relay from
 outside the wifi — that is M6's tunnel, which also retires the local CA on both
 phones.
+
+### Installing the add-on
+
+The relay ships as a Home Assistant add-on, and **this repository is the add-on
+repository**: in Home Assistant, Settings → Add-ons → Add-on store → ⋮ →
+Repositories, add `https://github.com/alexisjapas/cabas`, then install **cabas**
+and start it. `cabas-relay/DOCS.md` is the page shown beside it.
+
+There is nothing to configure. The relay takes a data directory and a listen
+address; inside an add-on the only correct answers are `/data` — the volume
+Home Assistant's own backups cover, which is what makes this the recovery point
+if every phone is lost — and `0.0.0.0:8787`, and both are already the defaults
+([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
+The log's first line says how many files it is serving; `0` means an image with
+no app in it.
+
+The image is never built on the Pi. CI cross-compiles the relay to static musl
+for `aarch64` and `amd64`, copies the one file into a Home Assistant base image
+and pushes `ghcr.io/alexisjapas/cabas-{arch}`. Locally that first half is one
+command, and it refuses to run without a bundle to embed:
+
+```sh
+build-relay aarch64            # → cabas-relay/cabas-relay.bin, static, 4 MB
+check-addon                    # the manifest against the workspace version
+```
+
+A pull request publishes nothing, `main` publishes the `-dev` version — so the
+add-on is installable from this repository today — and a release is an
+annotated `vX.Y.Z` tag whose name must match `cabas-relay/config.yaml`.
 
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never

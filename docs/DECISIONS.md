@@ -58,6 +58,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0046](#0046--a-u64-crosses-the-wasm-boundary-as-text) | A `u64` crosses the wasm boundary as text | Architecture |
 | [0047](#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours) | The QR is shown, never scanned, and the encoder is ours | Product |
 | [0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script) | The bundle is compiled into the relay, by a build script | Deployment |
+| [0049](#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi) | The add-on is cross-compiled here, and never built on the Pi | Deployment |
 
 ---
 
@@ -1717,3 +1718,90 @@ origins, and 0012 says why that is the one thing that cannot be changed later.
 dependency for a LAN, when the tunnel already compresses everything that
 crosses the internet; worth revisiting if the wasm ever ships uncompressed to
 4G and feels it.
+
+---
+
+## 0049 — The add-on is cross-compiled here, and never built on the Pi
+
+**Date** 2026-08-09 · **Status** Accepted · **Implements**
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on) · **Builds on**
+[0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script) ·
+**Relates to** [0012](#0012--cloudflare-tunnel-on-an-owned-domain)
+
+**Context.** 0010 settled the shape — a Home Assistant add-on, image built by
+CI and pulled by the Supervisor, never compiled on the Raspberry Pi. It left
+four things open, and each has one answer that is much better than the others.
+
+**Where the add-on repository lives.** In this repository. The Supervisor reads
+`repository.yaml` at a repository's root and then looks for `config.yaml` in
+each *top-level* directory; it does not recurse. So `cabas-relay/` sits beside
+`crates/` and `ui/` rather than under an `addon/` that would have read more
+tidily. The alternative was a second repository, which buys a clean root and
+costs a version number kept in step by hand across two places — for a project
+where the image and the code are cut from the same commit, that is the wrong
+trade.
+
+**How the binary is built.** Cross-compiled on the runner to
+`aarch64-unknown-linux-musl`, statically linked, then copied into the image.
+Not built inside the Dockerfile under qemu, where compiling this dependency
+tree is tens of minutes and occasionally nothing at all.
+
+It needs no C toolchain: every crate in the tree is pure Rust, so `rust-lld`
+links musl on its own. That is why the two targets are three lines in
+`rust-toolchain.toml` rather than a third devShell — a `rust-std` download,
+not a cross-gcc.
+
+The Dockerfile therefore **copies and never runs**. That is load-bearing:
+with no `RUN`, `docker buildx --platform linux/arm64` needs no emulation at
+all on an x86 runner, so CI installs no qemu. The day someone adds one, the
+build fails loudly rather than quietly taking twenty minutes.
+
+**What the image is based on.** `ghcr.io/home-assistant/{arch}-base`, pinned to
+Alpine 3.21. The binary is static and would run `FROM scratch` in about 4 MB —
+but the base carries s6, which is what puts the relay's log in the Home
+Assistant UI and makes a stop a clean one, and it carries a shell, which on an
+appliance is the only way to ever look inside. Ten megabytes for the ability to
+debug the thing at all.
+
+**What configures it.** Nothing. The relay takes a data directory and a listen
+address; inside an add-on the only correct answers are `/data` — the volume
+Home Assistant backs up, which is what makes this the recovery point if every
+phone is lost — and `0.0.0.0:8787`, the port `config.yaml` maps. Both are
+already the defaults, so `options` and `schema` are empty. An add-on with
+nothing to fill in has nothing to fill in wrong, and no schema to keep in step
+with a struct.
+
+**Consequences.** Publishing has three rules, and they exist because an image
+tag is what the Supervisor pulls, so it *is* the release (Rule 12):
+
+- a pull request builds both architectures and publishes nothing;
+- a push to `main` publishes, but only a `-dev` version — otherwise the next
+  push would silently overwrite the image a release had named;
+- an annotated `vX.Y.Z` tag publishes `X.Y.Z` and moves `latest`, and the tag
+  must match `config.yaml`'s version or the run fails.
+
+So `0.1.0-dev` is published on every push to `main` and the add-on is
+installable from this repository today, before there is any release to cut.
+
+`check-addon` gates the two disagreements that only surface on an appliance:
+`config.yaml`'s version against the workspace's, and an architecture offered in
+`config.yaml` with no base image in `build.yaml` — an add-on that appears in
+the store, installs, and fails to pull.
+
+**amd64 is built alongside aarch64** so the add-on can be installed on a
+laptop. Only the Pi has to work; the laptop is where M6's restore drill gets
+rehearsed before it is attempted on the machine that holds the only copy.
+
+The one thing none of this proves is the image itself: there is no container
+runtime in the devShell, so the Dockerfile is first executed on a runner.
+`build-relay` and `check-addon` cover everything up to it.
+
+**Rejected.** **Building the image on the Pi** — 0010's original point, and
+still right. **`home-assistant/builder`** — it wraps buildx to do the
+cross-compilation dance we no longer need, and adds implicit behaviour over a
+Dockerfile that is four lines. **`FROM scratch`** — smaller and elegant, and it
+takes away the shell on the one machine where a shell is hardest to get.
+**A single multi-arch manifest without `{arch}`** — tidier, and off the path
+every add-on document and tool assumes. **An options schema for the log level**
+— the first configurable thing is what makes the second one seem reasonable;
+Rule 14 says it starts with an entry here.

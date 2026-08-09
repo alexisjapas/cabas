@@ -56,6 +56,10 @@ pnpm -C ui dev                               # dev server, reachable from the ph
 pnpm -C ui build                             # ui/dist
 nix develop .#wasm-test -c ui-test           # the whole vertical, in a browser
 ui-serve                                     # serve ui/dist over TLS, for the phone
+
+# The add-on (M6)
+check-addon                                  # the manifest against the workspace
+build-relay aarch64                          # the static binary the image copies
 ```
 
 `build-wasm` comes before anything that type-checks the frontend: the glue it
@@ -74,19 +78,29 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**M6 has started, and its first piece is in: the relay serves the app.** The
-Svelte bundle is compiled into `cabas-relay` by a build script — no dependency,
-and a missing `ui/dist` embeds nothing rather than breaking a fresh checkout's
-`cargo clippy` (DECISIONS 0048). One binary now answers both the page and
-`/sync` on one origin, which is what 0012 requires and what the add-on image
-will be. `ui-test` runs against it rather than against `pnpm preview`, so the
-end-to-end suite is also the proof that the shipped artifact has an app in it.
+**M6 is under way, and the artifact exists.** The Svelte bundle is compiled
+into `cabas-relay` by a build script (DECISIONS 0048), so one binary answers
+both the page and `/sync` on one origin — what 0012 requires. That binary is
+now cross-compiled to static musl for aarch64 and amd64, copied into a Home
+Assistant base image, and published by CI as
+`ghcr.io/alexisjapas/cabas-{arch}`; `repository.yaml` and `cabas-relay/` make
+this repository an add-on repository you can paste into Home Assistant
+(DECISIONS 0049). `ui-test` runs against the relay rather than `pnpm preview`,
+so the end-to-end suite is also the proof that the shipped artifact has an app
+in it.
 
-**Next action: the add-on itself** — the repo layout, `config.yaml` and
-`build.yaml`, then the arm64 image built by CI and pushed to ghcr.io with
-`CABAS_EMBED_UI=required` set, so an image with no bundle fails on the runner
-and not on the Pi. After that: `/data` under HA's backups, the abandoned-log
-decision, the Cloudflare Tunnel, and the restore drill.
+**Next action: put it on the Pi.** Everything above is verified up to the
+Dockerfile and no further — there is no container runtime in the devShell, so
+the image is first built on a runner and first run on the appliance. So:
+watch the `image` job go green, add this repository under Settings → Add-ons →
+Repositories, install **cabas**, start it, and open `http://<home-assistant>:8787`
+on the LAN. The log's first line says how many files it is serving; `0` means
+an image with no app in it.
+
+After that, in order: the Cloudflare Tunnel onto the owned domain — **and that
+is the moment the origin becomes permanent**, so both phones reinstall from it
+that day and never from anything else — then the abandoned-log decision, then
+the restore drill.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -509,8 +523,24 @@ closed could not reach a relay at all.
       immutable and everything else revalidating, no `Vary` ever, and a 404
       for an unknown path. `ui-test` now runs against it instead of `pnpm
       preview`, on one origin, which is the topology that ships
-- [ ] Home Assistant OS add-on: repo layout, `config.yaml`, `build.yaml`
-- [ ] CI builds the arm64 image and pushes to ghcr.io; the add-on references the prebuilt image rather than building on the Pi. The image build passes `CABAS_EMBED_UI=required`, so a bundle that was never built fails there instead of on the Pi
+- [x] **Home Assistant OS add-on**: `repository.yaml` at the root and
+      `cabas-relay/` beside `crates/` — the Supervisor does not recurse, so it
+      cannot live under an `addon/`. `config.yaml` declares aarch64 and amd64,
+      one port, `init: false`, the `/healthz` watchdog and **no options at
+      all**: both things the relay takes have exactly one right answer inside
+      an add-on, and both are already the defaults (DECISIONS 0049)
+- [x] **CI builds both images and pushes to ghcr.io** as
+      `ghcr.io/alexisjapas/cabas-{arch}`. Cross-compiled on the runner to
+      static musl and copied in — no qemu, because the Dockerfile only copies.
+      `build-relay <arch>` is the same command locally, and it sets
+      `CABAS_EMBED_UI=required`, so a bundle that was never built fails on the
+      runner instead of on the Pi. `check-addon` gates the manifest against the
+      workspace. A pull request publishes nothing; `main` publishes `-dev`; a
+      release comes from its `vX.Y.Z` tag
+- [ ] **Install it on the Pi and open the app from it.** Everything above is
+      verified up to the Dockerfile — there is no container runtime in the
+      devShell, so the image is first executed on a runner and first *run* on
+      the appliance
 - [ ] Data in `/data` so HA's own backups cover it — the recovery point if all devices are lost
 - [ ] Decide what happens to an **abandoned family log**. Rotating the phrase (M5's answer to a lost device) moves everyone to a new family id and leaves the old log on disk, sealed and orphaned: nothing prunes it, and the relay cannot tell an abandoned family from a quiet one. A hand-run command is probably enough; the point is that it is a decision and not an oversight
 - [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)

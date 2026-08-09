@@ -11,11 +11,15 @@ made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Current state**: **M0 through M5 complete** — the exit criterion was met on
 an iPhone and a Pixel 8, which pair with twelve words and converge both while
 both are open and while neither is ever open with the other. **M6 is under
-way**: the Svelte bundle is now compiled into `cabas-relay` by its build
-script, so one binary serves the app and `/sync` on one origin (DECISIONS
-0048). Still to do: the Home Assistant add-on, the arm64 image, backups and the
-Cloudflare Tunnel — because everything works today only on one wifi, behind a
-hand-installed certificate authority, with the relay in a terminal.
+way**: the Svelte bundle is compiled into `cabas-relay` by its build script, so
+one binary serves the app and `/sync` on one origin (DECISIONS 0048), and that
+binary is cross-compiled to static musl and published by CI as a Home Assistant
+add-on image — `repository.yaml` and `cabas-relay/` make this repo an add-on
+repository (DECISIONS 0049). **Next is running it on the Pi**: everything is
+verified up to the Dockerfile and no further, because there is no container
+runtime in the devShell. Then the Cloudflare Tunnel, the abandoned-log
+decision and the restore drill — everything works today only on one wifi,
+behind a hand-installed certificate authority, with the relay in a terminal.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -62,6 +66,8 @@ nix develop -c cargo clippy --workspace --all-targets -- -D warnings
 nix develop -c cargo fmt --all
 nix develop -c wasm-check                     # Rule 8: the 4 shared crates on wasm32
 nix develop -c check-wasm-bindgen             # Rule 13: CLI/crate version match
+nix develop -c check-addon                    # M6: the add-on manifest vs the workspace
+nix develop -c build-relay aarch64            # M6: the static binary the image copies
 nix develop .#wasm-test -c wasm-test          # store + app, in headless chromium
 nix develop .#android                         # Android SDK/NDK shell (M7 only)
 
@@ -168,6 +174,7 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | `crates/sync` | E2EE, pairing, WebSocket transport |
 | `crates/app` | Commands + view-models — the only surface the UI touches |
 | `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
+| `cabas-relay/` | The add-on: manifest, base images, Dockerfile, its own docs |
 
 Every crate holds code since M5's first half. `crates/sync` — read
 `protocol.rs` first, it is the wire contract and carries the reasoning
@@ -605,3 +612,28 @@ Key domain shapes, all settled in DECISIONS:
   viewport with `Emulation.setDeviceMetricsOverride` instead. An inline `<svg>`
   also needs `display:block`, or its text baseline overflows the viewport and
   puts a scrollbar in the icon.
+- **The Supervisor does not recurse into an add-on repository.** It reads
+  `repository.yaml` at the root and then looks for `config.yaml` in each
+  *top-level* directory, which is the only reason `cabas-relay/` sits beside
+  `crates/` and `ui/` instead of under a tidier `addon/`. Moving it does not
+  break anything visibly — the add-on simply stops appearing in the store.
+- **The add-on's Dockerfile must contain no `RUN`.** It only copies a binary
+  that was cross-compiled on the runner, and that is what lets `docker buildx
+  --platform linux/arm64` work on an x86 runner with no qemu installed. A
+  single `RUN` would not fail the build; it would silently make it need
+  emulation, and CI installs none (DECISIONS 0049).
+- **`cabas-relay/config.yaml`'s `version` is the image tag the Supervisor
+  pulls**, so it has to equal the workspace version in `Cargo.toml`. Drift
+  shows up as an add-on that offers an update forever. `check-addon` compares
+  them, and also checks that every architecture in `config.yaml` has a base
+  image in `build.yaml` — the missing one installs and then fails to pull.
+- **Cross-compiling the relay by hand needs the linker named.** The musl
+  targets link through `rust-lld`, and a bare `cargo build --target
+  aarch64-unknown-linux-musl` fails at the link step looking for a cross-gcc
+  that this shell deliberately does not carry. `build-relay <arch>` sets
+  `CARGO_TARGET_*_LINKER` along with `CABAS_EMBED_UI=required`; use it.
+- **Nothing here has ever run the add-on image.** There is no container
+  runtime in the devShell, so the Dockerfile is first executed on a runner and
+  the image first run on the appliance. `build-relay` and `check-addon` cover
+  everything up to that line and nothing past it — do not describe the add-on
+  as verified.
