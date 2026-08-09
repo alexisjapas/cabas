@@ -14,8 +14,9 @@ Linux.
 - **Plan and status**: [ROADMAP.md](ROADMAP.md)
 - **Why every choice was made**: [docs/DECISIONS.md](docs/DECISIONS.md)
 
-**Status**: M0–M4 complete — the app is installed on an iPhone, opens in
-airplane mode, and its library survives a cold restart. `crates/domain` holds the
+**Status**: M0–M5 complete — two phones, an iPhone and a Pixel 8, pair with
+twelve words and converge through a relay that cannot read a byte of what it
+carries. `crates/domain` holds the
 whole product logic as pure, tested functions — units and exact conversions,
 recipe scaling, the sub-recipe DAG, cart aggregation and check-state
 derivation. `crates/store` persists it: a Loro document, snapshots with
@@ -25,9 +26,9 @@ relay they never used at the same time. `crates/app` turns that into the
 surface a frontend can use: thirteen commands in, one complete view-model
 out, with the TypeScript types generated from the Rust ones. A scripted
 shopping trip — build a library, cook for six instead of four, tick things
-off, finish, restart — passes natively **and** in a headless browser. 123
-tests green plus 9 in chromium — 5 over IndexedDB and 4 through the app, and
-since M4 those nine run in CI too rather than only on a developer machine.
+off, finish, restart — passes natively **and** in a headless browser. 163
+tests green plus 10 in chromium — 5 over IndexedDB and 5 through the app, and
+since M4 those run in CI too rather than only on a developer machine.
 
 **M4 is done**: `ui/` is a working Svelte 5 app — it mints an identity,
 builds a library, writes and reads recipes, derives the cart and survives a
@@ -46,7 +47,7 @@ worker needs to exist at all
 On the device itself the cold start is instantaneous, which closes the question
 of the 713 kB core, and the keyboard behaves as it was designed to.
 
-**M5 is nearly done**: the relay brokers a sealed log it cannot read
+**M5 is done**: the relay brokers a sealed log it cannot read
 ([0042](docs/DECISIONS.md#0042--the-relay-keeps-a-sequenced-log-it-cannot-read)),
 the PWA drives its own socket
 ([0043](docs/DECISIONS.md#0043--the-pwas-websocket-lives-in-the-frontend)), and
@@ -57,8 +58,15 @@ its library, loses its replica, gets everything back, and a second one joins by
 typing the words — with nothing in the relay's log readable as text. Behind
 Settings there is a roster of who is in the family on what, and a journal of
 what was edited and deleted; both say plainly that a shared key means these are
-names and not permissions (Rule 7). What is left of M5 is its exit criterion:
-the same convergence, on two real phones. Resuming work starts at the "Resuming
+names and not permissions (Rule 7). The milestone was closed where M4's was —
+on the devices: an iPhone and a Pixel 8 pair with twelve words and converge
+both while both are open and while neither is ever open with the other. The
+same PWA runs on both, so M7's Android app is a better wrapper rather than a
+requirement.
+
+**Next is M6.** All of this lives on one wifi today, behind a certificate
+authority installed by hand, with the relay in a terminal — deployment is what
+makes it survive the laptop being closed. Resuming work starts at the "Resuming
 work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
@@ -326,7 +334,7 @@ Four ideas carry the design, each with its rationale recorded:
 | Target | Ships as | Priority |
 |---|---|---|
 | iOS | installed PWA (Add to Home Screen) | primary |
-| Android | Tauri v2 APK | primary |
+| Android | the same PWA today; a Tauri v2 APK at M7 | primary |
 | Web | the same PWA | secondary |
 | Linux | Tauri desktop | secondary |
 

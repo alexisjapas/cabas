@@ -21,7 +21,7 @@ buys a false belief instead of no belief.
 | **M2** | Store: Loro schema, snapshots, `Storage` trait | Round-trip persistence on both backends; two in-memory replicas converge | ✅ |
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
-| **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ⬜ |
+| **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
@@ -74,29 +74,25 @@ loop, but CI fails if its output is stale:
 cargo test -p cabas-app --features typescript export_bindings
 ```
 
-**Next action: M5, the PWA half.** The Rust half of M5 is done and proven in
-CI: `cabas-sync` holds the key derivation (the 12-word phrase is the single
-canonical secret, DECISIONS 0042), the XChaCha20-Poly1305 seal, the wire
-protocol and the sans-IO client `Session`; `cabas-relay` is a real axum
-process persisting sealed frames per family; and
-`crates/relay/tests/convergence.rs` shows two replicas that are never online
-together converging through it, sealed end to end. What remains is wiring the
-PWA, and the transport question it opens with is answered: the socket is the
-frontend's, the browser's own WebSocket driving the session across the wasm
-boundary (DECISIONS 0043).
+**Next action: M6, deployment.** M5 is closed, on two phones: an iPhone and
+a Pixel 8 pair with twelve words, converge while both are open and while
+neither ever meets the other, and read each other's names off the roster and
+the journal. Everything the family needs now exists — and it only exists on one
+wifi, behind a certificate authority installed by hand, with the relay running
+in a terminal on a laptop. M6 is what turns that into something that survives
+the laptop being closed: the Home Assistant add-on, an arm64 image built by CI,
+`/data` covered by HA's own backups, and the Cloudflare Tunnel onto an owned
+domain.
 
-**The binding is in.** `app::sync` composes the sans-IO client with the
-replica, and `CabasApp` exposes it as `syncHello / syncHandle / syncPush /
-syncSnapshot / syncVersion / syncStatus / syncClose`, every byte crossing as an
-opaque `Uint8Array`. What remains is the engine around it: the TypeScript
-transport, sync on foreground with a live socket while active (0011), the
-pairing screens (QR + typed phrase, 0021), the users-and-devices screen with
-the revocation warning 0024 requires, the event-log screen, and the phrase,
-relay URL, cursor and shadow version persisted next to the identity. The
-"Where M5 stands" note in the M5 section below has the detail.
+Two things carried out of M5 that belong to M6's first hour. **The origin is
+permanent** (DECISIONS 0012) — the day the tunnel's domain serves the app is
+the day both phones must install from it and never from anything else, because
+iOS and Android both key the app's storage to it. And **rotating the family
+phrase leaves an abandoned log** on the relay, sealed and orphaned, which
+nothing prunes; the checklist below says so.
 
-Putting a later build on the phone again is two commands, since the certificate
-is installed and trusted once and for all:
+Putting a later build on the phones is two commands, since each certificate is
+installed and trusted once and for all:
 
 ```sh
 build-wasm && pnpm -C ui build     # the artifact that gets installed
@@ -104,14 +100,7 @@ ui-serve                           # prints both URLs and the CA fingerprint
 ```
 
 Install from **the same address every time**: the origin is the app's identity
-on iOS (DECISIONS 0012), and a different one is a different app with empty
-storage.
-
-One thing M4 could not observe, because it takes a *second* build: the **iOS
-update path**. A new build's worker installs on one launch and takes over on the
-next, since activating early would delete the caches a running page is still
-loading from. The next time a build goes onto the phone is the first chance to
-watch it, and it is not worth changing before it is seen.
+(DECISIONS 0012), and a different one is a different app with empty storage.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
@@ -431,7 +420,22 @@ by then the shell is precached and the question only arises once per install.
 - [x] Test: two replicas that are never online simultaneously still converge through the relay
 
 **Exit**: two devices converge in both the simultaneous and the
-never-simultaneous case.
+never-simultaneous case. ✅ — run by hand on **an iPhone and a Pixel 8**, the
+procedure being the one in the README ("Two phones, end to end"): both online,
+then never online together, then one of them offline and back, with the roster
+and the journal read on each. CI proves the same convergence at replica level
+(`crates/relay/tests/convergence.rs`) and through the PWA against the real
+relay binary (`ui-test`); this is the part only phones could answer.
+
+**What the second platform settled.** The project had never touched Android
+before this. The same PWA installs from Chrome and syncs with the iPhone — so
+M7's Tauri app is a better wrapper rather than a requirement, and the frontend
+does not need a line of platform code. Two frictions worth knowing before the
+next Android joins: the phone refuses to install a certificate authority at all
+until a screen lock exists, and the menu path for it moves between releases —
+searching the settings for "certificat" is what survives. The instruction page
+`ui-serve` hands out still speaks only iOS; the README carries the Android path
+until that is fixed.
 
 **Where M5 stands.** The Rust half is in, and the exit criterion holds at
 replica level in CI: `crates/relay/tests/convergence.rs` runs two real

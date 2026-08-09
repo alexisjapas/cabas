@@ -8,19 +8,25 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: M0 through M4 complete; **M5 (relay and sync) is half
-done — the Rust half**. `crates/domain` holds the product logic as pure
-functions (69 tests); `crates/store` holds the Loro schema, the two-way
+**Current state**: **M0 through M5 complete** — the exit criterion was met on
+an iPhone and a Pixel 8, which pair with twelve words and converge both while
+both are open and while neither is ever open with the other. **Next is M6**:
+the Home Assistant add-on, the arm64 image, backups and the Cloudflare Tunnel —
+because everything works today only on one wifi, behind a hand-installed
+certificate authority, with the relay in a terminal.
+
+`crates/domain` holds the product logic as pure functions (69 tests);
+`crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB; `crates/app` holds the command set, the view-models and the wasm
 binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
-axum broker persisting sealed frames per family. 162 native tests plus 10 in
+axum broker persisting sealed frames per family. 163 native tests plus 10 in
 a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
-through the relay, sealed end to end.
+through the relay, sealed end to end. The phones then answered for themselves.
 
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to
@@ -38,9 +44,9 @@ the phrase for a second phone. `ui-test` runs the lot against a real relay and
 proves the milestone at browser level — a device pushes its library, loses its
 replica, gets everything back from the relay alone, another joins by typing the
 twelve words, the roster behind Settings shows both, and the journal shows what
-each of them did — sealed throughout. **Every screen M5 asked for exists**;
-what remains is its exit criterion on two real phones. See ROADMAP "Next
-action".
+each of them did — sealed throughout. **Every screen M5 asked for exists**, and
+the milestone is closed on an iPhone and a Pixel 8. See ROADMAP "Next action"
+for M6.
 
 ## Environment and commands
 
