@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use cabas_relay::{Relay, router};
+use cabas_relay::{Relay, embedded, router};
 
 #[tokio::main]
 async fn main() {
@@ -36,7 +36,15 @@ async fn main() {
         }
     };
 
-    tracing::info!(addr, data = %data.display(), "cabas-relay up");
+    // The asset count is here because "the app does not load" and "this
+    // build has no app in it" look identical from a phone. A relay built
+    // without `ui/dist` is legitimate — it is what development runs behind
+    // `ui-serve` — so it is a line to read, not a refusal.
+    let files = embedded();
+    if files == 0 {
+        tracing::warn!("no PWA embedded — brokering sync only");
+    }
+    tracing::info!(addr, data = %data.display(), files, "cabas-relay up");
     if let Err(e) = axum::serve(listener, router(relay)).await {
         tracing::error!(error = %e, "server stopped");
         std::process::exit(1);

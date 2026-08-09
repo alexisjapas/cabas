@@ -153,7 +153,12 @@ jobs:
         run: nix develop --command pnpm -C ui build
 
       # The whole vertical in a real browser: identity, IndexedDB, the derived
-      # cart, and a cold reload. See `ui/tests/smoke.mjs`.
+      # cart, a cold reload, and sync. See `ui/tests/smoke.mjs`.
+      #
+      # After the bundle, and not only because it needs one to serve: `ui-test`
+      # builds the relay, which compiles `ui/dist` into itself (DECISIONS
+      # 0048), so this step is also what proves the shipped artifact — one
+      # binary, one origin — actually serves an app.
       - name: end to end
         run: nix develop .#wasm-test --command ui-test
 

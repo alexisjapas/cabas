@@ -13,8 +13,11 @@
  * `WebSocket` built in, and a test harness that needs its own npm tree is a
  * second lockfile to keep honest.
  *
- * Run it with `ui-test` in the browser shell — it expects a built `ui/dist`,
- * a preview server on 4173 and chromium listening on 9222.
+ * Run it with `ui-test` in the browser shell — it expects a relay with the
+ * bundle compiled into it on 8788 and chromium listening on 9222. The app and
+ * the sync socket therefore share an origin here exactly as they do in
+ * production (DECISIONS 0048), which is the only arrangement in which the
+ * service worker, the cache headers and the WebSocket are all the real ones.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -22,7 +25,7 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const DEVTOOLS = process.env.DEVTOOLS_URL ?? 'http://localhost:9222';
-const APP = process.env.APP_URL ?? 'http://localhost:4173';
+const APP = process.env.APP_URL ?? 'http://127.0.0.1:8788';
 const SHOTS = process.env.SCREENSHOT_DIR ?? null;
 
 /** The relay `ui-test` started, and the directory it writes its sealed log to.

@@ -126,9 +126,12 @@ axum = "0.8"
 tower-http = "0.6"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-# Embeds the built PWA into the relay binary: one artifact, one add-on image,
-# one origin serving both the static files and the sync WebSocket.
-rust-embed = "8"
+# `rust-embed` was the plan for compiling the PWA into the relay and is not
+# used: its derive needs the folder to exist at compile time, and `ui/dist`
+# is a gitignored build product, so a fresh checkout could not run `cargo
+# clippy --workspace` until someone had run `pnpm build`. `crates/relay/
+# build.rs` writes the table instead — one `include_bytes!` per file, no
+# dependency, and an empty table when there is no bundle (DECISIONS 0048).
 
 [profile.release]
 lto = true

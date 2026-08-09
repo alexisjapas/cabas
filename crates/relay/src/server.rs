@@ -88,11 +88,22 @@ impl Relay {
     }
 }
 
+/// The two named routes, and the PWA under everything else.
+///
+/// Order matters only in that `/sync` and `/healthz` are named: the fallback
+/// answers every other path out of the embedded bundle, so a file called
+/// `sync` in `ui/dist` would be unreachable — which is a rule the bundler
+/// cannot break, since it names its own outputs.
+///
+/// `get` rather than `any` for the assets: it covers HEAD, whose body axum
+/// discards for us, and answers 405 to a POST at a static file instead of
+/// serving it.
 pub fn router(relay: Arc<Relay>) -> Router {
     Router::new()
         .route("/sync", any(ws_handler))
         // For the M6 add-on's watchdog; says the process is up, nothing else.
         .route("/healthz", get(|| async { "ok" }))
+        .fallback(get(crate::assets::handler))
         .with_state(relay)
 }
 

@@ -193,6 +193,14 @@
         # It expects a built bundle rather than building one: `build-wasm`
         # needs binaryen and the default shell, and a test command that
         # silently rebuilds is a test command nobody can reason about.
+        #
+        # **The relay serves it.** Since M6 the bundle is compiled into the
+        # relay binary (DECISIONS 0048), so the suite runs against exactly
+        # the topology that ships: one origin answering both the app and
+        # `/sync`, with the relay's own cache headers on every file. A
+        # preview server would have been a second answer to the same
+        # question — and a different one, since Vite's sends `Vary: Origin`
+        # and the relay deliberately sends no `Vary` at all.
         uiTest = pkgs.writeShellScriptBin "ui-test" ''
           set -euo pipefail
           cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
@@ -213,29 +221,25 @@
             echo "  pkill -f 'remote-debugging-port=9222'" >&2
             exit 1
           fi
-          if ${pkgs.curl}/bin/curl -sf --max-time 2 http://localhost:4173 >/dev/null; then
-            echo "ui-test: something is already listening on 4173." >&2
-            exit 1
-          fi
           if ${pkgs.curl}/bin/curl -sf --max-time 2 http://localhost:8788/healthz >/dev/null; then
             echo "ui-test: something is already listening on 8788 (a leaked relay?)." >&2
             exit 1
           fi
 
-          # A real relay for the sync leg: the suite proves the frontend's
-          # WebSocket engine against the process it will actually talk to, not
-          # against a mock of it (DECISIONS 0043). Port 8788 rather than the
-          # default 8787, so a relay left running for development is neither
-          # disturbed nor mistaken for this one. The data directory is thrown
-          # away with the run, and the test reads it to check that what landed
-          # there is sealed.
-          echo "ui-test: building the relay…"
+          # The one server: the app and the sync socket, as in production.
+          # Port 8788 rather than the default 8787, so a relay left running
+          # for development is neither disturbed nor mistaken for this one.
+          # The data directory is thrown away with the run, and the test reads
+          # it to check that what landed there is sealed.
+          #
+          # This build is not incidental: `build.rs` watches `ui/dist`, so the
+          # binary that comes out of it carries the bundle built a moment ago
+          # rather than whichever one was there last time.
+          echo "ui-test: building the relay, with the bundle in it…"
           cargo build -q -p cabas-relay
           relaydata="$(mktemp -d)"
 
           profile="$(mktemp -d)"
-          pnpm -C ui preview --port 4173 --strictPort >/dev/null 2>&1 &
-          server=$!
           CABAS_RELAY_DATA="$relaydata" CABAS_RELAY_ADDR=127.0.0.1:8788 \
             cargo run -q -p cabas-relay >/dev/null 2>&1 &
           relay=$!
@@ -245,8 +249,8 @@
           browser=$!
 
           cleanup() {
-            kill "$server" "$browser" "$relay" 2>/dev/null || true
-            wait "$server" "$browser" "$relay" 2>/dev/null || true
+            kill "$browser" "$relay" 2>/dev/null || true
+            wait "$browser" "$relay" 2>/dev/null || true
             # Best effort, and deliberately so. Chromium's renderer children
             # are not ours to wait for: they outlive the process this killed by
             # a moment and are still writing into the profile, so a plain
@@ -259,23 +263,28 @@
           trap cleanup EXIT INT TERM
 
           # Both bind their port a moment after forking; polling beats a sleep
-          # long enough to be safe on the slowest runner.
+          # long enough to be safe on the slowest runner. `/` rather than
+          # `/healthz`, because a relay compiled without a bundle answers the
+          # second and would leave the suite to fail one screen at a time.
           ready=0
           for _ in $(seq 1 100); do
-            if ${pkgs.curl}/bin/curl -sf http://localhost:4173 >/dev/null \
-              && ${pkgs.curl}/bin/curl -sf http://localhost:9222/json/version >/dev/null \
-              && ${pkgs.curl}/bin/curl -sf http://localhost:8788/healthz >/dev/null; then
+            if ${pkgs.curl}/bin/curl -sf http://localhost:9222/json/version >/dev/null \
+              && ${pkgs.curl}/bin/curl -sf http://localhost:8788/ >/dev/null; then
               ready=1
               break
             fi
             sleep 0.2
           done
-          [ "$ready" = 1 ] || { echo "ui-test: preview, chromium or the relay never came up" >&2; exit 1; }
+          [ "$ready" = 1 ] || { echo "ui-test: chromium or the relay never came up with an app in it" >&2; exit 1; }
 
           # Deliberately not `exec`: that would replace this shell and the
-          # trap above would never run, leaking a browser and a server that
+          # trap above would never run, leaking a browser and a relay that
           # then hold the ports against the next run.
+          #
+          # `127.0.0.1` in both, and the same one in both: a mismatched host
+          # would make the socket cross-origin and prove something easier.
           CABAS_RELAY_DATA="$relaydata" CABAS_RELAY_URL=ws://127.0.0.1:8788/sync \
+            APP_URL=http://127.0.0.1:8788 \
             node ui/tests/smoke.mjs "$@"
         '';
 

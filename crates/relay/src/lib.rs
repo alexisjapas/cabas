@@ -1,8 +1,10 @@
 //! Zero-knowledge relay, and host of the PWA.
 //!
 //! Runs on the RPi4 as a Home Assistant OS add-on. It does two things from
-//! a single origin: serve the static PWA bundle (embedded into this binary
-//! at M6, via `rust-embed`) and broker encrypted sync between devices.
+//! a single origin: serve the static PWA bundle — embedded into this binary
+//! at build time by `build.rs` (DECISIONS 0048) — and broker encrypted sync
+//! between devices. One origin because an installed PWA *is* its origin
+//! (DECISIONS 0012).
 //!
 //! # Boundaries (CONSTITUTION Rules 6, 7)
 //!
@@ -16,14 +18,17 @@
 //! - **`/data` is the durable volume.** Home Assistant's own backups cover
 //!   it, which makes the relay the recovery point if every device is lost.
 //!
-//! The shape is three verbs — append, replay, forward — and [`log`] and
-//! [`server`] hold one and two of them respectively. The convergence test
+//! The shape is three verbs — append, replay, forward — and `log` and
+//! `server` hold one and two of them respectively; `assets` holds the
+//! static half, which shares nothing with them but the port. The convergence test
 //! in `tests/convergence.rs` is M5's exit criterion: two replicas that are
 //! never online at the same time still converge through this process.
 
 #![forbid(unsafe_code)]
 
+mod assets;
 mod log;
 mod server;
 
+pub use assets::embedded;
 pub use server::{Relay, router};
