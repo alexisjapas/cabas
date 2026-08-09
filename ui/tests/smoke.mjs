@@ -863,6 +863,37 @@ async function waitForRelay(label, timeoutMs = 15000) {
 }
 
 /**
+ * One family's log, once it has stopped growing.
+ *
+ * "What the relay had at the moment I looked" is not "what it ends up with":
+ * a change is debounced on the device (Session.FLUSH_DELAY_MS) and then has a
+ * round trip to make. Taking the first and comparing it against the second is
+ * exactly how the untouched-log check below failed on a runner — the deletion
+ * from the journal section was still in flight when its baseline was taken,
+ * and landed in the old family a moment later, correctly.
+ *
+ * @param {string} id
+ * @param {string} label
+ * @returns {Promise<Buffer>}
+ */
+async function waitForSettledLog(id, label, quietMs = 1500, timeoutMs = 25000) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = -1;
+  let stableSince = Date.now();
+  for (;;) {
+    const log = (await readFile(join(RELAY_DATA, id, 'log')).catch(() => null)) ?? Buffer.alloc(0);
+    if (log.length !== previous) {
+      previous = log.length;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMs) {
+      return log;
+    }
+    if (Date.now() > deadline) throw failed(`timed out waiting for ${label} to settle`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
  * A family that is not one of `known`, once it has actually been written to.
  *
  * Rotating the phrase is the only thing here that produces a second family,
@@ -1083,9 +1114,17 @@ await shot('16-journal');
 // every assertion above was made against.
 // By name, not by count: what comes after has to tell the new family from the
 // old one, and identify the old one again to prove nothing wrote into it.
+//
+// Settled, not merely read: everything above this line has been pushing as it
+// went, and the journal's deletion is the most recent of them. A baseline
+// taken while that is still in flight makes the untouched check below fail on
+// the arrival of a change that predates the rotation entirely.
 const familiesBefore = await readdir(RELAY_DATA);
+if (familiesBefore.length !== 1) {
+  throw failed(`one family up to this point, found ${JSON.stringify(familiesBefore)}`);
+}
 const abandoned = familiesBefore[0];
-const abandonedLog = await readFile(join(RELAY_DATA, abandoned, 'log'));
+const abandonedLog = await waitForSettledLog(abandoned, 'the family about to be abandoned');
 await evaluate(`__clickText('button', 'Retour')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the roster');
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
