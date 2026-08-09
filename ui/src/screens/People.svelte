@@ -121,6 +121,11 @@
             L'appareil perdu garde ce qu'il avait déjà — rien ne peut l'en effacer à distance. Il
             n'apprendra simplement plus rien de nouveau.
           </li>
+          <li>
+            L'ancien journal reste sur le serveur, scellé et illisible. Rien ne l'efface tout seul —
+            c'est une commande à lancer sur le serveur, une fois que tout le monde aura la nouvelle
+            phrase.
+          </li>
         </ul>
         <div class="pair-of-buttons">
           <button type="button" class="secondary" onclick={() => (rotation = { at: 'idle' })}>

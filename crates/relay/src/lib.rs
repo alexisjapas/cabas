@@ -26,6 +26,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod admin;
 mod assets;
 mod log;
 mod server;

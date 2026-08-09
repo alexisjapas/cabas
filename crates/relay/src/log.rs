@@ -39,9 +39,9 @@ pub struct StoredFrame {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Meta {
-    epoch: u64,
-    next_seq: u64,
+pub struct Meta {
+    pub epoch: u64,
+    pub next_seq: u64,
 }
 
 pub struct FamilyLog {
@@ -164,7 +164,10 @@ fn encode_record(frame: &StoredFrame) -> std::io::Result<Vec<u8>> {
     Ok(record)
 }
 
-fn read_meta(path: &Path) -> std::io::Result<Option<Meta>> {
+/// Also read by [`crate::admin`], which reports on a log without opening it —
+/// surveying every family on disk must not mint an epoch for a directory it
+/// is only counting.
+pub fn read_meta(path: &Path) -> std::io::Result<Option<Meta>> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
@@ -234,15 +237,16 @@ fn corrupt(e: postcard::Error) -> std::io::Error {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A directory that cleans itself up, so the tests need no dev-dep —
-    /// the same shape `store`'s file tests use.
-    struct TempDir(PathBuf);
+    /// the same shape `store`'s file tests use. Shared with `admin`'s tests,
+    /// which need the same thing and should not grow a second one.
+    pub(crate) struct TempDir(pub(crate) PathBuf);
 
     impl TempDir {
-        fn new(tag: &str) -> Self {
+        pub(crate) fn new(tag: &str) -> Self {
             let mut path = std::env::temp_dir();
             path.push(format!(
                 "cabas-relay-{tag}-{}-{:?}",

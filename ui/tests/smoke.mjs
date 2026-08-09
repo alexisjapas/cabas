@@ -1054,8 +1054,11 @@ await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the roste
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
 await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster, to rotate from');
 await evaluate(`__clickText('.revoke button', 'Changer la phrase de la famille')`);
-await waitFor(`__count('.consequences li') === 3`, 'the consequences, before anything happens');
-ok('rotating asks first, and says what it costs');
+// Four, and the count is the assertion's teeth: rotating is the one
+// irreversible thing in the app, and every consequence of it — including the
+// log it leaves on the relay (DECISIONS 0050) — is named before it happens.
+await waitFor(`__count('.consequences li') === 4`, 'the consequences, before anything happens');
+ok('rotating asks first, and says what it costs — all four of them');
 
 await evaluate(`__clickText('.revoke button', 'Changer la phrase')`);
 await waitFor(`__text('.revoke [data-phrase]')`, 'the new phrase');
