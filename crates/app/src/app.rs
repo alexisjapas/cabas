@@ -227,11 +227,12 @@ impl<S: Storage, P: Platform> App<S, P> {
     /// snapshot, so nothing merged into it in a previous life.
     ///
     /// The one question a host must ask before resuming a persisted sync
-    /// cursor. The cursor and the replica are two files on a device and can
-    /// be lost separately; a cursor that survived says "I already have
-    /// everything up to frame N" on behalf of a replica that has nothing, and
-    /// the relay then honestly replays nothing at all. The library would come
-    /// back only when somebody else pushed something (DECISIONS 0042).
+    /// cursor (DECISIONS 0045). The cursor and the replica are two files on a
+    /// device and can be lost separately; a cursor that survived says "I
+    /// already have everything up to frame N" on behalf of a replica that has
+    /// nothing, and the relay then honestly replays nothing at all. The
+    /// library would come back only when somebody else pushed something
+    /// (DECISIONS 0042).
     pub fn opened_fresh(&self) -> bool {
         self.fresh
     }

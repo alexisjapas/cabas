@@ -11,13 +11,13 @@ export type SyncCursor = {
  * pointed into is gone — restored from a backup, or reset — and the
  * session replays from the beginning rather than from `since`.
  *
- * **Text across the boundary, and only there.** The relay mints it from
- * 64 bits of the OS's randomness, so almost every epoch there is falls
- * outside what a JavaScript number holds exactly, and
- * `serde_wasm_bindgen` is right to refuse it rather than round it. The
- * host stores this value and hands it back; it never does arithmetic on
- * it. Same answer `store` gives an exact rational, for the same reason
- * (DECISIONS 0029).
+ * **Text across the boundary, and only there** (DECISIONS 0046). The
+ * relay mints it from 64 bits of the OS's randomness, so almost every
+ * epoch there is falls outside what a JavaScript number holds exactly,
+ * and `serde_wasm_bindgen` is right to refuse it rather than round it.
+ * The host stores this value and hands it back; it never does arithmetic
+ * on it. Same answer `store` gives an exact rational, for the same
+ * reason (DECISIONS 0029).
  */
 epoch: string, 
 /**

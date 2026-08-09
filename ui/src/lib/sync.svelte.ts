@@ -148,9 +148,9 @@ function readProgress(): Progress {
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== 'object' || parsed === null) return fresh;
     const { epoch, since, shadow } = parsed as Record<string, unknown>;
-    // The epoch is text on purpose — the relay mints it from 64 random bits,
-    // which is more than a JS number holds exactly. Nothing here reads it;
-    // it goes back to the core exactly as it came.
+    // The epoch is text on purpose (DECISIONS 0046) — the relay mints it from
+    // 64 random bits, which is more than a JS number holds exactly. Nothing
+    // here reads it; it goes back to the core exactly as it came.
     if (typeof epoch !== 'string' || !Number.isInteger(since)) return fresh;
     return {
       cursor: { epoch, since: since as number },
@@ -191,12 +191,13 @@ export class Sync {
   constructor(core: Core, adopt: (state: StateView) => void) {
     this.#core = core;
     this.#adopt = adopt;
-    // A cursor is only meaningful for the replica that consumed those frames.
-    // These are two different files on the device and can be lost separately —
-    // and a cursor that outlives its replica is silent and permanent: it tells
-    // the relay "I have everything up to frame N", the relay honestly replays
-    // nothing, and the library stays empty until somebody else happens to
-    // push. Starting over costs one replay and is always correct.
+    // A cursor is only meaningful for the replica that consumed those frames
+    // (DECISIONS 0045). These are two different files on the device and can be
+    // lost separately — and a cursor that outlives its replica fails silently
+    // and permanently: it tells the relay "I have everything up to frame N",
+    // the relay honestly replays nothing, and the library stays empty until
+    // somebody else happens to push. Starting over costs one replay and is
+    // always correct.
     const progress = core.openedFresh()
       ? { cursor: { epoch: '0', since: 0 }, shadow: new Uint8Array() }
       : readProgress();

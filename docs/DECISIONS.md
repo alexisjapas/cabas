@@ -54,6 +54,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) | The relay keeps a sequenced log it cannot read | Sync |
 | [0043](#0043--the-pwas-websocket-lives-in-the-frontend) | The PWA's WebSocket lives in the frontend | Sync |
 | [0044](#0044--in-development-the-sync-socket-goes-through-ui-serve) | In development the sync socket goes through `ui-serve` | Tooling |
+| [0045](#0045--a-cursor-is-not-resumed-on-a-replica-that-never-had-it) | A cursor is not resumed on a replica that never had it | Sync |
+| [0046](#0046--a-u64-crosses-the-wasm-boundary-as-text) | A `u64` crosses the wasm boundary as text | Architecture |
 
 ---
 
@@ -1467,3 +1469,98 @@ runs in `ui-test` already and says nothing about the installed app on iOS,
 which is the artifact the milestone is about. **Bringing M6's tunnel forward**
 — rejected once in 0041 for the same reason and it has not changed: it means
 shipping the deployment milestone in order to test the previous one.
+
+---
+
+## 0045 — A cursor is not resumed on a replica that never had it
+
+**Date** 2026-08-09 · **Status** Accepted · **Implements**
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) · **Relates to**
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend),
+[0031](#0031--the-devices-identity-comes-from-the-host)
+
+**Context.** 0043 persists the sync cursor in `localStorage`, next to the
+identity; the replica it describes lives in IndexedDB. Two stores, two
+lifetimes — and nothing until now said what happens when only one of them
+survives.
+
+What happens is the worst available outcome. The cursor says "I already have
+everything up to frame N", the relay believes it and honestly replays nothing,
+and the device sits with an empty library. There is no error, no retry and no
+recovery: the relay is not wrong, and it will stay that way until somebody else
+happens to push something, which on a two-person family can be days. The whole
+point of the log is that a device which was away gets what it missed (0042),
+and this is the one state where it silently does not.
+
+It surfaced in `ui-test`, which deletes the replica and reloads — and got an
+empty screen where the library should have come back.
+
+**Decision.** The core answers the exact question: `App::opened_fresh()` is
+true when `open` found **no stored snapshot**, so the document was built from
+nothing this launch. The engine starts from a zero cursor and an empty shadow
+whenever it is true, and pairing resets both for the same reason — a different
+family is a different log.
+
+The cost of being wrong in this direction is one replay of a log that is
+bounded by design, applied to a replica where merges are idempotent. The cost
+of being wrong in the other direction is a library that never comes back.
+
+**Consequences.** The invariant is stated where it can be enforced rather than
+assumed: the host no longer has to reason about which browser storage outlives
+which. It also covers the case nobody would have written a test for — an
+iOS eviction that takes IndexedDB and leaves `localStorage`, which is not
+documented behaviour and is not something to find out about on a phone.
+
+**Rejected.** **Moving the cursor into IndexedDB, beside the snapshot** — the
+structurally correct answer, since the two would then be lost together by
+construction. `Storage` is deliberately one blob in and one blob out, and
+growing it a second slot for this is a change to the trait every backend
+implements. Worth revisiting if device-local sync state ever grows past two
+numbers and a version vector. **Deciding it from the `StateView`** — an empty
+library and a lost one look identical from there, so a genuinely new family
+would replay on every launch, and "looks empty" is not "never received"
+anyway. **Relying on the two being evicted together** — true in the common
+case, undocumented, and the failure it leaves is silent and permanent.
+
+---
+
+## 0046 — A `u64` crosses the wasm boundary as text
+
+**Date** 2026-08-09 · **Status** Accepted · **Relates to**
+[0029](#0029--how-the-document-encodes-domain-values),
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend)
+
+**Context.** The relay mints a log's epoch from 64 bits of the OS's randomness
+(0042), so it is above 2^53 nearly always — outside what a JavaScript number
+holds exactly. `serde_wasm_bindgen` refuses to serialise such a value rather
+than round it, which is the right call and arrives as a thrown error from the
+first call that reads a real cursor.
+
+That error was invisible until the PWA met an actual relay: every test up to
+then had used an epoch of 0, which fits in a double and proves nothing.
+
+**Decision.** A `u64` that is an **identity** crosses as decimal text —
+`#[serde(with = "text_u64")]` and `#[ts(type = "string")]` on
+`SyncCursor::epoch`. A `u64` that is a **count** stays a number: the relay
+hands out sequence numbers one per frame, so `since` cannot approach the point
+where a double stops being exact.
+
+This is the same answer `store` gives an exact rational (0029) for the same
+reason — the receiving format has no exact type for the value, so the value
+travels as text and the host treats it as opaque. It stores it and hands it
+back; it never does arithmetic on it.
+
+**Consequences.** The rule generalises: anything minted as 64 random bits is
+text at this boundary, anything counted is a number, and the type says which.
+The browser test now uses a real-sized epoch, because the test that used zero
+was the reason the bug shipped as far as it did.
+
+**Rejected.** **BigInt** (`serialize_large_number_types_as_bigints`) — the
+cursor's entire job is to be persisted, and `JSON.stringify` throws on a
+BigInt; the fix would be a custom replacer on every write of a value that is
+never computed with. **Truncating the relay's epoch to 53 bits** — changing a
+server's data because of a client's number format, and the epoch is a
+`postcard` wire field shared with the native hosts, which have no such limit.
+**Two 32-bit halves** — one number pretending to be two, reassembled by hand in
+every host that touches it.

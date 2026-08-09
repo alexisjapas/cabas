@@ -504,17 +504,13 @@ Key domain shapes, all settled in DECISIONS:
 - **The relay's epoch is a random `u64`, and JavaScript has no such number.**
   Almost every epoch is above 2^53, and `serde_wasm_bindgen` refuses to round
   it — so `syncStatus` threw on the *first* real connection while every test
-  against a hand-made epoch of 0 passed. `SyncCursor::epoch` crosses as
-  **text** (`#[serde(with = "text_u64")]`, `#[ts(type = "string")]`) for the
-  same reason a rational does in `store` (0029). `since` stays a number: the
-  relay hands those out one per frame.
+  against a hand-made epoch of 0 passed. Identities cross as **text**, counts
+  stay numbers (DECISIONS 0046).
 - **A sync cursor must never outlive the replica it belongs to.** They are two
   different files — `localStorage` and IndexedDB — and a cursor that survives
-  alone says "I already have everything up to frame N" for a replica that has
-  nothing; the relay honestly replays nothing and the library never comes
-  back. `App::opened_fresh()` is the exact fact (storage held no snapshot),
-  and `sync.svelte.ts` starts from zero when it is true. The failure is silent
-  and permanent, which is why it is worth a method rather than a heuristic.
+  alone leaves the device with an empty library and no error, for good.
+  `App::opened_fresh()` is the exact fact, and the engine starts from zero
+  when it is true (DECISIONS 0045).
 - **The engine's own `pagehide` writes the cursor on the way out**, so a test
   that clears `cabas.sync` and then navigates gets it written straight back by
   the page it is leaving. That is correct behaviour and the reason the sync

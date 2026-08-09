@@ -491,13 +491,13 @@ Two things that only appeared against a real relay, both now guarded:
 
 - **The epoch is a random `u64`**, so it is above 2^53 nearly always and no
   JavaScript number holds it. It crosses as text, the way an exact rational
-  does (0029); the browser test now uses a real-sized epoch, because the one
-  it used before — zero — proved nothing.
+  does (DECISIONS 0046); the browser test now uses a real-sized epoch, because
+  the one it used before — zero — proved nothing.
 - **A cursor can outlive its replica.** `localStorage` and IndexedDB are two
   files, and a device that keeps the first and loses the second tells the relay
   it already has everything, gets nothing replayed, and stays empty for good.
   `App::opened_fresh()` reports the exact fact — storage held no snapshot — and
-  the engine starts from zero when it does.
+  the engine starts from zero when it does (DECISIONS 0045).
 
 What remains of the PWA half is screens: the pairing screens (generate/display
 the phrase and its QR, join by scanning or typing, and only then mint the local
