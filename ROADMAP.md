@@ -12,7 +12,7 @@ verified on each one, and nobody was told, because nobody looked. A red gate
 that goes unread is worse than an absent one: it costs the same to run and it
 buys a false belief instead of no belief.
 
-## Overview (status as of 2026-08-08)
+## Overview (status as of 2026-08-09)
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
@@ -446,119 +446,48 @@ searching the settings for "certificat" is what survives. The instruction page
 `ui-serve` hands out still speaks only iOS; the README carries the Android path
 until that is fixed.
 
-**Where M5 stands.** The Rust half is in, and the exit criterion holds at
-replica level in CI: `crates/relay/tests/convergence.rs` runs two real
-`App`s against a real relay over real WebSockets — the never-simultaneous
-case, the live-broadcast case, and a relay restarted over the same data
-directory — with every payload sealed. What the protocol had to invent, and
-why it looks the way it does, is one DECISIONS entry (0042): the relay
-cannot read a version vector, so it keeps an append-only log of sealed
-frames under relay-assigned sequence numbers, devices carry a cursor, a
-device-pushed snapshot truncates the log, and the 12-word phrase is the one
-canonical secret — key and family id both derive from its BIP39 seed.
-`cabas_sync::Session` is the sans-IO client core both transports will
-share; the convergence test drives it over `tokio-tungstenite` exactly the
-way the frontend will drive it over the browser's own WebSocket.
+**What M5 built.** `cabas-sync` holds the whole of the cryptography: the
+12-word phrase is the single canonical secret, and key and family id both
+derive from its BIP39 seed. `cabas-relay` is an axum process that brokers a
+log it cannot read. `app::sync` composes the sans-IO client with the replica
+so that a frame which opens is merged inside the core, and `CabasApp` hands
+that to the frontend as opaque bytes. `ui/src/lib/sync.svelte.ts` owns the
+socket and the policy around it — connect while the app is on screen, close
+when it is not (0011), backoff with jitter, a coalesced push after a command,
+the shadow adopted only on the ack. The screens are pairing, the roster and
+the journal, all three behind Settings except the first, which is the first
+thing a new device sees.
 
-**Where the socket lives is now settled** (DECISIONS 0043): on the PWA it is
-the frontend's, a small TypeScript engine next to `session.svelte.ts` using
-the browser's WebSocket, with the wasm binding exposing the session — hello,
-handle, delta, snapshot — and bytes crossing as `Uint8Array`. Plaintext never
-crosses the boundary: a frame that opens is merged inside the core, and JS
-receives the same whole `StateView` every other mutation pushes. That puts
-reconnection, backoff and the foreground rule in the file that already owns
-`visibilitychange` and `pagehide`, and keeps timers and `spawn_local` out of
-the wasm module. `ws_stream_wasm` has left the dependency plan.
+**What the protocol had to invent** is one DECISIONS entry (0042). The relay
+cannot read a version vector, so it keeps an append-only log of sealed frames
+under relay-assigned sequence numbers; devices carry a cursor; a device-pushed
+snapshot truncates the log. That is the design that makes two phones converge
+when they are never online together, which a broadcast-only server cannot do.
 
-**The binding is in**, and it is the last Rust in this milestone. `app::sync`
-holds `SyncSession`: `cabas_sync`'s client met with the replica, so an opened
-frame is merged inside and what comes back is a `SyncEvent` whose `merged`
-variant carries the whole `StateView`. It takes the `App` as a parameter rather
-than owning it, which is what lets M7's Tauri host drive the same type from a
-`tokio-tungstenite` loop — "two thin adapters, one client" (0043) with the
-composition written once. `CabasApp` translates it for JS as `syncHello /
-syncHandle / syncPush / syncSnapshot / syncVersion / syncStatus / syncClose`,
-plus `mintPhrase` and `readPhrase` for the pairing screens. Five native tests
-cover the loop against a three-line relay, and a browser test proves what only
-a browser can: that a `u64` cursor arrives as a JS `number` and not a `BigInt`,
-which is the difference between `JSON.stringify` persisting it and throwing.
+**Where the socket lives** is 0043: on the PWA it is the frontend's, because
+reconnection and the foreground rule are page-lifecycle concerns and the page
+lifecycle is already handled next door. The native hosts at M7 and M8 drive the
+same `SyncSession` from Rust — two thin adapters, one client. In development
+the socket reaches the relay through `ui-serve`, which proxies `/sync` on the
+app's own origin (0044): an installed PWA is served over TLS and a secure
+context may not open a `ws:`, so without that proxy the one place M5 could be
+closed could not reach a relay at all.
 
-It costs **+78 kB of wasm, +38 kB gzipped** — the core is now 1.89 MB, 751 kB
-gzipped, against M4's 1.81 MB and 713 kB. That is BIP39's wordlist and the
-cipher, and it is the whole price of sync on the download. M4 settled that the
-size is not the thing to optimise (the cold start is instantaneous on the
-phone); this is recorded so the next person measuring knows what moved and why.
+**Three things only the real thing could show**, all now guarded:
 
-**The engine is in too.** `ui/src/lib/sync.svelte.ts` owns the socket and the
-policy around it: connect when the app is on screen and close when it is not
-(0011), backoff with jitter, push a coalesced delta after a command, adopt the
-shadow only on the ack, and keep the phrase and relay URL in one `localStorage`
-key with the cursor and shadow in another — so the hot path never rewrites the
-secret. `ui-test` runs it against **a real relay**, started by the same script
-on 8788: the app pushes its library, loses its replica, and gets everything
-back from the relay alone, with the test asserting that nothing in the relay's
-log reads as text. That is the milestone's exit criterion at browser level, one
-device living twice; two real devices is what remains of it.
-
-Two things that only appeared against a real relay, both now guarded:
-
-- **The epoch is a random `u64`**, so it is above 2^53 nearly always and no
-  JavaScript number holds it. It crosses as text, the way an exact rational
-  does (DECISIONS 0046); the browser test now uses a real-sized epoch, because
-  the one it used before — zero — proved nothing.
+- **The epoch is a random `u64`** and JavaScript has no such number, so it
+  crosses as text (0046). Every test until the first real connection had used
+  an epoch of zero, which fits in a double and proved nothing.
 - **A cursor can outlive its replica.** `localStorage` and IndexedDB are two
-  files, and a device that keeps the first and loses the second tells the relay
-  it already has everything, gets nothing replayed, and stays empty for good.
-  `App::opened_fresh()` reports the exact fact — storage held no snapshot — and
-  the engine starts from zero when it does (DECISIONS 0045).
-
-**Pairing is in.** The first launch asks which family this device belongs to
-before it asks anything else: start one — twelve minted words, shown with their
-QR and a plain statement of what they are — or join one by typing them, and
-only then mint the identity. Settings does the same job on a device that is
-already running, shows the phrase on demand for a second phone to copy, and
-holds the relay override 0043 asked for. The QR is **displayed and never
-scanned** (DECISIONS 0047); the encoder is written here, fixed to version 6-L,
-and `ui-test` checks it against `qrencode` — module for module, but against
-**all eight masks** rather than the one this encoder prefers. That distinction
-is the whole lesson: every mask is a valid symbol and the format bits say which
-was used, so which one wins is a scoring heuristic two correct encoders
-routinely disagree about. Demanding the same one passed on the machine it was
-written on and failed in CI, because the phrase is minted fresh every run.
-Against all eight, 200 phrases agree exactly and none disagree. `ui-test` also
-joins a family from a wiped device by typing the words in the wrong case, and
-watches the library arrive from the relay.
-
-**The roster is in too**, behind Settings: everyone in the family with the
-devices they carry, "vous" and "cet appareil" marked, each device dated by when
-it joined. It is the screen that looks most like access control and is the
-furthest thing from one, so it says so — and it is where rotating the family
-phrase lives, behind a list of what that costs. `ui-test` reaches it only after
-a second device has joined through the relay, which is the first moment the
-grouping proves anything, and it rotates the key at the very end: the relay
-ends the run holding two families, the first one untouched and unreadable by
-the device that left.
-
-**The log is in as well**, the third view behind Settings: what was edited and
-deleted, newest first, each line naming the person and the thing as it was
-called at the time — which is the whole point, since the entries that matter
-are the ones whose subject no longer exists to look up. It travels in the
-document like everything else, so `ui-test` reads it on the device that joined
-second and finds the *first* device's edit there, in the first device's name,
-having crossed the relay sealed. Then it deletes something locally and watches
-that land at the top, marked "vous".
-
-**Every screen M5 asked for now exists.** What is left is the exit criterion
-itself: the same two-device convergence that CI proves at replica level, done
-on two real phones — which is where M4 ended too, and for the same reason.
-`ui-serve` puts the build on the first one; the second joins with twelve
-words. The relay URL defaults to the app's own origin, since
-M6 serves the PWA and the socket from one (0012) — and development now has
-that same single origin too: `ui-serve` proxies `/sync` to the relay, because
-the installed PWA is served over TLS and a page in a secure context may not
-open a `ws:` (DECISIONS 0044). The Settings override stays, for pointing a
-device at some other relay. Then the exit check happens where M4's did: on two
-real devices.
+  files; a device that keeps the first and loses the second tells the relay it
+  has everything, gets nothing replayed, and stays empty for good.
+  `App::opened_fresh()` reports the exact fact and the engine starts over
+  (0045). Silent and permanent is why it is a method and not a heuristic.
+- **A QR's mask is a choice, not a fact.** All eight are valid and the format
+  bits say which was used, so demanding that a hand-written encoder agree with
+  a reference implementation's taste fails about a quarter of the time — which
+  CI found and the machine it was written on never could, since the phrase is
+  minted fresh every run. The check compares against all eight (0047).
 
 ## M6 — Deployment
 
