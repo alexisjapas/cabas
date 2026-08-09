@@ -424,7 +424,7 @@ by then the shell is precached and the question only arises once per install.
 - [x] `cabas-relay`: axum, WebSocket per family, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
 - [x] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
 - [x] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021). The QR is **shown and never scanned**, and the joining device types the words: the fallback is now the only path, which is the one that cannot quietly rot (DECISIONS 0047)
-- [ ] Users and devices: pairing asks who you are — **done**, it is the screen after the phrase — but the device screen that states plainly that revoking means rotating the key and re-pairing everyone is not written yet
+- [x] Users and devices: pairing asks who you are, and the roster behind Settings lists everyone with the devices they carry — stating plainly that these are names rather than accounts, that there is no way to remove one device, and that the only answer to a lost one is a new phrase for everybody. Rotating it is offered there, behind its consequences (Rule 7, DECISIONS 0024)
 - [ ] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log is already *written* by every deletion and edit since M3; what is missing is a view-model for it and a screen
 - [x] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
 - [x] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
@@ -511,8 +511,18 @@ agreeing exactly, which is what makes a hand-written encoder a safe thing to
 own. `ui-test` also joins a family from a wiped device by typing the words in
 the wrong case, and watches the library arrive from the relay.
 
-What remains of the PWA half is two screens: the device-and-users screen with
-the revocation warning 0024 requires, and the event log. Neither is on the path
+**The roster is in too**, behind Settings: everyone in the family with the
+devices they carry, "vous" and "cet appareil" marked, each device dated by when
+it joined. It is the screen that looks most like access control and is the
+furthest thing from one, so it says so — and it is where rotating the family
+phrase lives, behind a list of what that costs. `ui-test` reaches it only after
+a second device has joined through the relay, which is the first moment the
+grouping proves anything, and it rotates the key at the very end: the relay
+ends the run holding two families, the first one untouched and unreadable by
+the device that left.
+
+What remains of the PWA half is the event log — a view-model and a screen over
+what every deletion and edit has been writing since M3. It is not on the path
 of the exit criterion, which is two real devices. The relay URL defaults to the app's own origin, since
 M6 serves the PWA and the socket from one (0012) — and development now has
 that same single origin too: `ui-serve` proxies `/sync` to the relay, because
@@ -526,6 +536,7 @@ real devices.
 - [ ] Home Assistant OS add-on: repo layout, `config.yaml`, `build.yaml`
 - [ ] CI builds the arm64 image (Svelte bundle embedded into the binary via `rust-embed`) and pushes to ghcr.io; the add-on references the prebuilt image rather than building on the Pi
 - [ ] Data in `/data` so HA's own backups cover it — the recovery point if all devices are lost
+- [ ] Decide what happens to an **abandoned family log**. Rotating the phrase (M5's answer to a lost device) moves everyone to a new family id and leaves the old log on disk, sealed and orphaned: nothing prunes it, and the relay cannot tell an abandoned family from a quiet one. A hand-run command is probably enough; the point is that it is a decision and not an oversight
 - [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)
 - [ ] Restore drill: wipe a device, re-pair, verify the data comes back
 

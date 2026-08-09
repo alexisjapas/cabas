@@ -39,7 +39,7 @@ pub use expand::{Contribution, ExpandError, RecipeIndex, expand};
 pub use ingredient::{Aisle, Ingredient};
 pub use list::{ListEntry, ListItem, ShoppingList};
 pub use overlay::{CheckState, Explicit, Overlay};
-pub use people::{Device, User};
+pub use people::{Device, User, devices_of};
 pub use quantity::Quantity;
 pub use recipe::{
     Component, IngredientUsage, Recipe, RefDisplay, Segment, Step, SubRecipeAmount, SubRecipeUsage,

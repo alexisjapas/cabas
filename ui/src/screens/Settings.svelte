@@ -5,8 +5,16 @@
   import type { Session } from '../lib/session.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
   import Pairing from './Pairing.svelte';
+  import People from './People.svelte';
 
   let { session }: { session: Session } = $props();
+
+  /**
+   * Two views behind one tab, the way Recipes has three: the roster is a
+   * screen of its own — it has a warning to make and room to make it — and it
+   * is reached from the one place someone would look for it.
+   */
+  let showing = $state<'settings' | 'people'>('settings');
 
   /**
    * The device half of the identity never appears in a view-model: it is a
@@ -72,98 +80,106 @@
   }
 </script>
 
-<Screen title="Réglages">
-  <form onsubmit={rename}>
-    <label>
-      Votre prénom
-      <input
-        value={name}
-        oninput={(event) => (edited = event.currentTarget.value)}
-        required
-        autocomplete="given-name"
-      />
-      <small>Ce que voient les autres appareils à côté de ce que vous ajoutez ou cochez.</small>
-    </label>
-    <button type="submit" disabled={name.trim() === '' || name.trim() === session.state.me.name}>
-      {saved ? 'Enregistré' : 'Enregistrer'}
-    </button>
-  </form>
-
-  <dl>
-    <div>
-      <dt>Cet appareil</dt>
-      <dd>{identity?.device_name ?? '—'}</dd>
-    </div>
-    <div>
-      <dt>Recettes</dt>
-      <dd>{session.state.recipes.length}</dd>
-    </div>
-    <div>
-      <dt>Ingrédients</dt>
-      <dd>{session.state.ingredients.length}</dd>
-    </div>
-    <div>
-      <dt>Entrées sur la liste</dt>
-      <dd>{session.state.list.length}</dd>
-    </div>
-  </dl>
-
-  <section class="family">
-    <h2>Famille</h2>
-    <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
-
-    {#if session.sync.family === null}
-      {#if pairingOpen}
-        <Pairing
-          onpaired={(family) => {
-            session.sync.pair(family);
-            pairingOpen = false;
-          }}
-          oncancel={() => (pairingOpen = false)}
+{#if showing === 'people'}
+  <People {session} onback={() => (showing = 'settings')} />
+{:else}
+  <Screen title="Réglages">
+    <form onsubmit={rename}>
+      <label>
+        Votre prénom
+        <input
+          value={name}
+          oninput={(event) => (edited = event.currentTarget.value)}
+          required
+          autocomplete="given-name"
         />
-      {:else}
-        <p class="note">
-          Cet appareil n'est appairé à aucun autre. Tout fonctionne, rien n'est partagé.
-        </p>
-        <button type="button" onclick={() => (pairingOpen = true)}>Appairer cet appareil</button>
-      {/if}
-    {:else}
-      {@const family = session.sync.family}
-      <p class="note">
-        Pour ajouter un appareil : ouvrez cabas dessus, choisissez « Rejoindre une famille », et
-        recopiez ces douze mots.
-      </p>
+        <small>Ce que voient les autres appareils à côté de ce que vous ajoutez ou cochez.</small>
+      </label>
+      <button type="submit" disabled={name.trim() === '' || name.trim() === session.state.me.name}>
+        {saved ? 'Enregistré' : 'Enregistrer'}
+      </button>
+    </form>
 
-      {#if revealed}
-        <p class="phrase" data-phrase>{family.phrase}</p>
-        <Qr text={family.phrase} label="La phrase de votre famille, en QR code" />
-        <button type="button" class="secondary" onclick={() => (revealed = false)}>Masquer</button>
-      {:else}
-        <button type="button" class="secondary" onclick={() => (revealed = true)}>
-          Afficher la phrase
-        </button>
-      {/if}
+    <dl>
+      <div>
+        <dt>Cet appareil</dt>
+        <dd>{identity?.device_name ?? '—'}</dd>
+      </div>
+      <div>
+        <dt>Recettes</dt>
+        <dd>{session.state.recipes.length}</dd>
+      </div>
+      <div>
+        <dt>Ingrédients</dt>
+        <dd>{session.state.ingredients.length}</dd>
+      </div>
+      <div>
+        <dt>Entrées sur la liste</dt>
+        <dd>{session.state.list.length}</dd>
+      </div>
+    </dl>
 
-      <form onsubmit={saveRelay}>
-        <label>
-          Serveur
-          <input
-            value={relay}
-            oninput={(event) => (relayDraft = event.currentTarget.value)}
-            autocapitalize="none"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="cet appareil parle au serveur qui l'héberge"
+    <section class="family">
+      <h2>Famille</h2>
+      <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
+
+      {#if session.sync.family === null}
+        {#if pairingOpen}
+          <Pairing
+            onpaired={(family) => {
+              session.sync.pair(family);
+              pairingOpen = false;
+            }}
+            oncancel={() => (pairingOpen = false)}
           />
-          <small>À laisser vide, sauf en développement.</small>
-        </label>
-        <button type="submit" disabled={relayDraft === null}>Enregistrer le serveur</button>
-      </form>
-    {/if}
-  </section>
+        {:else}
+          <p class="note">
+            Cet appareil n'est appairé à aucun autre. Tout fonctionne, rien n'est partagé.
+          </p>
+          <button type="button" onclick={() => (pairingOpen = true)}>Appairer cet appareil</button>
+        {/if}
+      {:else}
+        {@const family = session.sync.family}
+        <p class="note">
+          Pour ajouter un appareil : ouvrez cabas dessus, choisissez « Rejoindre une famille », et
+          recopiez ces douze mots.
+        </p>
 
-  <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
-</Screen>
+        {#if revealed}
+          <p class="phrase" data-phrase>{family.phrase}</p>
+          <Qr text={family.phrase} label="La phrase de votre famille, en QR code" />
+          <button type="button" class="secondary" onclick={() => (revealed = false)}>Masquer</button>
+        {:else}
+          <button type="button" class="secondary" onclick={() => (revealed = true)}>
+            Afficher la phrase
+          </button>
+        {/if}
+
+        <form onsubmit={saveRelay}>
+          <label>
+            Serveur
+            <input
+              value={relay}
+              oninput={(event) => (relayDraft = event.currentTarget.value)}
+              autocapitalize="none"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="cet appareil parle au serveur qui l'héberge"
+            />
+            <small>À laisser vide, sauf en développement.</small>
+          </label>
+          <button type="submit" disabled={relayDraft === null}>Enregistrer le serveur</button>
+        </form>
+      {/if}
+    </section>
+
+    <button type="button" class="secondary roster" onclick={() => (showing = 'people')}>
+      Personnes et appareils
+    </button>
+
+    <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
+  </Screen>
+{/if}
 
 <style>
   form {
@@ -291,5 +307,10 @@
     border: 1px solid var(--border-strong);
     background: var(--surface-raised);
     color: var(--text);
+  }
+
+  .roster {
+    width: 100%;
+    margin-bottom: var(--space-5);
   }
 </style>

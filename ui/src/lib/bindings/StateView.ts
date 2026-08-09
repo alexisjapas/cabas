@@ -3,6 +3,7 @@ import type { CartView } from "./CartView";
 import type { FocusView } from "./FocusView";
 import type { IngredientView } from "./IngredientView";
 import type { ListEntryView } from "./ListEntryView";
+import type { PersonView } from "./PersonView";
 import type { ProblemView } from "./ProblemView";
 import type { RecipeSummaryView } from "./RecipeSummaryView";
 import type { UserView } from "./UserView";
@@ -20,7 +21,12 @@ revision: number,
 /**
  * Who this device says it is — the name attribution will use.
  */
-me: UserView, cart: CartView, list: Array<ListEntryView>, recipes: Array<RecipeSummaryView>, ingredients: Array<IngredientView>, 
+me: UserView, 
+/**
+ * Everyone in the family and the devices they carry, in document order.
+ * Sorting is the screen's business, like every other list here.
+ */
+people: Array<PersonView>, cart: CartView, list: Array<ListEntryView>, recipes: Array<RecipeSummaryView>, ingredients: Array<IngredientView>, 
 /**
  * The open recipe, if any. Device-local, never synced.
  */

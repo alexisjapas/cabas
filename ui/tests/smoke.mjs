@@ -948,6 +948,79 @@ await waitFor(`__all('li .name').includes('Tomates')`, 'the family library, on t
 ok('twelve words typed by hand are the whole of pairing — the library follows');
 await shot('14-joined');
 
+// --- and both devices are on the roster --------------------------------------
+//
+// The screen that looks like access control and is not one (Rule 7). It can
+// only be checked here, after two devices have met: before this point the
+// family has one of each and proves nothing about grouping.
+
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await evaluate(`__clickText('button', 'Personnes et appareils')`);
+await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster');
+await waitFor(`__all('.people > li .name').includes('Alexis')`, 'the person who started it');
+
+const roster = JSON.parse(
+  await evaluate(`
+    JSON.stringify([...document.querySelectorAll('.people > li')].map((person) => ({
+      name: person.querySelector('.name').textContent.trim(),
+      devices: [...person.querySelectorAll('.devices .device-name')].map((d) => d.textContent.trim()),
+    })))
+  `),
+);
+const camille = roster.find((person) => person.name.startsWith('Camille'));
+const alexis = roster.find((person) => person.name.startsWith('Alexis'));
+if (roster.length !== 2 || !camille || !alexis) {
+  throw failed(`the roster is not two people: ${JSON.stringify(roster)}`);
+}
+if (!alexis.devices.includes('iPhone de test') || !camille.devices.includes('Téléphone de Camille')) {
+  throw failed(`devices are under the wrong person: ${JSON.stringify(roster)}`);
+}
+if (!camille.name.includes('vous')) {
+  throw failed(`this device belongs to Camille and the screen does not say so: ${camille.name}`);
+}
+ok('the roster shows both people, each with the device they paired');
+
+// The warning is the point of the screen, so it is asserted like anything else.
+const revocation = await evaluate(`__text('.revoke')`);
+for (const claim of ['pas de moyen de retirer un seul appareil', 'la même clé']) {
+  if (!revocation.includes(claim)) {
+    throw failed(`the revocation warning does not say "${claim}": ${JSON.stringify(revocation)}`);
+  }
+}
+ok('and states plainly that there is no such thing as revoking one of them (Rule 7)');
+await shot('15-people');
+
+// Rotating the key is the whole of revocation, and it is destructive enough to
+// be the last thing this file does: the family it leaves behind is the one
+// every assertion above was made against.
+const familiesBefore = (await readdir(RELAY_DATA)).length;
+await evaluate(`__clickText('.revoke button', 'Changer la phrase de la famille')`);
+await waitFor(`__count('.consequences li') === 3`, 'the consequences, before anything happens');
+ok('rotating asks first, and says what it costs');
+
+await evaluate(`__clickText('.revoke button', 'Changer la phrase')`);
+await waitFor(`__text('.revoke [data-phrase]')`, 'the new phrase');
+const rotated = await evaluate(`__text('.revoke [data-phrase]')`);
+if (rotated.split(/\s+/).length !== 12 || rotated === phrase) {
+  throw failed(`the new phrase is not a new phrase: ${JSON.stringify(rotated)}`);
+}
+const stored = await evaluate(`JSON.parse(localStorage.getItem('cabas.family')).phrase`);
+if (stored !== rotated) {
+  throw failed('the device kept its old phrase');
+}
+ok('a new phrase is minted and this device moves to it');
+
+// A different phrase is a different family id, so the relay grows a second
+// log rather than writing into the first. The old one stays exactly where it
+// was — sealed, and readable only by whoever still has the old words.
+await waitForRelay('the library, pushed into the new family', 20000);
+const familiesAfter = await readdir(RELAY_DATA);
+if (familiesAfter.length !== familiesBefore + 1) {
+  throw failed(`expected one more family on the relay, found ${familiesAfter.length} against ${familiesBefore}`);
+}
+ok('and the relay holds a second family, the first one untouched');
+await shot('16-rotated');
+
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);
 }

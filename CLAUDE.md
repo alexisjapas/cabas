@@ -36,9 +36,10 @@ holds the socket, the foreground rule, backoff and the cursor; `screens/
 Pairing.svelte` starts or joins a family and `screens/Settings.svelte` shows
 the phrase for a second phone. `ui-test` runs the lot against a real relay and
 proves the milestone at browser level — a device pushes its library, loses its
-replica, gets everything back from the relay alone, and another joins by typing
-the twelve words, sealed throughout. What remains of M5 is two screens: users
-and devices, and the event log. See ROADMAP "Next action".
+replica, gets everything back from the relay alone, another joins by typing the
+twelve words, and the roster behind Settings shows both — sealed throughout.
+What remains of M5 is one screen, the event log, and then two real devices. See
+ROADMAP "Next action".
 
 ## Environment and commands
 
@@ -254,7 +255,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster, and the only place key rotation is offered |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -262,8 +263,9 @@ file:
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against a real relay `ui-test` starts on 8788 |
 
-`screens/Recipes.svelte` is three views behind one tab — the shelf, the one
-being read, and the one being written — and the shape is worth knowing before
+`screens/Settings.svelte` is two views behind one tab, and
+`screens/Recipes.svelte` is three behind another — the shelf, the one being
+read, and the one being written — and the shape is worth knowing before
 touching it. Which recipe is *open* is core state (`OpenRecipe`, never
 synced); the recipe being *edited* is a draft that lives in `Recipes.svelte`
 and is handed to `RecipeEditor` as a `$bindable`, because a form seeded from a

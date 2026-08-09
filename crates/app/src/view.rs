@@ -38,6 +38,9 @@ pub struct StateView {
     pub revision: u64,
     /// Who this device says it is — the name attribution will use.
     pub me: UserView,
+    /// Everyone in the family and the devices they carry, in document order.
+    /// Sorting is the screen's business, like every other list here.
+    pub people: Vec<PersonView>,
     pub cart: CartView,
     pub list: Vec<ListEntryView>,
     pub recipes: Vec<RecipeSummaryView>,
@@ -55,6 +58,39 @@ pub struct StateView {
 pub struct UserView {
     pub id: String,
     pub name: String,
+}
+
+/// One person in the family, and the devices they carry.
+///
+/// **Names, not permissions** (Rule 7, DECISIONS 0024). One shared key
+/// decrypts the whole document, so every one of these says who most likely
+/// did something — not who was allowed to. The screen that lists them is the
+/// one place the UI is required to say so out loud, because it is the screen
+/// that looks most like an access control panel and is not one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub struct PersonView {
+    pub id: String,
+    pub name: String,
+    /// The person this device belongs to.
+    pub is_me: bool,
+    pub devices: Vec<DeviceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub struct DeviceView {
+    pub id: String,
+    pub name: String,
+    /// The device this state was rendered on.
+    pub is_this_one: bool,
+    /// When it joined the family, in milliseconds since the epoch.
+    ///
+    /// A number rather than text: a millisecond count is nowhere near where a
+    /// double stops being exact (DECISIONS 0046), and the words around a date
+    /// belong to the frontend (0035) — "il y a deux mois" is a sentence, and
+    /// this crate writes none.
+    pub paired_at: i64,
 }
 
 /// An amount, ready to display.

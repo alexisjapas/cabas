@@ -193,6 +193,7 @@ pub(crate) fn state(
                 .unwrap_or(&identity.user_name)
                 .to_owned(),
         },
+        people: people_views(library, identity),
         cart: cart_view(library, &projection.cart),
         list: list_view(library, &projection.cart),
         recipes: recipe_summaries(library),
@@ -200,6 +201,37 @@ pub(crate) fn state(
         focus: focus.and_then(|focus| focus_view(library, focus)),
         problems: projection.problems.clone(),
     }
+}
+
+/// The family roster: everyone in the document, each with what they carry.
+///
+/// A device whose owner is not in the roster is invisible here, which is what
+/// [`cabas_domain::devices_of`] decides and why: under a CRDT one replica can
+/// delete a user while another pairs a device to them, and a dangling owner
+/// must not be able to break the screen (DECISIONS 0022's reasoning, applied
+/// to people). No command deletes a user today, so the case cannot arise from
+/// this app — it is handled because the document is shared, not because the
+/// UI can produce it.
+fn people_views(library: &Library, identity: &Identity) -> Vec<PersonView> {
+    let me = identity.user_id();
+    let this_device = identity.device_id();
+    library
+        .users
+        .iter()
+        .map(|user| PersonView {
+            id: user.id.to_string(),
+            name: user.name.clone(),
+            is_me: user.id == me,
+            devices: cabas_domain::devices_of(&library.devices, &user.id)
+                .map(|device| DeviceView {
+                    id: device.id.to_string(),
+                    name: device.name.clone(),
+                    is_this_one: device.id == this_device,
+                    paired_at: device.paired_at.0,
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 fn cart_view(library: &Library, cart: &Cart) -> CartView {
