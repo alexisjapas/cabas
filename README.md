@@ -296,6 +296,23 @@ A pull request publishes nothing, `main` publishes the `-dev` version — so the
 add-on is installable from this repository today — and a release is an
 annotated `vX.Y.Z` tag whose name must match `cabas-relay/config.yaml`.
 
+The same binary answers two questions from a shell on the machine:
+
+```sh
+cabas-relay families           # what is on disk, and when each last received anything
+cabas-relay forget <id>        # remove one family's log, named in full, for good
+```
+
+That is the whole answer to an **abandoned family log**. Changing the family
+phrase is how a lost phone is revoked, and it leaves the old family's log
+behind; nothing collects it, because nothing on the relay can tell a family
+that was abandoned from one whose phones have been quiet for a season — and
+that log is the recovery point if every phone is lost, so there is no safe
+number of days
+([0050](docs/DECISIONS.md#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all)).
+Deliberately not an HTTP endpoint: a family id is the only access control the
+relay has, and its port faces the tunnel.
+
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):

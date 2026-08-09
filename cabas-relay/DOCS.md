@@ -59,6 +59,43 @@ phrase — the library comes back from the log.
 The phrase is not in the backup, and cannot be. Write it down somewhere else.
 A restored `/data` without it is a directory of ciphertext nobody can open.
 
+## After changing the family phrase
+
+Changing the phrase is how a lost phone is revoked: every phone moves to a new
+family, and **the old one's log stays here**. Nothing collects it, because
+nothing here can tell a family that was abandoned from one whose phones have
+simply been quiet for a season — and that log is the recovery point if every
+phone is lost, so guessing is not on offer.
+
+So it is a thing you do, once, when you have finished re-pairing everyone. From
+a shell on the machine (the SSH add-on, then `docker exec` into this one):
+
+```sh
+cabas-relay families
+```
+
+```
+family                              frames       size  last write
+5a7bcc53b64acb1c9465f84e1e54ad50       412     154 kB  97 days ago
+9f1e2d3c4b5a69788796a5b4c3d2e1f0        26      10 kB  4min ago
+```
+
+The abandoned one is the one that stopped when you changed the phrase. Remove
+it by naming it in full:
+
+```sh
+cabas-relay forget 5a7bcc53b64acb1c9465f84e1e54ad50
+```
+
+There is no undo, no prefix matching and no "delete everything older than". You
+can run it while the add-on is going: the family you are forgetting is one no
+phone connects to any more, which is what abandoned means.
+
+Not doing it costs a directory the size of one family's library. And it is
+worth being clear about what it does not do: the old log holds nothing the
+holder of the old phrase does not already have on the phone that was lost.
+Changing the phrase stops the future, not the past.
+
 ## Ports
 
 | Port | Why |

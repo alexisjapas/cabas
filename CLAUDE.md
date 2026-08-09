@@ -15,11 +15,13 @@ way**: the Svelte bundle is compiled into `cabas-relay` by its build script, so
 one binary serves the app and `/sync` on one origin (DECISIONS 0048), and that
 binary is cross-compiled to static musl and published by CI as a Home Assistant
 add-on image — `repository.yaml` and `cabas-relay/` make this repo an add-on
-repository (DECISIONS 0049). **Next is running it on the Pi**: everything is
+repository (DECISIONS 0049). The abandoned family log is settled too: forgotten
+by hand or not at all, through `cabas-relay families` / `forget` (DECISIONS
+0050). **Next is running it on the Pi**: everything is
 verified up to the Dockerfile and no further, because there is no container
-runtime in the devShell. Then the Cloudflare Tunnel, the abandoned-log
-decision and the restore drill — everything works today only on one wifi,
-behind a hand-installed certificate authority, with the relay in a terminal.
+runtime in the devShell. Then the Cloudflare Tunnel and the restore drill —
+everything works today only on one wifi, behind a hand-installed certificate
+authority, with the relay in a terminal.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -29,7 +31,7 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 172 native tests plus 10 in
+its own binary**. 179 native tests plus 10 in
 a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
@@ -195,7 +197,13 @@ replay under the same lock as the subscription, then live forwarding. It
 depends on `cabas-sync` for the protocol types and never for a key.
 `assets.rs` is the static half — the PWA, served from the same origin as
 `/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
-0048). It shares nothing with the sync side but the port. **A missing
+0048). It shares nothing with the sync side but the port. `admin.rs` is the
+data directory as seen from a shell: `survey` and `forget`, behind
+`cabas-relay families` / `cabas-relay forget <id>`, because an abandoned family
+log can only be identified by a person — the relay cannot tell one from a
+quiet family, and the log is the recovery point if every device is lost
+(DECISIONS 0050). Deliberately **not** an HTTP endpoint: a family id is the
+only access control the relay has and the port faces the tunnel. **A missing
 `ui/dist` embeds nothing and is not an error**, which is what keeps `cargo
 clippy --workspace` working in a fresh checkout; the release image sets
 `CABAS_EMBED_UI=required` so an image with no app in it fails on the runner.
@@ -637,3 +645,15 @@ Key domain shapes, all settled in DECISIONS:
   the image first run on the appliance. `build-relay` and `check-addon` cover
   everything up to that line and nothing past it — do not describe the add-on
   as verified.
+- **Surveying the data directory must never open a log.** `FamilyLog::open`
+  mints an epoch for a family that has none and rewrites `meta`, so a
+  "read-only" listing built on it would cost every device of every family a
+  full replay. `admin::survey` reads `meta` and stats the files instead — and
+  it takes the timestamp off the *log* file, not `meta`, because `meta` is
+  rewritten on open and would report when the relay last restarted.
+- **`forget` is irreversible and takes a whole family id.** No prefix, no age,
+  no pattern — the premise of DECISIONS 0050 is that the machine cannot judge
+  which family is finished, so it does not get to guess at one either. It is
+  safe to run while the relay serves, because an abandoned family is by
+  definition one nothing connects to; forgetting a *live* one leaves its
+  sockets answering "storage failed" until the process restarts.

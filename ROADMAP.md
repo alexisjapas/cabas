@@ -87,7 +87,9 @@ Assistant base image, and published by CI as
 this repository an add-on repository you can paste into Home Assistant
 (DECISIONS 0049). `ui-test` runs against the relay rather than `pnpm preview`,
 so the end-to-end suite is also the proof that the shipped artifact has an app
-in it.
+in it. The relay also grew the two subcommands an abandoned family log needs —
+`families` and `forget` — because nothing automatic could ever be right about
+it (DECISIONS 0050).
 
 **Next action: put it on the Pi.** Everything above is verified up to the
 Dockerfile and no further — there is no container runtime in the devShell, so
@@ -97,10 +99,10 @@ Repositories, install **cabas**, start it, and open `http://<home-assistant>:878
 on the LAN. The log's first line says how many files it is serving; `0` means
 an image with no app in it.
 
-After that, in order: the Cloudflare Tunnel onto the owned domain — **and that
-is the moment the origin becomes permanent**, so both phones reinstall from it
-that day and never from anything else — then the abandoned-log decision, then
-the restore drill.
+After that: the Cloudflare Tunnel onto the owned domain — **and that is the
+moment the origin becomes permanent**, so both phones reinstall from it that
+day and never from anything else — then the restore drill. The abandoned-log
+question is settled (0050) and needs no hardware.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -542,7 +544,15 @@ closed could not reach a relay at all.
       devShell, so the image is first executed on a runner and first *run* on
       the appliance
 - [ ] Data in `/data` so HA's own backups cover it — the recovery point if all devices are lost
-- [ ] Decide what happens to an **abandoned family log**. Rotating the phrase (M5's answer to a lost device) moves everyone to a new family id and leaves the old log on disk, sealed and orphaned: nothing prunes it, and the relay cannot tell an abandoned family from a quiet one. A hand-run command is probably enough; the point is that it is a decision and not an oversight
+- [x] **The abandoned family log**: forgotten by hand, or not at all (DECISIONS
+      0050). No expiry and no sweep — the relay cannot tell an abandoned family
+      from a quiet one, and the log is the recovery point if every device is
+      lost, so there is no safe *N* days. Instead `cabas-relay families` lists
+      what is on disk with how long since each last received anything, and
+      `cabas-relay forget <id>` removes one, named in full. Not an HTTP
+      endpoint: a family id is the only access control the relay has, and the
+      port faces the tunnel. The rotation screen now names the leftover as its
+      fourth consequence, and `cabas-relay/DOCS.md` carries the procedure
 - [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)
 - [ ] Restore drill: wipe a device, re-pair, verify the data comes back
 

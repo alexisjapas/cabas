@@ -59,6 +59,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0047](#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours) | The QR is shown, never scanned, and the encoder is ours | Product |
 | [0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script) | The bundle is compiled into the relay, by a build script | Deployment |
 | [0049](#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi) | The add-on is cross-compiled here, and never built on the Pi | Deployment |
+| [0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all) | An abandoned family log is forgotten by hand, or not at all | Sync |
 
 ---
 
@@ -1805,3 +1806,86 @@ takes away the shell on the one machine where a shell is hardest to get.
 every add-on document and tool assumes. **An options schema for the log level**
 — the first configurable thing is what makes the second one seem reasonable;
 Rule 14 says it starts with an entry here.
+
+---
+
+## 0050 — An abandoned family log is forgotten by hand, or not at all
+
+**Date** 2026-08-09 · **Status** Accepted · **Relates to**
+[0024](#0024--attribution-is-declarative-not-cryptographic),
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on)
+
+**Context.** Rotating the family phrase is the whole of revocation (0024):
+every device moves to a new family id, and the old log stays on the relay —
+sealed, complete, and addressed by an id nobody will ever send again. Nothing
+collects it. The ROADMAP has carried this since M5 as an item that had to
+become a decision rather than remain an oversight.
+
+The temptation is a sweep: delete a family that has received nothing in *N*
+days. It cannot be done, and the reason is the same property that makes the
+relay worth trusting. **The relay cannot tell an abandoned family from a quiet
+one.** It holds no key, no roster and no calendar of anyone's life. A family
+that rotated last spring and a family whose two phones spent the summer
+somewhere else are the same directory with an old timestamp. And the log is the
+recovery point if every device is lost (0010), so a sweep that guesses wrong
+eats the only remaining copy of a family's library. There is no *N* that is
+safe, because the quantity being estimated is not on this machine.
+
+**Decision.** No expiry, no sweep, nothing automatic. The relay gains two
+subcommands for the person who *does* know which family they abandoned:
+
+- `cabas-relay families` — every family on disk: id, frames handed out over its
+  whole life, bytes, and how long since it last received anything. Read-only.
+- `cabas-relay forget <id>` — deletes one, named in full.
+
+Ages rather than dates, because the question being answered is "which of these
+stopped when I rotated", and "97 days" answers it without arithmetic or a date
+library. The stalest is listed first, which puts the candidates at the top.
+
+`forget` takes a whole id and never a prefix, an age or a pattern. The point of
+this entry is that the machine cannot judge which of these is finished; it does
+not then get to guess at one either. A malformed id and an absent one are
+different answers, so a typo cannot read as "already gone".
+
+**Surveying must not open the logs.** `FamilyLog::open` mints an epoch for a
+family that has none and rewrites `meta`; doing that while merely counting
+would cost every one of that family's devices a full replay (0042). `survey`
+reads `meta` and stats the files instead — and it reads the *log* file's
+timestamp, not `meta`'s, because `meta` is rewritten on open and would report
+when the relay last restarted.
+
+**It is not an HTTP endpoint, and that is the security half.** A family id is
+the whole of the relay's access control: `log`'s comment on `open` is that a
+stranger cannot mine directories into existence because the ids are
+unguessable. A listing served on the port that faces the Cloudflare Tunnel
+would hand out precisely the thing that is supposed to be unguessable. These
+run for whoever already has a shell on the machine, and for nobody else.
+
+**Consequences.** Running `forget` while the add-on is serving is fine: the
+family being forgotten is by definition one no device connects to any more —
+that is what abandoned means — so nothing holds it open. Forgetting a *live*
+family instead leaves its connections answering "storage failed" until the
+process restarts, which is the loud kind of wrong rather than the quiet kind.
+
+Rotating therefore has an operational tail, and it is named in both places it
+has to be: the fourth consequence on the phone's rotation screen, before
+anything happens, and the procedure in `cabas-relay/DOCS.md` for the person at
+the machine. Not doing it costs a directory the size of one family's library,
+which is why this is hygiene and not urgency.
+
+And it is worth being plain about what it is *not*. The old log holds nothing
+that the holder of the old phrase does not already have on the device that was
+lost — that device had the library. Rotation stops the future, not the past;
+deleting the old log leaves nothing behind, and rescues nothing. Saying so is
+better than implying that revocation cleans up after itself.
+
+**Rejected.** **A TTL on the relay** — the estimate it needs is not on this
+machine. **Deleting the old log at rotation, from the device** — the rotating
+device knows the old id and could ask; but then any device that ever held a
+phrase can order a log destroyed, which makes a lost phone able to erase the
+family it was stolen from. The one operation that must not be remote is the
+irreversible one. **A retention option in `config.yaml`** — a number the
+operator would have to guess, dressed as configuration (0049 rejected
+configurability for the same reason). **Listing families over HTTP** — see
+above; it publishes the only secret the relay has.
