@@ -532,6 +532,13 @@ Key domain shapes, all settled in DECISIONS:
   about; anything the app logs arrives as `Runtime.consoleAPICalled` and used
   to fail nothing. Both are collected now, and a timeout prints them — a
   "timed out waiting for X" with no page log is a much longer afternoon.
+- **A new build appears one launch late, by design.** The launch that meets it
+  keeps showing the old one and installs the new worker behind it; the next
+  launch is the one that takes over, because activating earlier would delete
+  caches a running page is still loading from (DECISIONS 0038). Observed on the
+  phone at M5. So "my change isn't there" is answered by *closing the app and
+  reopening it*, not by reloading — and a phone that is never closed stays a
+  build behind.
 - **The QR encoder is fixed to version 6, level L.** That is what makes a
   hand-written one safe — one version is one row of the spec's tables instead
   of a wall of them — and it means a longer payload throws rather than draws

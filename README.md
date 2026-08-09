@@ -156,6 +156,13 @@ library the day it moves
 certificate covers both, and is re-signed automatically when the address
 changes — the CA is not, so the phone keeps trusting it.
 
+**A new build shows up one launch late.** Serving a newer bundle does not
+change the app that is open: that launch installs the new service worker
+behind the one still running, and the *next* launch is the one it takes over
+([0038](docs/DECISIONS.md#0038--the-service-worker-is-written-by-hand)). So
+after rebuilding, close the app and reopen it — reloading achieves nothing, and
+a phone left open stays a build behind.
+
 The CA's private key is a trust anchor on every phone that installed it. It is
 generated per machine into `ui/.certs/` (gitignored), never travels, and the
 profile is worth removing from the phone once M6's permanent origin exists.

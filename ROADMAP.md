@@ -348,8 +348,17 @@ app's identity (DECISIONS 0012): **reserve it on the router, or the app loses
 its library the day the lease moves.** Turning avahi publishing on is the other
 answer and is written up in the README.
 
-The **iOS update path** stays unobserved, and cannot be observed until a second
-build reaches the phone. It is the one M4 question carried into M5.
+The **iOS update path** was the one M4 question carried into M5, since it takes
+a second build to see at all. M5's build was that second one, and it behaves
+exactly as `sw.js` was written to (DECISIONS 0038): the launch that meets a new
+build **keeps showing the old one** and installs the new worker behind it; the
+next launch is the one that shows it. Closing the app and reopening it is
+therefore the update, and nothing needs changing — activating any earlier would
+mean deleting caches out from under a page still loading from them.
+
+Worth knowing rather than fixing: it means a phone that is never closed stays
+one build behind, and that "I don't see your change" is answered by closing the
+app rather than by reloading anything.
 
 **Measured** (release build, `wasm-release` + `wasm-opt -Oz`):
 
