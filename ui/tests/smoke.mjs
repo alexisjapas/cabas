@@ -304,9 +304,16 @@ if (phrase.split(/\s+/).length !== 12) {
 }
 ok(`the family's phrase is twelve words`);
 
-// The QR on screen, module for module against a reference implementation.
-// A picture that renders and does not decode is exactly the failure a hand
-// written encoder invites (DECISIONS 0047).
+// The encoder against qrencode — fixed phrases plus the one just minted —
+// and then the drawing against the encoder. A picture that renders and does
+// not scan is exactly the failure a hand-written encoder invites, and the two
+// halves fail for different reasons (DECISIONS 0047).
+const qr = (...args) =>
+  execFileSync('node', ['--experimental-strip-types', 'ui/tools/qr-check.mts', ...args], {
+    encoding: 'utf8',
+  });
+console.log(qr('--verify', phrase).trimEnd());
+
 const drawn = await evaluate(`
   JSON.stringify([...document.querySelectorAll('.qr .module')].map(
     (rect) => [+rect.getAttribute('x'), +rect.getAttribute('y'), +rect.getAttribute('width')]
@@ -316,20 +323,20 @@ const rendered = new Set();
 for (const [x, y, width] of JSON.parse(drawn)) {
   for (let i = 0; i < width; i += 1) rendered.add(`${y},${x + i}`);
 }
-const reference = new Set();
-execFileSync('qrencode', ['-l', 'L', '-v', '6', '-m', '0', '-t', 'ASCII', '-o', '-'], {
-  input: phrase,
-  encoding: 'utf8',
-})
+const expected = new Set();
+qr('--print', phrase)
   .split('\n')
   .filter((row) => row.length > 0)
   .forEach((row, y) => {
-    for (let x = 0; x * 2 < row.length; x += 1) if (row[x * 2] === '#') reference.add(`${y},${x}`);
+    for (let x = 0; x < row.length; x += 1) if (row[x] === '1') expected.add(`${y},${x}`);
   });
-if (rendered.size !== reference.size || [...reference].some((cell) => !rendered.has(cell))) {
-  throw failed(`the QR differs from qrencode's: ${rendered.size} modules against ${reference.size}`);
+if (rendered.size !== expected.size || [...expected].some((cell) => !rendered.has(cell))) {
+  throw failed(
+    `the drawing is not the symbol: ${rendered.size} modules against ${expected.size} — ` +
+      'the run-merging in Qr.svelte is the suspect',
+  );
 }
-ok(`the QR matches qrencode module for module (${reference.size} dark)`);
+ok(`the page draws the symbol it was given (${expected.size} dark modules)`);
 await shot('00-pairing');
 
 await evaluate(`__clickText('button', "J'ai noté la phrase")`);

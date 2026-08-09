@@ -307,8 +307,13 @@ function penalty(dark: Uint8Array): number {
     }
   }
 
-  // 1:1:3:1:1 with four light modules on one side — the finder's own
-  // signature, which must not appear anywhere else.
+  // 1:1:3:1:1 with four light modules beside it — the finder's own signature,
+  // which must not appear anywhere else. "Preceded **or** followed", as the
+  // specification words it, so a run with clear space on both sides counts
+  // once here; implementations that read it as two patterns score it twice.
+  // Neither is wrong, and the difference only moves which mask wins — every
+  // mask produces a symbol that scans, which is why the check on this file
+  // compares against all eight rather than against one (DECISIONS 0047).
   const FINDERISH = [true, false, true, true, true, false, true];
   const finderish = (get: (k: number) => boolean, start: number): boolean => {
     for (let k = 0; k < 7; k += 1) if (get(start + k) !== FINDERISH[k]) return false;
@@ -365,19 +370,23 @@ function writeFormat(dark: Uint8Array, mask: number): void {
 /**
  * The symbol for `text`, as rows of modules — `true` is dark.
  *
+ * `mask` forces one of the eight patterns instead of scoring them. All eight
+ * are valid symbols — the format bits say which was used, and a scanner reads
+ * any of them — so which one wins is a quality heuristic and not a fact about
+ * the data. Two correct encoders routinely disagree about it, which is why the
+ * parameter exists: it is what lets the check compare against a reference
+ * implementation without having to share its taste (DECISIONS 0047).
+ *
  * No quiet zone: that is four modules of nothing on every side, and it belongs
  * to whoever draws this, because it is padding rather than data.
  */
-export function encode(text: string): boolean[][] {
+export function encode(text: string, mask?: number): boolean[][] {
   const grid: Grid = { dark: new Uint8Array(SIZE * SIZE), fixed: new Uint8Array(SIZE * SIZE) };
   patterns(grid);
   place(grid, stream(text));
 
-  let best = new Uint8Array(SIZE * SIZE);
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (let mask = 0; mask < MASKS.length; mask += 1) {
-    const shape = MASKS[mask] ?? MASKS[0];
-    if (shape === undefined) break;
+  const masked = (which: number): Uint8Array => {
+    const shape = MASKS[which] ?? MASKS[0]!;
     const candidate = new Uint8Array(grid.dark);
     for (let row = 0; row < SIZE; row += 1) {
       for (let col = 0; col < SIZE; col += 1) {
@@ -386,11 +395,20 @@ export function encode(text: string): boolean[][] {
         candidate[index] = (grid.dark[index] ?? 0) ^ (shape(row, col) ? 1 : 0);
       }
     }
-    writeFormat(candidate, mask);
-    const score = penalty(candidate);
-    if (score < bestScore) {
-      bestScore = score;
-      best = candidate;
+    writeFormat(candidate, which);
+    return candidate;
+  };
+
+  let best = masked(mask ?? 0);
+  if (mask === undefined) {
+    let bestScore = penalty(best);
+    for (let which = 1; which < MASKS.length; which += 1) {
+      const candidate = masked(which);
+      const score = penalty(candidate);
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
     }
   }
 
@@ -398,3 +416,6 @@ export function encode(text: string): boolean[][] {
     Array.from({ length: SIZE }, (_col, col) => at(best, row, col)),
   );
 }
+
+/** How many masks [`encode`] can be asked for. */
+export const MASK_COUNT = MASKS.length;

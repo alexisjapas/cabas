@@ -506,10 +506,15 @@ only then mint the identity. Settings does the same job on a device that is
 already running, shows the phrase on demand for a second phone to copy, and
 holds the relay override 0043 asked for. The QR is **displayed and never
 scanned** (DECISIONS 0047); the encoder is written here, fixed to version 6-L,
-and `ui-test` checks it against `qrencode` module for module — 821 dark modules
-agreeing exactly, which is what makes a hand-written encoder a safe thing to
-own. `ui-test` also joins a family from a wiped device by typing the words in
-the wrong case, and watches the library arrive from the relay.
+and `ui-test` checks it against `qrencode` — module for module, but against
+**all eight masks** rather than the one this encoder prefers. That distinction
+is the whole lesson: every mask is a valid symbol and the format bits say which
+was used, so which one wins is a scoring heuristic two correct encoders
+routinely disagree about. Demanding the same one passed on the machine it was
+written on and failed in CI, because the phrase is minted fresh every run.
+Against all eight, 200 phrases agree exactly and none disagree. `ui-test` also
+joins a family from a wiped device by typing the words in the wrong case, and
+watches the library arrive from the relay.
 
 **The roster is in too**, behind Settings: everyone in the family with the
 devices they carry, "vous" and "cet appareil" marked, each device dated by when
