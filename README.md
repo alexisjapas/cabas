@@ -174,6 +174,70 @@ The relay's own port therefore stays on the loopback and needs no firewall
 rule; the phone only ever talks to 8443. If the relay is down, the socket is
 refused with a `502` and `ui-serve` prints the command that starts it.
 
+### Two phones, end to end
+
+M5's exit criterion, run by hand: two devices converge, both while they are
+online together and while they never are. CI proves this at replica level and
+in a browser; this is the part only phones can answer. An iPhone and an Android
+is the ideal pair — both install the same PWA, and M7's native Android app is a
+nicer wrapper rather than a requirement.
+
+**On the machine**, once:
+
+```sh
+nix develop -c build-wasm && nix develop -c pnpm -C ui build
+nix develop -c bash -c 'CABAS_RELAY_DATA=.relay cargo run -p cabas-relay' &
+nix develop -c ui-serve        # prints both URLs and the CA fingerprint
+```
+
+Both phones need to be on the same wifi, and ports **8080 and 8443** open on
+the machine (see above). Reserve the machine's DHCP lease on the router first:
+the origin is the app's identity on both platforms, so an address that moves
+costs both phones their library ([0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)).
+
+**On the iPhone.** Open `http://<address>:8080` and follow the two steps it
+lists — install the profile, **then** trust it under Settings → General →
+About → Certificate Trust Settings. Skipping the second leaves a certificate
+that is installed, listed and still refused. Then open
+`https://<address>:8443`, Share → Add to Home Screen, and launch it from there.
+Choose **Commencer une famille** and write the twelve words down.
+
+**On the Android.** The phone needs a screen lock before it will accept a
+certificate at all — set one first, or the install silently is not offered.
+Open `http://<address>:8080`, download `ca.crt`, then Settings → Security →
+*More security settings* → Encryption & credentials → Install a certificate →
+**CA certificate**, and accept the warning. (That page's own instructions are
+written for iOS; the Android path is this one.) Then open
+`https://<address>:8443`, Chrome menu → Add to Home screen, launch it, choose
+**Rejoindre une famille** and type the twelve words.
+
+Leave **Serveur** empty in Réglages on both. The relay is reached through the
+app's own origin, which is the whole point of the proxy above and the shape
+production has.
+
+**What to actually watch.** Réglages shows the connection: *Synchronisé* means
+the socket is up.
+
+1. **Both open.** Add an ingredient on one; it appears on the other within a
+   second. Tick a line in the cart on the second; the first shows it under
+   "Acheté", attributed to that person.
+2. **Never at the same time.** Force-quit phone A. On B, add a recipe and put
+   it on the list, then force-quit B. Open A: the recipe is there. This is the
+   case the relay exists for, and the one a broadcast-only server would fail.
+3. **Offline, then not.** Airplane mode on A, tick things off, leave the app.
+   Turn the network back on and reopen: both agree, and nothing was lost while
+   it was away.
+4. **The roster.** Réglages → Personnes et appareils on either phone lists both
+   people, each with the device they paired.
+5. **The journal.** Delete an ingredient on A; on B, Réglages → Journal names
+   what went and who did it.
+6. **Cold restart.** Force-quit both and reopen: everything is still there, and
+   still agrees.
+
+That is M5. What it deliberately does not cover is reaching the relay from
+outside the wifi — that is M6's tunnel, which also retires the local CA on both
+phones.
+
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):

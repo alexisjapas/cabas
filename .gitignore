@@ -18,6 +18,10 @@
 # is generated per machine and never travels.
 /ui/.certs
 
+# A development relay's sealed logs, when one is run from the repository root
+# rather than from `/data` (README, "Two phones, end to end").
+/.relay
+
 # Local secrets: pairing keys, tunnel credentials, add-on options.
 *.local
 /secrets
