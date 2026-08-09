@@ -838,7 +838,11 @@ await send('Emulation.clearDeviceMetricsOverride');
 // would only prove that this file and the mock agree.
 
 /** The relay's log for whichever family appeared, or `null` while it is
- *  empty. One family per run, so the first directory is the one. */
+ *  empty. One family for most of this run — but **not at the end**, where
+ *  rotating mints a second one, and where this returns the older of the two
+ *  because it takes the first non-empty it finds. Everything below the
+ *  rotation must use `waitForNewFamily` instead; assuming "the first
+ *  directory is the one" is what made that assertion race. */
 async function relayLog() {
   const families = await readdir(RELAY_DATA).catch(() => []);
   for (const family of families) {
@@ -854,6 +858,35 @@ async function waitForRelay(label, timeoutMs = 15000) {
     const log = await relayLog();
     if (log !== null) return log;
     if (Date.now() > deadline) throw failed(`timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * A family that is not one of `known`, once it has actually been written to.
+ *
+ * Rotating the phrase is the only thing here that produces a second family,
+ * and two events have to land before it can be asserted on: the relay creates
+ * the directory on the new `Hello`, and the device pushes its library a moment
+ * later. Waiting for the directory alone would swap one race for another.
+ *
+ * @param {string[]} known
+ * @param {string} label
+ * @param {number} timeoutMs
+ * @returns {Promise<{ id: string, bytes: number }>}
+ */
+async function waitForNewFamily(known, label, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const families = await readdir(RELAY_DATA).catch(() => []);
+    for (const id of families) {
+      if (known.includes(id)) continue;
+      const log = await readFile(join(RELAY_DATA, id, 'log')).catch(() => null);
+      if (log !== null && log.length > 0) return { id, bytes: log.length };
+    }
+    if (Date.now() > deadline) {
+      throw failed(`timed out waiting for ${label} (families: ${JSON.stringify(families)})`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
@@ -1048,7 +1081,11 @@ await shot('16-journal');
 // Rotating the key is the whole of revocation, and it is destructive enough to
 // be the last thing this file does: the family it leaves behind is the one
 // every assertion above was made against.
-const familiesBefore = (await readdir(RELAY_DATA)).length;
+// By name, not by count: what comes after has to tell the new family from the
+// old one, and identify the old one again to prove nothing wrote into it.
+const familiesBefore = await readdir(RELAY_DATA);
+const abandoned = familiesBefore[0];
+const abandonedLog = await readFile(join(RELAY_DATA, abandoned, 'log'));
 await evaluate(`__clickText('button', 'Retour')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the roster');
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
@@ -1074,13 +1111,27 @@ ok('a new phrase is minted and this device moves to it');
 
 // A different phrase is a different family id, so the relay grows a second
 // log rather than writing into the first. The old one stays exactly where it
-// was — sealed, and readable only by whoever still has the old words.
-await waitForRelay('the library, pushed into the new family', 20000);
+// was — sealed, and readable only by whoever still has the old words. That is
+// the log DECISIONS 0050 is about: nothing here will ever collect it.
+//
+// Waited for by *name*, and not through `waitForRelay`: that one returns as
+// soon as any family has a non-empty log, and the family this rotation
+// abandoned has had one for the whole run — so it waited for a condition that
+// was already true and left the assertion below racing the new device's first
+// push. It won that race on a laptop and lost it on a runner.
+const arrived = await waitForNewFamily(familiesBefore, 'the library, pushed into the new family');
 const familiesAfter = await readdir(RELAY_DATA);
-if (familiesAfter.length !== familiesBefore + 1) {
-  throw failed(`expected one more family on the relay, found ${familiesAfter.length} against ${familiesBefore}`);
+if (familiesAfter.length !== familiesBefore.length + 1) {
+  throw failed(
+    `expected one more family on the relay, found ${familiesAfter.length} against ${familiesBefore.length}`,
+  );
 }
-ok('and the relay holds a second family, the first one untouched');
+// "Untouched" was claimed here long before anything checked it.
+const abandonedNow = await readFile(join(RELAY_DATA, abandoned, 'log'));
+if (!abandonedNow.equals(abandonedLog)) {
+  throw failed(`rotating wrote ${abandonedNow.length - abandonedLog.length} bytes into the old family`);
+}
+ok(`and the relay holds a second family (${arrived.bytes} bytes), the first one untouched`);
 await shot('17-rotated');
 
 if (consoleErrors.length > 0) {
