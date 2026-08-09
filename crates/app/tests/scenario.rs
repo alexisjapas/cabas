@@ -663,7 +663,13 @@ mod browser {
             app.sync_status().expect("status").is_null(),
             "no connection, no status"
         );
-        let cursor = serde_wasm_bindgen::to_value(&SyncCursor::default())
+        // A real relay mints its epoch from 64 bits of randomness, so this is
+        // the ordinary case and not an edge one: a `u64` above 2^53 has no
+        // exact `Number`. It crosses as text, and a build that changes that
+        // fails here rather than in front of a phone — which is where it
+        // failed the first time.
+        let epoch = 15_150_583_726_198_229_639;
+        let cursor = serde_wasm_bindgen::to_value(&SyncCursor { epoch, since: 0 })
             .expect("the cursor becomes a JS object");
         assert!(
             !app.sync_hello(&phrase, cursor)
@@ -691,6 +697,13 @@ mod browser {
             since.as_f64(),
             Some(12.0),
             "the cursor followed the frame, as a JS number: {since:?}"
+        );
+        let epoch_out = js_sys::Reflect::get(&cursor, &JsValue::from_str("epoch"))
+            .expect("the cursor has an epoch");
+        assert_eq!(
+            epoch_out.as_string().as_deref(),
+            Some(epoch.to_string().as_str()),
+            "the epoch survived the round trip as text: {epoch_out:?}"
         );
 
         assert!(!app.sync_version().is_empty(), "the shadow to remember");

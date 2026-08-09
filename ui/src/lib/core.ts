@@ -156,6 +156,15 @@ export class Core {
   }
 
   /**
+   * Whether this replica was built from nothing at launch, because storage
+   * held no snapshot. A sync cursor from a previous life must not be resumed
+   * on one — it would claim frames this replica never received.
+   */
+  openedFresh(): boolean {
+    return this.#app.openedFresh();
+  }
+
+  /**
    * The sync half. The socket is ours (DECISIONS 0043) and these are the calls
    * that drive it: every `Uint8Array` below is opaque — a sealed frame going
    * out, a wire message coming in — and no plaintext ever crosses. A frame

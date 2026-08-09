@@ -61,6 +61,11 @@ pub struct App<S: Storage, P: Platform> {
     /// should not write 154 kB because somebody looked at a recipe.
     changed_at: u64,
     saved_at: u64,
+    /// Whether this replica was created from nothing at launch, rather than
+    /// loaded from storage. A sync cursor that outlived the replica it
+    /// belongs to points at frames this device no longer holds, so the host
+    /// asks this before resuming one (see [`crate::sync`]).
+    fresh: bool,
 }
 
 impl<S: Storage, P: Platform> App<S, P> {
@@ -70,7 +75,9 @@ impl<S: Storage, P: Platform> App<S, P> {
     /// A missing stored document is a first run, not a failure — `Storage`
     /// says so by returning `None`.
     pub async fn open(storage: S, platform: P, identity: Identity) -> Result<Self> {
-        let document = match storage.load().await? {
+        let stored = storage.load().await?;
+        let fresh = stored.is_none();
+        let document = match stored {
             Some(bytes) => Document::load(&bytes)?,
             None => Document::new(),
         };
@@ -85,6 +92,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             revision: 0,
             changed_at: 0,
             saved_at: 0,
+            fresh,
         };
         app.enrol()?;
         // A first run has just minted a user and a device; they are worth
@@ -213,6 +221,19 @@ impl<S: Storage, P: Platform> App<S, P> {
     /// what this one is missing.
     pub fn version(&self) -> Vec<u8> {
         self.document.version()
+    }
+
+    /// Whether this replica started from nothing at launch — no stored
+    /// snapshot, so nothing merged into it in a previous life.
+    ///
+    /// The one question a host must ask before resuming a persisted sync
+    /// cursor. The cursor and the replica are two files on a device and can
+    /// be lost separately; a cursor that survived says "I already have
+    /// everything up to frame N" on behalf of a replica that has nothing, and
+    /// the relay then honestly replays nothing at all. The library would come
+    /// back only when somebody else pushed something (DECISIONS 0042).
+    pub fn opened_fresh(&self) -> bool {
+        self.fresh
     }
 
     pub fn changes_since(&self, version: &[u8]) -> Result<Vec<u8>> {

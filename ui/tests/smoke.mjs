@@ -17,7 +17,8 @@
  * a preview server on 4173 and chromium listening on 9222.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const DEVTOOLS = process.env.DEVTOOLS_URL ?? 'http://localhost:9222';
 const APP = process.env.APP_URL ?? 'http://localhost:4173';
@@ -51,6 +52,17 @@ socket.onmessage = (event) => {
   if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
     const entry = message.params.entry;
     consoleErrors.push(`[${entry.source}] ${entry.text || '(no text)'} ${entry.url ?? ''}`.trim());
+  }
+  // `Log.entryAdded` carries what the *browser* complains about — a failed
+  // request, a bad manifest icon. What the *app* logs comes through here and
+  // nowhere else, so without this an engine that gives up with a
+  // `console.error` fails no test at all.
+  if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+    const text = message.params.args
+      .map((arg) => arg.value ?? arg.description ?? arg.unserializableValue ?? '')
+      .join(' ')
+      .trim();
+    consoleErrors.push(`[console] ${text || '(no text)'}`);
   }
   if (message.method === 'Runtime.exceptionThrown') {
     consoleErrors.push(message.params.exceptionDetails.text ?? 'uncaught exception');
@@ -86,7 +98,7 @@ async function waitFor(expression, label, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (await evaluate(`!!(${expression})`)) return;
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
+    if (Date.now() > deadline) throw failed(`timed out waiting for ${label}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
@@ -227,6 +239,18 @@ async function shot(name) {
 
 function ok(label) {
   console.log(`  ok  ${label}`);
+}
+
+/**
+ * A failure, with what the page was complaining about while it happened.
+ *
+ * Without this a timeout is a bare "waited for X", and the console entry that
+ * explains it — the exception that stopped the engine, the request that 404ed
+ * — is collected here and then thrown away with the process.
+ */
+function failed(what) {
+  const logged = consoleErrors.length > 0 ? `\n  the page had logged:\n    ${consoleErrors.join('\n    ')}` : '';
+  return new Error(`${what}${logged}`);
 }
 
 await send('Runtime.enable');
@@ -718,6 +742,106 @@ ok('and a cold reload comes back to the same place, not the top');
 await shot('12-scroll-restored');
 
 await send('Emulation.clearDeviceMetricsOverride');
+
+// --- and the same library, through a real relay ------------------------------
+//
+// M5's exit criterion, minus the second phone: this device pushes what it has
+// to a relay that cannot read it, loses its replica, and gets everything back
+// from the relay alone. Which is also the never-simultaneous case
+// (DECISIONS 0009) — nothing else is connected at any point.
+//
+// The relay is the real binary, started by `ui-test`, because a mock of it
+// would only prove that this file and the mock agree.
+
+const RELAY_DATA = process.env.CABAS_RELAY_DATA ?? null;
+const RELAY_URL = process.env.CABAS_RELAY_URL ?? null;
+if (RELAY_DATA === null || RELAY_URL === null) {
+  throw new Error('no relay: CABAS_RELAY_DATA and CABAS_RELAY_URL come from ui-test');
+}
+
+/**
+ * The BIP39 all-zero test vector — a valid phrase with a valid checksum, and
+ * one no real family will ever roll. Pairing screens do not exist yet, so the
+ * family is seeded the way they will write it (DECISIONS 0043).
+ */
+const PHRASE =
+  'abandon abandon abandon abandon abandon abandon ' +
+  'abandon abandon abandon abandon abandon about';
+
+/** The relay's log for whichever family appeared, or `null` while it is
+ *  empty. One family per run, so the first directory is the one. */
+async function relayLog() {
+  const families = await readdir(RELAY_DATA).catch(() => []);
+  for (const family of families) {
+    const bytes = await readFile(join(RELAY_DATA, family, 'log')).catch(() => null);
+    if (bytes !== null && bytes.length > 0) return bytes;
+  }
+  return null;
+}
+
+async function waitForRelay(label, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const log = await relayLog();
+    if (log !== null) return log;
+    if (Date.now() > deadline) throw failed(`timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+const family = JSON.stringify({ phrase: PHRASE, relay: RELAY_URL });
+await evaluate(`localStorage.setItem('cabas.family', ${JSON.stringify(family)}), true`);
+await load(APP);
+await waitFor('document.querySelector("nav")', 'the app, now paired');
+
+const log = await waitForRelay('the push to reach the relay');
+ok(`the engine connected and pushed (${log.length} bytes of sealed log)`);
+
+// The whole point of the relay (Rule 7). If any of this reads as text, the
+// frames are not sealed and nothing else in this file matters.
+for (const secret of ['Tomates', 'Salade de tomates', 'Sel']) {
+  if (log.includes(Buffer.from(secret, 'utf8'))) {
+    throw new Error(`the relay's log contains "${secret}" in the clear`);
+  }
+}
+ok('and the relay cannot read a word of it');
+
+// Lose the replica: a device that was wiped, or one iOS evicted, with nothing
+// left but what is in `localStorage`.
+//
+// The cursor is deliberately **not** cleared here, and the request to clear it
+// would not survive anyway — leaving the page runs the engine's own
+// `pagehide`, which writes the cursor back on the way out. So this is the
+// harder case of the two: a device whose cursor says "I have everything up to
+// frame N" on behalf of a replica that has nothing. If the engine resumed that
+// cursor the relay would honestly replay nothing and the library would stay
+// empty for good, which is why the core is asked whether it opened fresh.
+await evaluate(`
+  new Promise((resolve) => {
+    const request = indexedDB.deleteDatabase('cabas');
+    request.onsuccess = resolve;
+    request.onerror = resolve;
+    request.onblocked = resolve;
+  })
+`);
+await load(APP);
+await waitFor('document.querySelector("nav")', 'the app, on an empty replica');
+
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
+await waitFor(`__all('li .name').includes('Tomates')`, 'the library, back from the relay');
+ok('an empty replica gets the whole library back from the relay alone');
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__all('li .name').includes('Salade de tomates au sel')`, 'the recipe, resynced');
+await evaluate(`__clickText('li button', 'Salade de tomates au sel')`);
+await waitFor(`__text('h1') === 'Salade de tomates au sel'`, 'the recipe opens');
+const resynced = await evaluate(`__text('.prose')`);
+if (!resynced.includes('Tomates') || resynced.includes('supprimée')) {
+  throw new Error(`the recipe did not survive the round trip: ${JSON.stringify(resynced)}`);
+}
+ok('recipe, steps and the lines they point at, all of it');
+await shot('13-synced');
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

@@ -427,7 +427,7 @@ by then the shell is precached and the question only arises once per install.
 - [ ] Users and devices: pairing asks who you are; a device screen that states plainly that revoking means rotating the key and re-pairing everyone
 - [ ] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log is already *written* by every deletion and edit since M3; what is missing is a view-model for it and a screen
 - [x] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
-- [ ] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
+- [x] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
 - [x] Test: two replicas that are never online simultaneously still converge through the relay
 
 **Exit**: two devices converge in both the simultaneous and the
@@ -476,15 +476,35 @@ cipher, and it is the whole price of sync on the download. M4 settled that the
 size is not the thing to optimise (the cold start is instantaneous on the
 phone); this is recorded so the next person measuring knows what moved and why.
 
-What remains is the rest of the PWA half, and it is UI work end to end: the
-TypeScript transport around the binding, the foreground sync loop
-(connect on open and on `visibilitychange`, hold the socket while active —
-DECISIONS 0011), the pairing screens (generate/display the phrase and its QR,
-join by scanning or typing, and only then mint the local identity), the
-device-and-users screen with the revocation warning 0024 requires, the
-event-log view-model and screen, and persisting the phrase, the relay URL,
-the session cursor and the shadow version alongside the identity in
-`localStorage` (0031). The relay URL defaults to the app's own origin, since
+**The engine is in too.** `ui/src/lib/sync.svelte.ts` owns the socket and the
+policy around it: connect when the app is on screen and close when it is not
+(0011), backoff with jitter, push a coalesced delta after a command, adopt the
+shadow only on the ack, and keep the phrase and relay URL in one `localStorage`
+key with the cursor and shadow in another — so the hot path never rewrites the
+secret. `ui-test` runs it against **a real relay**, started by the same script
+on 8788: the app pushes its library, loses its replica, and gets everything
+back from the relay alone, with the test asserting that nothing in the relay's
+log reads as text. That is the milestone's exit criterion at browser level, one
+device living twice; two real devices is what remains of it.
+
+Two things that only appeared against a real relay, both now guarded:
+
+- **The epoch is a random `u64`**, so it is above 2^53 nearly always and no
+  JavaScript number holds it. It crosses as text, the way an exact rational
+  does (0029); the browser test now uses a real-sized epoch, because the one
+  it used before — zero — proved nothing.
+- **A cursor can outlive its replica.** `localStorage` and IndexedDB are two
+  files, and a device that keeps the first and loses the second tells the relay
+  it already has everything, gets nothing replayed, and stays empty for good.
+  `App::opened_fresh()` reports the exact fact — storage held no snapshot — and
+  the engine starts from zero when it does.
+
+What remains of the PWA half is screens: the pairing screens (generate/display
+the phrase and its QR, join by scanning or typing, and only then mint the local
+identity), the device-and-users screen with the revocation warning 0024
+requires, and the event-log view-model and screen. Until pairing exists the
+family is written to `localStorage` by hand, which is exactly what the sync
+test does. The relay URL defaults to the app's own origin, since
 M6 serves the PWA and the socket from one (0012) — and development now has
 that same single origin too: `ui-serve` proxies `/sync` to the relay, because
 the installed PWA is served over TLS and a page in a secure context may not

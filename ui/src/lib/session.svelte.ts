@@ -27,6 +27,7 @@ import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { StateView } from './bindings/StateView';
 import { Core } from './core';
+import { Sync } from './sync.svelte';
 
 /**
  * The screens that exist. The current one is persisted, because an iOS cold
@@ -80,6 +81,13 @@ export class Session {
   readonly #core: Core;
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /**
+   * The socket and its policy. Public because a settings screen will want to
+   * show what it is doing; it holds no business state — a frame that opens
+   * arrives here as a whole `StateView`, like every other change.
+   */
+  readonly sync: Sync;
+
   /** The whole of what is on screen. Replaced, never edited. */
   state = $state.raw<StateView>(undefined as unknown as StateView);
 
@@ -117,12 +125,22 @@ export class Session {
     this.#core = core;
     this.state = state;
     this.screen = screen;
+    // A merged frame is a state change like any other, and the replica it
+    // came from now differs from what is on disk — so it renders and it saves,
+    // through exactly the paths a command uses.
+    this.sync = new Sync(core, (state) => {
+      this.state = state;
+      this.#scheduleFlush();
+    });
   }
 
   static async open(identity: Identity): Promise<Session> {
     const core = await Core.open(identity);
     const session = new Session(core, core.state(), readScreen());
     session.#watchPageLifecycle();
+    // Does nothing on a device with no phrase, which is every device until
+    // the pairing screens land.
+    session.sync.start();
     return session;
   }
 
@@ -135,6 +153,7 @@ export class Session {
       this.state = this.#core.apply(command);
       this.error = null;
       this.#scheduleFlush();
+      this.sync.localChange();
       return true;
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : String(cause);

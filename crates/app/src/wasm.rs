@@ -198,6 +198,14 @@ impl CabasApp {
         self.inner.borrow().version()
     }
 
+    /// Whether this replica was created from nothing at launch. A stored
+    /// cursor from a previous life must not be resumed on one — see
+    /// [`crate::app::App::opened_fresh`].
+    #[wasm_bindgen(js_name = openedFresh)]
+    pub fn opened_fresh(&self) -> bool {
+        self.inner.borrow().opened_fresh()
+    }
+
     /// The cursor to persist, and the two counters a diagnostics screen shows.
     /// `null` when no connection is open.
     #[wasm_bindgen(js_name = syncStatus)]

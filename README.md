@@ -175,7 +175,10 @@ nix develop .#android                     # SDK/NDK — M7 only
 shared crates compile for it, which is a weaker and much faster claim.
 `ui-test` drives the built PWA over the DevTools protocol: mint an identity,
 build a library, derive the cart, tick a line, reload from IndexedDB, and open
-the whole thing again with the network switched off.
+the whole thing again with the network switched off. It then starts **a real
+relay** on 8788 and syncs against it — the app pushes its library, loses its
+replica, and gets everything back from the relay alone, with nothing in the
+relay's log readable as text.
 
 The home-screen icons are committed PNGs, because iOS reads `apple-touch-icon`
 as a bitmap. They are rasterised from the SVG beside them, in the same shell

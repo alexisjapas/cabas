@@ -217,19 +217,37 @@
             echo "ui-test: something is already listening on 4173." >&2
             exit 1
           fi
+          if ${pkgs.curl}/bin/curl -sf --max-time 2 http://localhost:8788/healthz >/dev/null; then
+            echo "ui-test: something is already listening on 8788 (a leaked relay?)." >&2
+            exit 1
+          fi
+
+          # A real relay for the sync leg: the suite proves the frontend's
+          # WebSocket engine against the process it will actually talk to, not
+          # against a mock of it (DECISIONS 0043). Port 8788 rather than the
+          # default 8787, so a relay left running for development is neither
+          # disturbed nor mistaken for this one. The data directory is thrown
+          # away with the run, and the test reads it to check that what landed
+          # there is sealed.
+          echo "ui-test: building the relay…"
+          cargo build -q -p cabas-relay
+          relaydata="$(mktemp -d)"
 
           profile="$(mktemp -d)"
           pnpm -C ui preview --port 4173 --strictPort >/dev/null 2>&1 &
           server=$!
+          CABAS_RELAY_DATA="$relaydata" CABAS_RELAY_ADDR=127.0.0.1:8788 \
+            cargo run -q -p cabas-relay >/dev/null 2>&1 &
+          relay=$!
           chromium --headless --no-sandbox --disable-gpu \
             --remote-debugging-port=9222 --user-data-dir="$profile" \
             --window-size=390,844 about:blank >/dev/null 2>&1 &
           browser=$!
 
           cleanup() {
-            kill "$server" "$browser" 2>/dev/null || true
-            wait "$server" "$browser" 2>/dev/null || true
-            rm -rf "$profile"
+            kill "$server" "$browser" "$relay" 2>/dev/null || true
+            wait "$server" "$browser" "$relay" 2>/dev/null || true
+            rm -rf "$profile" "$relaydata"
           }
           trap cleanup EXIT INT TERM
 
@@ -238,18 +256,20 @@
           ready=0
           for _ in $(seq 1 100); do
             if ${pkgs.curl}/bin/curl -sf http://localhost:4173 >/dev/null \
-              && ${pkgs.curl}/bin/curl -sf http://localhost:9222/json/version >/dev/null; then
+              && ${pkgs.curl}/bin/curl -sf http://localhost:9222/json/version >/dev/null \
+              && ${pkgs.curl}/bin/curl -sf http://localhost:8788/healthz >/dev/null; then
               ready=1
               break
             fi
             sleep 0.2
           done
-          [ "$ready" = 1 ] || { echo "ui-test: preview or chromium never came up" >&2; exit 1; }
+          [ "$ready" = 1 ] || { echo "ui-test: preview, chromium or the relay never came up" >&2; exit 1; }
 
           # Deliberately not `exec`: that would replace this shell and the
           # trap above would never run, leaking a browser and a server that
           # then hold the ports against the next run.
-          node ui/tests/smoke.mjs "$@"
+          CABAS_RELAY_DATA="$relaydata" CABAS_RELAY_URL=ws://127.0.0.1:8788/sync \
+            node ui/tests/smoke.mjs "$@"
         '';
 
         # The built PWA, served to a phone over TLS (DECISIONS 0041).

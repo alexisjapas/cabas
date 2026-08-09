@@ -53,9 +53,36 @@ pub struct SyncCursor {
     /// The relay's log identity. A different one means the log this cursor
     /// pointed into is gone — restored from a backup, or reset — and the
     /// session replays from the beginning rather than from `since`.
+    ///
+    /// **Text across the boundary, and only there.** The relay mints it from
+    /// 64 bits of the OS's randomness, so almost every epoch there is falls
+    /// outside what a JavaScript number holds exactly, and
+    /// `serde_wasm_bindgen` is right to refuse it rather than round it. The
+    /// host stores this value and hands it back; it never does arithmetic on
+    /// it. Same answer `store` gives an exact rational, for the same reason
+    /// (DECISIONS 0029).
+    #[serde(with = "text_u64")]
+    #[cfg_attr(feature = "typescript", ts(type = "string"))]
     pub epoch: u64,
-    /// The last sequence number applied.
+    /// The last sequence number applied. A plain number: the relay hands
+    /// these out one per frame from 1, so reaching the point where a double
+    /// stops being exact would take more frames than a family will ever
+    /// produce.
     pub since: u64,
+}
+
+/// A `u64` that survives JavaScript: decimal text in, decimal text out.
+mod text_u64 {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse().map_err(D::Error::custom)
+    }
 }
 
 /// The cursor, plus what this one connection has seen.
