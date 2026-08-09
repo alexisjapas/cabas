@@ -218,13 +218,19 @@ that is installed, listed and still refused. Then open
 Choose **Commencer une famille** and write the twelve words down.
 
 **On the Android.** The phone needs a screen lock before it will accept a
-certificate at all — set one first, or the install silently is not offered.
-Open `http://<address>:8080`, download `ca.crt`, then Settings → Security →
-*More security settings* → Encryption & credentials → Install a certificate →
-**CA certificate**, and accept the warning. (That page's own instructions are
-written for iOS; the Android path is this one.) Then open
-`https://<address>:8443`, Chrome menu → Add to Home screen, launch it, choose
-**Rejoindre une famille** and type the twelve words.
+certificate at all — set one first, or the install is silently not offered.
+Open `http://<address>:8080` and download `ca.crt`; the notification will not
+install it, the Settings app does.
+
+**Search the settings for "certificat"** rather than following a path here.
+Google moves and renames that section most releases, and a written-down path
+that no longer matches is worse than none — the search has survived every one
+of them. Pick the **CA certificate** kind when it asks, and accept the warning
+about the network being monitored. (The page served on `:8080` still explains
+only the iOS route; this paragraph is the Android one until that is fixed.)
+
+Then open `https://<address>:8443`, Chrome menu → Add to Home screen, launch it
+from the icon, choose **Rejoindre une famille** and type the twelve words.
 
 Leave **Serveur** empty in Réglages on both. The relay is reached through the
 app's own origin, which is the whole point of the proxy above and the shape
