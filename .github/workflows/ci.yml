@@ -263,6 +263,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "from=$from" >> "$GITHUB_OUTPUT"
+          # The commit's date, not now: rebuilding a commit should not produce
+          # an image that claims to be newer than the one it replaces.
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "push=false" >> "$GITHUB_OUTPUT"
@@ -303,6 +307,8 @@ jobs:
             BUILD_FROM=${{ steps.tags.outputs.from }}
             BUILD_VERSION=${{ steps.tags.outputs.version }}
             BUILD_ARCH=${{ matrix.arch }}
+            BUILD_REVISION=${{ steps.tags.outputs.revision }}
+            BUILD_CREATED=${{ steps.tags.outputs.created }}
 
   # The Android shell is not built here (a multi-GB SDK for a milestone that
   # has not started), but it must keep *evaluating*: a flake that breaks at

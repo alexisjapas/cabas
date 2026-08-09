@@ -543,7 +543,11 @@ closed could not reach a relay at all.
       verified up to the Dockerfile — there is no container runtime in the
       devShell, so the image is first executed on a runner and first *run* on
       the appliance
-- [ ] Data in `/data` so HA's own backups cover it — the recovery point if all devices are lost
+- [x] Data in `/data` so HA's own backups cover it — the recovery point if all
+      devices are lost. The relay defaults there and the add-on frame provides
+      it, so there is nothing to configure and nothing to map. That HA's
+      backups *actually* carry it is not a thing this repo can assert: it is
+      the first half of the restore drill below
 - [x] **The abandoned family log**: forgotten by hand, or not at all (DECISIONS
       0050). No expiry and no sweep — the relay cannot tell an abandoned family
       from a quiet one, and the log is the recovery point if every device is

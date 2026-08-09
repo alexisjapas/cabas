@@ -39,9 +39,9 @@ pub struct StoredFrame {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Meta {
-    pub epoch: u64,
-    pub next_seq: u64,
+pub(crate) struct Meta {
+    pub(crate) epoch: u64,
+    pub(crate) next_seq: u64,
 }
 
 pub struct FamilyLog {
@@ -167,7 +167,7 @@ fn encode_record(frame: &StoredFrame) -> std::io::Result<Vec<u8>> {
 /// Also read by [`crate::admin`], which reports on a log without opening it —
 /// surveying every family on disk must not mint an epoch for a directory it
 /// is only counting.
-pub fn read_meta(path: &Path) -> std::io::Result<Option<Meta>> {
+pub(crate) fn read_meta(path: &Path) -> std::io::Result<Option<Meta>> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),

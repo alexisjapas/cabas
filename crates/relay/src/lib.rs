@@ -19,10 +19,15 @@
 //!   it, which makes the relay the recovery point if every device is lost.
 //!
 //! The shape is three verbs — append, replay, forward — and `log` and
-//! `server` hold one and two of them respectively; `assets` holds the
-//! static half, which shares nothing with them but the port. The convergence test
-//! in `tests/convergence.rs` is M5's exit criterion: two replicas that are
-//! never online at the same time still converge through this process.
+//! `server` hold one and two of them respectively; `assets` holds the static
+//! half, which shares nothing with them but the port. [`admin`] is the fourth
+//! verb and the odd one out: it runs from a shell rather than from the socket,
+//! because the one thing this process cannot judge for itself is which of its
+//! families has been abandoned (DECISIONS 0050).
+//!
+//! The convergence test in `tests/convergence.rs` is M5's exit criterion: two
+//! replicas that are never online at the same time still converge through this
+//! process.
 
 #![forbid(unsafe_code)]
 

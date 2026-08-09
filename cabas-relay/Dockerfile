@@ -23,14 +23,30 @@ COPY cabas-relay.bin /usr/bin/cabas-relay
 # What the Supervisor reads off the image. `io.hass.version` is the one that
 # matters: it is compared against `config.yaml`, and a mismatch shows up as an
 # add-on that offers an update forever.
+#
+# The `org.opencontainers.*` set has to be written out too, and not because it
+# is missing — the base image supplies its own, so an image that names only
+# `source` and `licenses` ends up claiming Alpine's version and Alpine's build
+# date as its own. Inherited metadata that describes something else is worse
+# than absent metadata.
+#
+# `created` is the *commit* date rather than the build date, which keeps
+# rebuilding a given commit from producing a different answer.
 ARG BUILD_VERSION
 ARG BUILD_ARCH
+ARG BUILD_REVISION
+ARG BUILD_CREATED
 LABEL \
   io.hass.type="addon" \
   io.hass.version="${BUILD_VERSION}" \
   io.hass.arch="${BUILD_ARCH}" \
   io.hass.name="cabas" \
   io.hass.description="Sync relay and host for the cabas shopping list" \
+  org.opencontainers.image.title="cabas" \
+  org.opencontainers.image.description="Sync relay and host for the cabas shopping list" \
+  org.opencontainers.image.version="${BUILD_VERSION}" \
+  org.opencontainers.image.revision="${BUILD_REVISION}" \
+  org.opencontainers.image.created="${BUILD_CREATED}" \
   org.opencontainers.image.source="https://github.com/alexisjapas/cabas" \
   org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
