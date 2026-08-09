@@ -16,6 +16,9 @@
 import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { StateView } from './bindings/StateView';
+import type { SyncCursor } from './bindings/SyncCursor';
+import type { SyncEvent } from './bindings/SyncEvent';
+import type { SyncStatus } from './bindings/SyncStatus';
 import initWasm, { CabasApp } from './wasm/cabas';
 
 /** Namespaced, because `localStorage` is shared by everything on the origin. */
@@ -98,6 +101,29 @@ export function mintUsageId(): string {
 }
 
 /**
+ * A new family's recovery phrase — twelve words, minted once, on the device
+ * that starts the family (DECISIONS 0042). Every other device joins with the
+ * same words, scanned or typed (0021).
+ */
+export async function mintPhrase(): Promise<string> {
+  await wasmReady();
+  return CabasApp.mintPhrase();
+}
+
+/**
+ * The canonical spelling of a phrase that was typed or scanned. Throws with a
+ * message meant to be shown next to the field — wrong word count, a word off
+ * the list, a checksum that says one was mistyped.
+ *
+ * The pairing screen calls this *before* storing anything, so that a bad
+ * phrase fails there rather than looking like a relay that is down.
+ */
+export async function readPhrase(phrase: string): Promise<string> {
+  await wasmReady();
+  return CabasApp.readPhrase(phrase);
+}
+
+/**
  * The replica, with the types the frontend is written against.
  *
  * Deliberately not reactive: reactivity is `Session`'s business, and mixing
@@ -127,5 +153,60 @@ export class Core {
   /** Resolves to `true` when it actually wrote. Never awaited by a render. */
   flush(): Promise<boolean> {
     return this.#app.flush();
+  }
+
+  /**
+   * The sync half. The socket is ours (DECISIONS 0043) and these are the calls
+   * that drive it: every `Uint8Array` below is opaque — a sealed frame going
+   * out, a wire message coming in — and no plaintext ever crosses. A frame
+   * that opens is merged inside the core, and what comes back is a state like
+   * any other.
+   */
+
+  /**
+   * Starts a connection and returns the hello to send on it. `cursor` is what
+   * the last connection ended on, or zeros on a device that has never synced.
+   */
+  syncHello(phrase: string, cursor: SyncCursor): Uint8Array {
+    return this.#app.syncHello(phrase, cursor);
+  }
+
+  /** One message off the socket, applied. */
+  syncHandle(wire: Uint8Array): SyncEvent {
+    return this.#app.syncHandle(wire) as SyncEvent;
+  }
+
+  /**
+   * Seals everything produced since `shadow` — the version returned by
+   * {@link version} when the last push was acked, or an empty array on a
+   * device that has never pushed.
+   */
+  syncPush(shadow: Uint8Array): Uint8Array {
+    return this.#app.syncPush(shadow);
+  }
+
+  /** Seals the whole replica, which lets the relay drop its log (0042). */
+  syncSnapshot(): Uint8Array {
+    return this.#app.syncSnapshot();
+  }
+
+  /**
+   * The replica's version now — the shadow to adopt once the push carrying it
+   * is acked. Read it *before* sending, so that an edit made while the push is
+   * in flight stays unpushed rather than being counted as sent.
+   */
+  version(): Uint8Array {
+    return this.#app.syncVersion();
+  }
+
+  /** The cursor to persist and the counters to show, or `null` between
+   * connections. */
+  syncStatus(): SyncStatus | null {
+    return this.#app.syncStatus() as SyncStatus | null;
+  }
+
+  /** The socket closed. The next connection derives its key again. */
+  syncClose(): void {
+    this.#app.syncClose();
   }
 }

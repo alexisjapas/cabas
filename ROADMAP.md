@@ -83,12 +83,17 @@ process persisting sealed frames per family; and
 together converging through it, sealed end to end. What remains is wiring the
 PWA, and the transport question it opens with is answered: the socket is the
 frontend's, the browser's own WebSocket driving the session across the wasm
-boundary (DECISIONS 0043). So: the session binding and its TypeScript engine,
-sync on foreground with a live socket while active (0011), the pairing screens
-(QR + typed phrase, 0021), the users-and-devices screen with the revocation
-warning 0024 requires, the event-log screen, and the phrase, relay URL, cursor
-and shadow version persisted next to the identity. The "Where M5 stands" note
-in the M5 section below has the detail.
+boundary (DECISIONS 0043).
+
+**The binding is in.** `app::sync` composes the sans-IO client with the
+replica, and `CabasApp` exposes it as `syncHello / syncHandle / syncPush /
+syncSnapshot / syncVersion / syncStatus / syncClose`, every byte crossing as an
+opaque `Uint8Array`. What remains is the engine around it: the TypeScript
+transport, sync on foreground with a live socket while active (0011), the
+pairing screens (QR + typed phrase, 0021), the users-and-devices screen with
+the revocation warning 0024 requires, the event-log screen, and the phrase,
+relay URL, cursor and shadow version persisted next to the identity. The
+"Where M5 stands" note in the M5 section below has the detail.
 
 Putting a later build on the phone again is two commands, since the certificate
 is installed and trusted once and for all:
@@ -452,8 +457,27 @@ reconnection, backoff and the foreground rule in the file that already owns
 `visibilitychange` and `pagehide`, and keeps timers and `spawn_local` out of
 the wasm module. `ws_stream_wasm` has left the dependency plan.
 
-What remains is the PWA half, and it is UI work end to end: the wasm session
-binding and the TypeScript transport around it, the foreground sync loop
+**The binding is in**, and it is the last Rust in this milestone. `app::sync`
+holds `SyncSession`: `cabas_sync`'s client met with the replica, so an opened
+frame is merged inside and what comes back is a `SyncEvent` whose `merged`
+variant carries the whole `StateView`. It takes the `App` as a parameter rather
+than owning it, which is what lets M7's Tauri host drive the same type from a
+`tokio-tungstenite` loop — "two thin adapters, one client" (0043) with the
+composition written once. `CabasApp` translates it for JS as `syncHello /
+syncHandle / syncPush / syncSnapshot / syncVersion / syncStatus / syncClose`,
+plus `mintPhrase` and `readPhrase` for the pairing screens. Five native tests
+cover the loop against a three-line relay, and a browser test proves what only
+a browser can: that a `u64` cursor arrives as a JS `number` and not a `BigInt`,
+which is the difference between `JSON.stringify` persisting it and throwing.
+
+It costs **+78 kB of wasm, +38 kB gzipped** — the core is now 1.89 MB, 751 kB
+gzipped, against M4's 1.81 MB and 713 kB. That is BIP39's wordlist and the
+cipher, and it is the whole price of sync on the download. M4 settled that the
+size is not the thing to optimise (the cold start is instantaneous on the
+phone); this is recorded so the next person measuring knows what moved and why.
+
+What remains is the rest of the PWA half, and it is UI work end to end: the
+TypeScript transport around the binding, the foreground sync loop
 (connect on open and on `visibilitychange`, hold the socket while active —
 DECISIONS 0011), the pairing screens (generate/display the phrase and its QR,
 join by scanning or typing, and only then mint the local identity), the

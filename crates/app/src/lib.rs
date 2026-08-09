@@ -51,6 +51,7 @@ mod library;
 mod number;
 pub mod platform;
 mod project;
+pub mod sync;
 pub mod tags;
 pub mod view;
 
@@ -62,6 +63,7 @@ pub use command::Command;
 pub use error::{AppError, Result};
 pub use id::mint_usage_id;
 pub use platform::{Identity, Platform, SystemPlatform};
+pub use sync::{SyncCursor, SyncEvent, SyncSession, SyncStatus};
 pub use view::StateView;
 
 #[cfg(target_family = "wasm")]

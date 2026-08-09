@@ -616,4 +616,85 @@ mod browser {
         // Nothing changed since, so the second call has nothing to write.
         assert!(!app.flush().await.expect("no second write"));
     }
+
+    /// The sync half of the same boundary: a sealed frame in, a state out,
+    /// and a cursor the engine can put in `localStorage`.
+    ///
+    /// The composition itself is tested natively in `sync.rs`. What only a
+    /// browser can answer is what these calls *become* on the JS side — and
+    /// the answer that matters is `number`. A `u64` serialised as a `BigInt`
+    /// would look right in every Rust assertion and throw in
+    /// `JSON.stringify`, which is where the cursor is headed (DECISIONS 0043).
+    #[wasm_bindgen_test]
+    async fn the_binding_layer_opens_a_frame_and_reports_a_cursor() {
+        use cabas_app::CabasApp;
+        use cabas_app::sync::{SyncCursor, SyncEvent, SyncSession};
+        use cabas_sync::protocol::{ClientMessage, ServerMessage, decode_client, encode_server};
+        use wasm_bindgen::JsValue;
+
+        let phrase = CabasApp::mint_phrase().expect("a phrase is minted");
+
+        // The other device, over its own storage: a real replica, sealed by a
+        // real session, so what arrives below is a frame and not a fixture.
+        let mut sender = open(MemoryStorage::new()).await;
+        sender
+            .dispatch(Command::SaveIngredient {
+                ingredient: new_ingredient("Cardamome", AisleTag::Grocery),
+            })
+            .await
+            .expect("the other device saves an ingredient");
+        let sending = SyncSession::open(&phrase, SyncCursor::default()).expect("a session opens");
+        let push = sending.push(&sender, &[]).expect("the delta seals");
+        let frame = match decode_client(&push).expect("a client message") {
+            ClientMessage::Push { kind, payload } => encode_server(&ServerMessage::Frame {
+                seq: 12,
+                kind,
+                payload,
+            })
+            .expect("the relay's frame encodes"),
+            other => panic!("expected a push, got {other:?}"),
+        };
+
+        let identity = CabasApp::mint_identity("Bob".into(), "Bob's iPhone".into())
+            .expect("an identity is minted");
+        let app = CabasApp::open(identity).await.expect("the app opens");
+
+        assert!(
+            app.sync_status().expect("status").is_null(),
+            "no connection, no status"
+        );
+        let cursor = serde_wasm_bindgen::to_value(&SyncCursor::default())
+            .expect("the cursor becomes a JS object");
+        assert!(
+            !app.sync_hello(&phrase, cursor)
+                .expect("the hello is produced")
+                .is_empty()
+        );
+
+        let event: SyncEvent =
+            serde_wasm_bindgen::from_value(app.sync_handle(&frame).expect("the frame is handled"))
+                .expect("the event comes back as a JS object");
+        match event {
+            SyncEvent::Merged { state } => {
+                assert!(state.ingredients.iter().any(|i| i.name == "Cardamome"));
+            }
+            other => panic!("expected a merge, got {other:?}"),
+        }
+
+        // The shape the engine persists, read the way JS reads it.
+        let status = app.sync_status().expect("status");
+        let cursor = js_sys::Reflect::get(&status, &JsValue::from_str("cursor"))
+            .expect("the status has a cursor");
+        let since = js_sys::Reflect::get(&cursor, &JsValue::from_str("since"))
+            .expect("the cursor has a sequence");
+        assert_eq!(
+            since.as_f64(),
+            Some(12.0),
+            "the cursor followed the frame, as a JS number: {since:?}"
+        );
+
+        assert!(!app.sync_version().is_empty(), "the shadow to remember");
+        app.sync_close();
+        assert!(app.sync_status().expect("status").is_null());
+    }
 }

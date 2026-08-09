@@ -13,6 +13,7 @@
 
 use cabas_domain::CartError;
 use cabas_store::StoreError;
+use cabas_sync::SyncError;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -43,6 +44,13 @@ pub enum AppError {
     /// The host could not provide something only it can: a clock, randomness.
     #[error("platform: {0}")]
     Platform(String),
+
+    /// Sync: a recovery phrase that does not decode, a frame that does not
+    /// open, a relay speaking a protocol this build does not. Carries no
+    /// vendor type — `sync` already saw to that, for the same reason `store`
+    /// never lets a `LoroError` out (Rules 2, 7).
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 }
 
 impl AppError {

@@ -13,10 +13,11 @@ done — the Rust half**. `crates/domain` holds the product logic as pure
 functions (69 tests); `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB; `crates/app` holds the command set, the view-models and the wasm
-binding; `crates/sync` holds the E2EE core (phrase → key, seal/open, the
+binding — **including the sync session** (`app::sync`, and `sync*` on
+`CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
-axum broker persisting sealed frames per family. 157 native tests plus 9 in
-a real browser — 5 over IndexedDB, 4 through the app — and all of them run
+axum broker persisting sealed frames per family. 162 native tests plus 10 in
+a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end.
@@ -30,10 +31,10 @@ built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
-the device. What remains of M5 is the PWA half: the wasm session binding and
-the frontend's own WebSocket engine around it (DECISIONS 0043), sync on
-foreground, the pairing/users/event-log screens, the cursor persisted next to
-the identity. See ROADMAP "Next action".
+the device. What remains of M5 is the rest of the PWA half: the frontend's own
+WebSocket engine around the binding (DECISIONS 0043), sync on foreground, the
+pairing/users/event-log screens, and the phrase, relay URL, cursor and shadow
+persisted next to the identity. See ROADMAP "Next action".
 
 ## Environment and commands
 
@@ -215,12 +216,23 @@ one file and a compatibility surface (DECISIONS 0029):
 | `number` | Text ⇄ exact rational, and the two renderings (pretty, lossless) |
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
 | `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` |
+| `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
 
 The shape to keep in mind: **`apply` is synchronous and returns the whole new
 state; `persist` writes.** A render never waits on storage, and the borrow is
 released before anything is awaited — which is what keeps a second tap from
 panicking at the wasm boundary (DECISIONS 0032).
+
+The sync surface has a shape of its own: **the socket belongs to whoever calls
+it, and plaintext never comes back out.** `SyncSession::handle` merges an
+opened frame into the replica and returns a `SyncEvent` — a `merged` event
+already carries the whole new `StateView`, like every other mutation. The
+frontend drives it through `syncHello / syncHandle / syncPush / syncSnapshot /
+syncVersion / syncStatus / syncClose` on `CabasApp`, where every byte crosses
+as an opaque `Uint8Array`. M7's Tauri host will drive the same `SyncSession`
+from Rust, which is why the composition lives in `app::sync` and not in
+`wasm.rs`.
 
 `ui/` (M4) — plain Vite + Svelte 5, no SvelteKit (DECISIONS 0037). Read
 `lib/session.svelte.ts` first, it is the state and the save policy in one

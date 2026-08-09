@@ -14,6 +14,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 cabas-domain.workspace = true
 cabas-store.workspace = true
+# The sans-IO client session and the family key. This crate composes them with
+# the replica — a frame that opens is merged here, so no plaintext reaches a
+# host (DECISIONS 0043) — and never touches a cipher itself (Rule 7).
+cabas-sync.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 # Wall clock. `std::time::SystemTime::now()` panics on wasm32; this is the

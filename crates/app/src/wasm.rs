@@ -27,6 +27,7 @@ use wasm_bindgen::prelude::*;
 use crate::app::App;
 use crate::command::Command;
 use crate::platform::{Identity, SystemPlatform};
+use crate::sync::{SyncCursor, SyncSession};
 
 /// Serialises a view-model the way the generated TypeScript declares it.
 ///
@@ -46,6 +47,10 @@ pub struct CabasApp {
     /// without borrowing the app across it. It is a database *name*, not a
     /// connection — cloning it costs nothing.
     storage: IndexedDbStorage,
+    /// The current connection, or `None` between them. One session per
+    /// socket: it is created from the persisted cursor when the socket opens
+    /// and dropped when it closes, which is also when the key leaves memory.
+    session: RefCell<Option<SyncSession>>,
 }
 
 #[wasm_bindgen]
@@ -81,6 +86,7 @@ impl CabasApp {
         Ok(Self {
             inner: RefCell::new(app),
             storage,
+            session: RefCell::new(None),
         })
     }
 
@@ -114,4 +120,106 @@ impl CabasApp {
         self.inner.borrow_mut().mark_saved(revision);
         Ok(true)
     }
+
+    // --- sync ---------------------------------------------------------------
+    //
+    // The socket is the frontend's (DECISIONS 0043): these calls are what it
+    // drives it with. Bytes cross as `Uint8Array` in both directions and are
+    // opaque on the JS side — sealed frames outbound, wire messages inbound.
+    // Plaintext never appears here: a frame that opens is merged inside the
+    // core and what comes back is a state object like any other.
+
+    /// A new family's recovery phrase. Called once, on the device that starts
+    /// the family; the phrase is then the only secret there is (0042).
+    #[wasm_bindgen(js_name = mintPhrase)]
+    pub fn mint_phrase() -> Result<String, JsError> {
+        Ok(crate::sync::mint_phrase()?)
+    }
+
+    /// The canonical spelling of a phrase that was typed or scanned, or an
+    /// error whose message is meant to be shown next to the field (0021).
+    #[wasm_bindgen(js_name = readPhrase)]
+    pub fn read_phrase(phrase: &str) -> Result<String, JsError> {
+        Ok(crate::sync::read_phrase(phrase)?)
+    }
+
+    /// Starts a connection and returns the hello to send on it.
+    ///
+    /// `cursor` is what [`CabasApp::sync_status`] returned when the last
+    /// connection ended — `{ epoch: 0, since: 0 }` on a device that has never
+    /// synced. Any session already open is dropped: a socket that is being
+    /// replaced has nothing left to say.
+    #[wasm_bindgen(js_name = syncHello)]
+    pub fn sync_hello(&self, phrase: &str, cursor: JsValue) -> Result<Vec<u8>, JsError> {
+        let cursor: SyncCursor = serde_wasm_bindgen::from_value(cursor)?;
+        let session = SyncSession::open(phrase, cursor)?;
+        let hello = session.hello()?;
+        *self.session.borrow_mut() = Some(session);
+        Ok(hello)
+    }
+
+    /// Feeds one binary message from the socket in, and gets one `SyncEvent`
+    /// out. A frame that opens is merged before this returns, so a `merged`
+    /// event already carries the new state.
+    #[wasm_bindgen(js_name = syncHandle)]
+    pub fn sync_handle(&self, wire: &[u8]) -> Result<JsValue, JsError> {
+        let mut session = self.session.borrow_mut();
+        let session = session.as_mut().ok_or_else(no_session)?;
+        let mut app = self.inner.borrow_mut();
+        to_js(&session.handle(&mut app, wire)?)
+    }
+
+    /// Seals everything this replica has produced since `shadow` into a push.
+    ///
+    /// `shadow` is the version this device last had acked — an empty array on
+    /// a device that has never pushed, which means "everything I know".
+    #[wasm_bindgen(js_name = syncPush)]
+    pub fn sync_push(&self, shadow: &[u8]) -> Result<Vec<u8>, JsError> {
+        let session = self.session.borrow();
+        let session = session.as_ref().ok_or_else(no_session)?;
+        Ok(session.push(&self.inner.borrow(), shadow)?)
+    }
+
+    /// Seals the whole replica into a push that truncates the relay's log.
+    /// For a device that just sat through a long replay (`replayed` in
+    /// [`CabasApp::sync_status`]) — compaction is device-driven, because the
+    /// relay cannot merge what it cannot read (0042).
+    #[wasm_bindgen(js_name = syncSnapshot)]
+    pub fn sync_snapshot(&self) -> Result<Vec<u8>, JsError> {
+        let session = self.session.borrow();
+        let session = session.as_ref().ok_or_else(no_session)?;
+        Ok(session.snapshot(&self.inner.borrow())?)
+    }
+
+    /// The replica's version right now — the shadow to adopt once the push
+    /// that carried it is acked. Read it *before* sending that push.
+    #[wasm_bindgen(js_name = syncVersion)]
+    pub fn sync_version(&self) -> Vec<u8> {
+        self.inner.borrow().version()
+    }
+
+    /// The cursor to persist, and the two counters a diagnostics screen shows.
+    /// `null` when no connection is open.
+    #[wasm_bindgen(js_name = syncStatus)]
+    pub fn sync_status(&self) -> Result<JsValue, JsError> {
+        match self.session.borrow().as_ref() {
+            Some(session) => to_js(&session.status()),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// Drops the session. Called when the socket closes, for the reason the
+    /// field exists: the next connection derives the key again from the
+    /// phrase, so there is no reason to keep this one in memory meanwhile.
+    #[wasm_bindgen(js_name = syncClose)]
+    pub fn sync_close(&self) {
+        *self.session.borrow_mut() = None;
+    }
+}
+
+/// Calling a session method with no socket open is a bug in the engine
+/// driving it, not a condition the UI can recover from — so it says which
+/// call was skipped rather than returning a silent `null`.
+fn no_session() -> JsError {
+    JsError::new("no sync session: syncHello has not been called on this connection")
 }
