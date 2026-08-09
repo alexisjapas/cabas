@@ -19,7 +19,7 @@
 //! it fails at deserialisation, before any command runs.
 
 use cabas_domain::units::{MassUnit, Unit, VolumeUnit};
-use cabas_domain::{Aisle, CheckState, RefDisplay};
+use cabas_domain::{Action, Aisle, CheckState, RefDisplay, Subject};
 use serde::{Deserialize, Serialize};
 
 /// A unit, as the frontend names it. The UI owns the *label* ("c. à s.") —
@@ -212,6 +212,47 @@ impl From<RefDisplayTag> for RefDisplay {
     }
 }
 
+/// What the event log says happened. Creation is absent by design: it is
+/// already attributed on the object itself (DECISIONS 0024).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub enum ActionTag {
+    Edited,
+    Deleted,
+}
+
+impl From<Action> for ActionTag {
+    fn from(action: Action) -> Self {
+        match action {
+            Action::Edited => ActionTag::Edited,
+            Action::Deleted => ActionTag::Deleted,
+        }
+    }
+}
+
+/// What it happened to. The id inside the domain's `Subject` is deliberately
+/// dropped: the whole point of the log is that the thing may be gone, so the
+/// frontend has the label it was called at the time and nothing to look up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub enum SubjectTag {
+    Recipe,
+    Ingredient,
+    ListEntry,
+}
+
+impl From<&Subject> for SubjectTag {
+    fn from(subject: &Subject) -> Self {
+        match subject {
+            Subject::Recipe(_) => SubjectTag::Recipe,
+            Subject::Ingredient(_) => SubjectTag::Ingredient,
+            Subject::ListEntry(_) => SubjectTag::ListEntry,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +306,33 @@ mod tests {
     fn every_aisle_survives_the_round_trip() {
         for aisle in ALL_AISLES {
             assert_eq!(Aisle::from(AisleTag::from(aisle)), aisle);
+        }
+    }
+
+    /// The log's two enums travel one way only — the frontend never sends an
+    /// event back — so what has to be checked is that every variant has a
+    /// tag. Listing them by hand is what makes a new one fail here rather
+    /// than reach a screen as a missing label.
+    #[test]
+    fn every_action_and_subject_is_tagged() {
+        use cabas_domain::{IngredientId, ListEntryId, RecipeId};
+
+        assert_eq!(ActionTag::from(Action::Edited), ActionTag::Edited);
+        assert_eq!(ActionTag::from(Action::Deleted), ActionTag::Deleted);
+
+        let subjects = [
+            (Subject::Recipe(RecipeId::from_raw("r")), SubjectTag::Recipe),
+            (
+                Subject::Ingredient(IngredientId::from_raw("i")),
+                SubjectTag::Ingredient,
+            ),
+            (
+                Subject::ListEntry(ListEntryId::from_raw("e")),
+                SubjectTag::ListEntry,
+            ),
+        ];
+        for (subject, tag) in subjects {
+            assert_eq!(SubjectTag::from(&subject), tag);
         }
     }
 

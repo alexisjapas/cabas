@@ -990,10 +990,59 @@ for (const claim of ['pas de moyen de retirer un seul appareil', 'la même clé'
 ok('and states plainly that there is no such thing as revoking one of them (Rule 7)');
 await shot('15-people');
 
+// --- the journal ------------------------------------------------------------
+//
+// What the data cannot remember. Read here, on the device that joined second,
+// so the first entry it shows was written by somebody else and arrived sealed
+// through the relay.
+
+await evaluate(`__clickText('button', 'Retour')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings again');
+await evaluate(`__clickText('button', 'Journal')`);
+await waitFor(`__text('h1') === 'Journal'`, 'the journal');
+
+await waitFor(
+  `__all('li .what').some((line) => line.includes('Alexis') && line.includes('a modifié'))`,
+  "the other device's edit",
+);
+ok("the journal shows what the other device did, in the other device's name");
+
+// A deletion, made here, from the screen that offers it — the only kind of
+// event nothing else on screen can show, since the thing itself is gone.
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
+await evaluate(`__clickText('button', 'Nouveau')`);
+await waitFor('document.querySelector("form")', 'the ingredient form');
+await evaluate(`__set('form label:nth-of-type(1) input', 'Cannelle')`);
+await evaluate(`__click('button[type="submit"]')`);
+await waitFor(`__all('li .name').includes('Cannelle')`, 'the throwaway ingredient');
+
+await evaluate(`__clickText('li button', 'Cannelle')`);
+await waitFor('document.querySelector("form")', 'the edit form');
+await evaluate(`__clickText('form button', 'Supprimer')`);
+await evaluate(`__clickText('form button', 'Confirmer la suppression')`);
+await waitFor(`!__all('li .name').includes('Cannelle')`, 'the ingredient, gone');
+
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await evaluate(`__clickText('button', 'Journal')`);
+await waitFor(`__text('h1') === 'Journal'`, 'the journal again');
+const newest = await evaluate(`__text('li:first-child .what')`);
+for (const claim of ['Camille', 'vous', 'a supprimé', "l'ingrédient", 'Cannelle']) {
+  if (!newest.includes(claim)) {
+    throw failed(`the newest entry does not say "${claim}": ${JSON.stringify(newest)}`);
+  }
+}
+ok('and a deletion made here lands at the top of it, named and attributed');
+await shot('16-journal');
+
 // Rotating the key is the whole of revocation, and it is destructive enough to
 // be the last thing this file does: the family it leaves behind is the one
 // every assertion above was made against.
 const familiesBefore = (await readdir(RELAY_DATA)).length;
+await evaluate(`__clickText('button', 'Retour')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the roster');
+await evaluate(`__clickText('button', 'Personnes et appareils')`);
+await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster, to rotate from');
 await evaluate(`__clickText('.revoke button', 'Changer la phrase de la famille')`);
 await waitFor(`__count('.consequences li') === 3`, 'the consequences, before anything happens');
 ok('rotating asks first, and says what it costs');
@@ -1019,7 +1068,7 @@ if (familiesAfter.length !== familiesBefore + 1) {
   throw failed(`expected one more family on the relay, found ${familiesAfter.length} against ${familiesBefore}`);
 }
 ok('and the relay holds a second family, the first one untouched');
-await shot('16-rotated');
+await shot('17-rotated');
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

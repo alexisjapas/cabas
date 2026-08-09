@@ -11,10 +11,12 @@
  * stops compiling until somebody writes the word for it.
  */
 
+import type { ActionTag } from './bindings/ActionTag';
 import type { AisleTag } from './bindings/AisleTag';
 import type { CheckStateTag } from './bindings/CheckStateTag';
 import type { ProblemKind } from './bindings/ProblemKind';
 import type { RefDisplayTag } from './bindings/RefDisplayTag';
+import type { SubjectTag } from './bindings/SubjectTag';
 import type { UnitTag } from './bindings/UnitTag';
 
 /**
@@ -95,6 +97,24 @@ export const PROBLEM_LABEL: Record<ProblemKind, string> = {
   missing_ingredient: 'Un ingrédient de cette recette a été supprimé.',
   broken_graph: 'Des sous-recettes se référencent en boucle.',
   broken_yield: "Une sous-recette n'indique pas de rendement utilisable.",
+};
+
+/**
+ * The event log, in the two halves it is written from.
+ *
+ * A line reads "Alexis a supprimé la recette Tarte aux tomates", so the verb
+ * agrees with nothing and the article belongs to the subject — which is why
+ * these are two tables and not one sentence per pair.
+ */
+export const ACTION_LABEL: Record<ActionTag, string> = {
+  edited: 'a modifié',
+  deleted: 'a supprimé',
+};
+
+export const SUBJECT_LABEL: Record<SubjectTag, string> = {
+  recipe: 'la recette',
+  ingredient: "l'ingrédient",
+  list_entry: 'la ligne de liste',
 };
 
 /**

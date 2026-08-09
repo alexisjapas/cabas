@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::RecipeInput;
 use crate::number;
-use crate::tags::{AisleTag, CheckStateTag, RefDisplayTag, UnitTag};
+use crate::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
 use cabas_domain::Quantity;
 
 /// Everything on screen, after the last thing that happened.
@@ -41,6 +41,9 @@ pub struct StateView {
     /// Everyone in the family and the devices they carry, in document order.
     /// Sorting is the screen's business, like every other list here.
     pub people: Vec<PersonView>,
+    /// What has been edited and deleted, newest first and capped
+    /// (DECISIONS 0024).
+    pub events: Vec<EventView>,
     pub cart: CartView,
     pub list: Vec<ListEntryView>,
     pub recipes: Vec<RecipeSummaryView>,
@@ -91,6 +94,34 @@ pub struct DeviceView {
     /// belong to the frontend (0035) — "il y a deux mois" is a sentence, and
     /// this crate writes none.
     pub paired_at: i64,
+}
+
+/// One line of the event log: what the data itself cannot remember.
+///
+/// Deletions and edits leave no field behind to hold "and Alexis did this",
+/// so they are recorded (DECISIONS 0024). A courtesy, capped, and never an
+/// audit trail — with one shared key any device can write any of these under
+/// any name (Rule 7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub struct EventView {
+    /// Milliseconds since the epoch, from *the clock of the device that did
+    /// it*. Two devices' clocks disagree, so this is worth showing as "two
+    /// days ago" and not worth sorting a timeline by — which is why the log
+    /// arrives in merge order and stays that way.
+    pub at: i64,
+    /// The name of whoever did it, or `None` if that person is no longer in
+    /// the document. The frontend has a word for that case; this crate does
+    /// not write one (DECISIONS 0035).
+    pub by: Option<String>,
+    /// Whether that was this device's own person.
+    pub by_me: bool,
+    pub action: ActionTag,
+    pub subject: SubjectTag,
+    /// What the thing was called **when it happened** — copied at the time,
+    /// because the entries that matter most are the ones whose subject no
+    /// longer exists to be looked up.
+    pub label: String,
 }
 
 /// An amount, ready to display.

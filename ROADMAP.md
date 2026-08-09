@@ -425,7 +425,7 @@ by then the shell is precached and the question only arises once per install.
 - [x] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
 - [x] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021). The QR is **shown and never scanned**, and the joining device types the words: the fallback is now the only path, which is the one that cannot quietly rot (DECISIONS 0047)
 - [x] Users and devices: pairing asks who you are, and the roster behind Settings lists everyone with the devices they carry — stating plainly that these are names rather than accounts, that there is no way to remove one device, and that the only answer to a lost one is a new phrase for everybody. Rotating it is offered there, behind its consequences (Rule 7, DECISIONS 0024)
-- [ ] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log is already *written* by every deletion and edit since M3; what is missing is a view-model for it and a screen
+- [x] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log had been *written* by every deletion and edit since M3; it now has a view-model and a screen, newest first, each line naming who and what — and saying at the bottom that a shared key makes none of it proof
 - [x] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
 - [x] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
 - [x] Test: two replicas that are never online simultaneously still converge through the relay
@@ -521,9 +521,20 @@ grouping proves anything, and it rotates the key at the very end: the relay
 ends the run holding two families, the first one untouched and unreadable by
 the device that left.
 
-What remains of the PWA half is the event log — a view-model and a screen over
-what every deletion and edit has been writing since M3. It is not on the path
-of the exit criterion, which is two real devices. The relay URL defaults to the app's own origin, since
+**The log is in as well**, the third view behind Settings: what was edited and
+deleted, newest first, each line naming the person and the thing as it was
+called at the time — which is the whole point, since the entries that matter
+are the ones whose subject no longer exists to look up. It travels in the
+document like everything else, so `ui-test` reads it on the device that joined
+second and finds the *first* device's edit there, in the first device's name,
+having crossed the relay sealed. Then it deletes something locally and watches
+that land at the top, marked "vous".
+
+**Every screen M5 asked for now exists.** What is left is the exit criterion
+itself: the same two-device convergence that CI proves at replica level, done
+on two real phones — which is where M4 ended too, and for the same reason.
+`ui-serve` puts the build on the first one; the second joins with twelve
+words. The relay URL defaults to the app's own origin, since
 M6 serves the PWA and the socket from one (0012) — and development now has
 that same single origin too: `ui-serve` proxies `/sync` to the relay, because
 the installed PWA is served over TLS and a page in a secure context may not

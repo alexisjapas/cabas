@@ -54,10 +54,12 @@ pairing is twelve words shown with a QR that is never scanned
 ([0047](docs/DECISIONS.md#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours)).
 `ui-test` proves the round trip against the real relay binary: a device pushes
 its library, loses its replica, gets everything back, and a second one joins by
-typing the words — with nothing in the relay's log readable as text. What is
-left is the devices screen, the event log, and the exit criterion itself, which
-is two real phones. Resuming work starts at the "Resuming work" section of the
-[ROADMAP](ROADMAP.md).
+typing the words — with nothing in the relay's log readable as text. Behind
+Settings there is a roster of who is in the family on what, and a journal of
+what was edited and deleted; both say plainly that a shared key means these are
+names and not permissions (Rule 7). What is left of M5 is its exit criterion:
+the same convergence, on two real phones. Resuming work starts at the "Resuming
+work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape

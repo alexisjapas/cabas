@@ -14,7 +14,8 @@
 //! the other reason for putting it behind one.
 
 use cabas_domain::{
-    Device, IngredientId, IngredientIndex, Overlay, RecipeIndex, ShoppingList, User, UserId,
+    Device, EventLog, IngredientId, IngredientIndex, Overlay, RecipeIndex, ShoppingList, User,
+    UserId,
 };
 use cabas_store::Document;
 
@@ -29,6 +30,9 @@ pub(crate) struct Library {
     /// The devices those people carry. Read for the device screen, which is
     /// where Rule 7 has to be said out loud.
     pub devices: Vec<Device>,
+    /// Deletions and edits, in merge order and capped. Read for the log
+    /// screen, which is the only thing that shows it.
+    pub events: EventLog,
 }
 
 impl Library {
@@ -48,6 +52,7 @@ impl Library {
             overlay: document.overlay()?,
             users: document.users()?,
             devices: document.devices()?,
+            events: document.events()?,
         })
     }
 

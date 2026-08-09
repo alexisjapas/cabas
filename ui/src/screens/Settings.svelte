@@ -4,17 +4,19 @@
   import { readIdentity } from '../lib/core';
   import type { Session } from '../lib/session.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
+  import Events from './Events.svelte';
   import Pairing from './Pairing.svelte';
   import People from './People.svelte';
 
   let { session }: { session: Session } = $props();
 
   /**
-   * Two views behind one tab, the way Recipes has three: the roster is a
-   * screen of its own — it has a warning to make and room to make it — and it
-   * is reached from the one place someone would look for it.
+   * Three views behind one tab, the way Recipes has three of its own. The
+   * roster and the log are screens rather than sections: each has something
+   * to say at the bottom that a section would bury, and both are reached from
+   * the one place someone would look for them.
    */
-  let showing = $state<'settings' | 'people'>('settings');
+  let showing = $state<'settings' | 'people' | 'events'>('settings');
 
   /**
    * The device half of the identity never appears in a view-model: it is a
@@ -82,6 +84,8 @@
 
 {#if showing === 'people'}
   <People {session} onback={() => (showing = 'settings')} />
+{:else if showing === 'events'}
+  <Events {session} onback={() => (showing = 'settings')} />
 {:else}
   <Screen title="Réglages">
     <form onsubmit={rename}>
@@ -173,9 +177,14 @@
       {/if}
     </section>
 
-    <button type="button" class="secondary roster" onclick={() => (showing = 'people')}>
-      Personnes et appareils
-    </button>
+    <div class="elsewhere">
+      <button type="button" class="secondary" onclick={() => (showing = 'people')}>
+        Personnes et appareils
+      </button>
+      <button type="button" class="secondary" onclick={() => (showing = 'events')}>
+        Journal
+      </button>
+    </div>
 
     <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
   </Screen>
@@ -309,8 +318,10 @@
     color: var(--text);
   }
 
-  .roster {
-    width: 100%;
+  .elsewhere {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
     margin-bottom: var(--space-5);
   }
 </style>

@@ -194,6 +194,7 @@ pub(crate) fn state(
                 .to_owned(),
         },
         people: people_views(library, identity),
+        events: event_views(library, identity),
         cart: cart_view(library, &projection.cart),
         list: list_view(library, &projection.cart),
         recipes: recipe_summaries(library),
@@ -230,6 +231,29 @@ fn people_views(library: &Library, identity: &Identity) -> Vec<PersonView> {
                     paired_at: device.paired_at.0,
                 })
                 .collect(),
+        })
+        .collect()
+}
+
+/// The log, newest first — the order it is read in.
+///
+/// Names are resolved here and the ids are dropped: what the log is *for* is
+/// the case where the subject no longer exists, so it carries the label the
+/// thing had at the time and nothing to look up (DECISIONS 0024). The person
+/// is looked up, though, and may be missing — a name the frontend has a word
+/// for.
+fn event_views(library: &Library, identity: &Identity) -> Vec<EventView> {
+    let me = identity.user_id();
+    library
+        .events
+        .recent()
+        .map(|event| EventView {
+            at: event.at.0,
+            by: library.user_name(&event.by).map(str::to_owned),
+            by_me: event.by == me,
+            action: event.action.into(),
+            subject: (&event.subject).into(),
+            label: event.label.clone(),
         })
         .collect()
 }
