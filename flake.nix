@@ -288,6 +288,116 @@
             node ui/tests/smoke.mjs "$@"
         '';
 
+        # The add-on manifest against the workspace it ships (DECISIONS 0049).
+        #
+        # Two disagreements are possible and neither shows up until an
+        # appliance is involved, which is late:
+        #
+        # - **The version.** `config.yaml`'s `version` is the image tag the
+        #   Supervisor pulls, so it *is* the release (Rule 12). If it drifts
+        #   from `Cargo.toml`, the add-on either offers an update forever or
+        #   installs a build nobody named.
+        # - **The architectures.** An arch declared in `config.yaml` with no
+        #   base image in `build.yaml` is an add-on that appears in the store,
+        #   installs, and fails to pull.
+        #
+        # Text, not YAML: both files are ours, both are flat, and a parser
+        # would be a dependency to keep honest for two greps.
+        checkAddon = pkgs.writeShellScriptBin "check-addon" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+
+          config=cabas-relay/config.yaml
+          build=cabas-relay/build.yaml
+
+          addon="$(${pkgs.gnugrep}/bin/grep -oP '^version:\s*"\K[^"]+' "$config" || true)"
+          crate="$(${pkgs.gnugrep}/bin/grep -oP '^version = "\K[^"]+' Cargo.toml || true)"
+          if [ -z "$addon" ] || [ -z "$crate" ]; then
+            echo "check-addon: could not read a version from $config or Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$addon" != "$crate" ]; then
+            echo "check-addon: MISMATCH — $config says $addon, Cargo.toml says $crate" >&2
+            echo "The add-on's version is the image tag the Supervisor pulls;" >&2
+            echo "it has to be the version of what is in the image (Rule 12)." >&2
+            exit 1
+          fi
+
+          # The `arch:` list, and the keys under `build_from:`. Each block runs
+          # from its own heading to the next unindented line.
+          block() { ${pkgs.gawk}/bin/awk -v k="$1" '$0 ~ "^" k ":" {on=1; next} on && /^[^[:space:]]/ {on=0} on' "$2"; }
+          arches="$(block arch "$config" | ${pkgs.gnugrep}/bin/grep -oP '^\s*-\s*\K\S+' | sort)"
+          bases="$(block build_from "$build" | ${pkgs.gnugrep}/bin/grep -oP '^\s*\K[a-z0-9_]+(?=:)' | sort)"
+          if [ -z "$arches" ]; then
+            echo "check-addon: $config declares no architectures" >&2
+            exit 1
+          fi
+          missing="$(${pkgs.coreutils}/bin/comm -23 <(echo "$arches") <(echo "$bases"))"
+          if [ -n "$missing" ]; then
+            echo "check-addon: no base image in $build for: $(echo "$missing" | tr '\n' ' ')" >&2
+            echo "The add-on would install and then fail to pull." >&2
+            exit 1
+          fi
+
+          echo "check-addon: OK (version $addon, arch $(echo "$arches" | tr '\n' ' '))"
+        '';
+
+        # The add-on's payload: `cabas-relay`, cross-compiled and static, with
+        # the whole PWA already inside it (DECISIONS 0048, 0049).
+        #
+        # Cross-compiled on whatever runs this rather than built under qemu,
+        # because compiling Rust on an emulated arm64 is tens of minutes and
+        # occasionally nothing at all. It needs no C toolchain: every
+        # dependency in the tree is pure Rust, so `rust-lld` links the musl
+        # target on its own — which is the whole reason the two targets are a
+        # line in `rust-toolchain.toml` and not a second devShell.
+        #
+        # Static on purpose. The Dockerfile then copies one file into a base
+        # image and compiles nothing, which is what keeps the arm64 image off
+        # emulation entirely.
+        #
+        # Takes a *Home Assistant* architecture, not a Rust triple: that is the
+        # name in `config.yaml`, in the image tag and in the CI matrix, and one
+        # vocabulary is worth the two-line translation.
+        buildRelay = pkgs.writeShellScriptBin "build-relay" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+
+          arch="''${1:-}"
+          case "$arch" in
+            aarch64) target=aarch64-unknown-linux-musl ;;
+            amd64)   target=x86_64-unknown-linux-musl ;;
+            *)
+              echo "usage: build-relay <aarch64|amd64>" >&2
+              echo "  the architectures cabas-relay/config.yaml declares" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ ! -f ui/dist/index.html ]; then
+            echo "build-relay: no ui/dist, and an image without an app in it" >&2
+            echo "is the failure this refuses to ship. Build it first:" >&2
+            echo "  build-wasm && pnpm -C ui build" >&2
+            exit 1
+          fi
+
+          # Belt and braces: the check above reads the directory, this one
+          # makes the *build* fail if the bundle is missing or incomplete by
+          # the time `build.rs` walks it (DECISIONS 0048).
+          export CABAS_EMBED_UI=required
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld
+
+          echo "build-relay: $arch ($target)…"
+          cargo build --release --locked -p cabas-relay --target "$target" "''${@:2}"
+
+          # Straight into the Docker context, under the name the Dockerfile
+          # copies. Gitignored: it is a build product with a 2.9 MB bundle in
+          # it, and the image is what ships.
+          install -m 0755 "target/$target/release/cabas-relay" cabas-relay/cabas-relay.bin
+          echo "build-relay: cabas-relay/cabas-relay.bin — $(${pkgs.coreutils}/bin/du -h cabas-relay/cabas-relay.bin | cut -f1), $arch, static"
+        '';
+
         # The built PWA, served to a phone over TLS (DECISIONS 0041).
         #
         # M4's last item is the iPhone, and it needs HTTPS to exist at all: a
@@ -411,6 +521,8 @@
             wasmCheck
             buildWasm
             uiServe
+            buildRelay
+            checkAddon
             pkgs.cargo-nextest
             # Dependency hygiene (Rule 13): `cargo deny check` in CI, and
             # the third-party notices the PWA has to ship.
@@ -425,6 +537,8 @@
             echo "  check-wasm-bindgen                    # CLI/crate version match"
             echo "  build-wasm [--dev]                    # the wasm core into ui/src/lib/wasm"
             echo "  ui-serve                              # serve ui/dist over TLS, for the phone"
+            echo "  build-relay <aarch64|amd64>           # the add-on's static binary (M6)"
+            echo "  check-addon                           # the add-on manifest vs the workspace"
             echo "  nix develop .#wasm-test -c wasm-test   # IndexedDB in headless chromium"
             echo "  nix develop .#android                 # Android SDK/NDK shell (M7)"
             echo "  wasm-bindgen $(wasm-bindgen --version | ${pkgs.gawk}/bin/awk '{print $2}') · node $(node --version)"

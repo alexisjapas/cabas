@@ -4,8 +4,19 @@
 # `wasm32-unknown-unknown` is not optional tooling here: `domain`, `store`,
 # `sync` and `app` must build for it at all times (CONSTITUTION Rule 8) —
 # it is the target the iOS/web PWA ships on.
+#
+# The two musl targets are M6's: the add-on image carries a statically linked
+# `cabas-relay`, cross-compiled on the runner rather than emulated under qemu
+# (DECISIONS 0049). aarch64 is the Raspberry Pi 4 running HAOS; x86_64 is what
+# makes the add-on installable on a laptop, which is where the restore drill
+# gets rehearsed. Both are rust-std downloads and no C toolchain: the whole
+# dependency tree is pure Rust, so `rust-lld` links them.
 [toolchain]
 channel = "stable"
 components = ["rustfmt", "clippy", "rust-analyzer", "rust-src"]
-targets = ["wasm32-unknown-unknown"]
+targets = [
+  "wasm32-unknown-unknown",
+  "aarch64-unknown-linux-musl",
+  "x86_64-unknown-linux-musl",
+]
 profile = "default"

@@ -1,0 +1,11 @@
+# Home Assistant add-on repository (DECISIONS 0010, 0049).
+#
+# This file is why a person can paste this repository's URL into Home
+# Assistant → Settings → Add-ons → Add-on store → ⋮ → Repositories and find
+# cabas there. The Supervisor reads it at the root and then looks in each
+# top-level directory for a `config.yaml`; it does not recurse, which is the
+# whole reason `cabas-relay/` sits beside `crates/` and `ui/` rather than
+# under an `addon/` that would have read more tidily.
+name: cabas
+url: https://github.com/alexisjapas/cabas
+maintainer: alexisjapas (https://github.com/alexisjapas)

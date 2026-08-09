@@ -1,0 +1,58 @@
+# The add-on manifest (DECISIONS 0010, 0049).
+#
+# `version` is the tag the Supervisor pulls, so it *is* the release: it must
+# equal the workspace version in `Cargo.toml`, and CI fails if it does not
+# (CONSTITUTION Rule 12). A `-dev` version is published from `main` on every
+# push; a released one may only come from an annotated `vX.Y.Z` tag.
+name: cabas
+version: "0.1.0-dev"
+slug: cabas_relay
+description: >-
+  Sync relay and host for the cabas shopping list — serves the app and brokers
+  encrypted sync between phones, and can read neither.
+url: https://github.com/alexisjapas/cabas
+stage: experimental
+
+# The Raspberry Pi 4 running HAOS is aarch64; amd64 exists so the add-on can
+# be installed on a laptop, which is where the restore drill is rehearsed
+# before it is attempted on the appliance.
+arch:
+  - aarch64
+  - amd64
+
+# Prebuilt, never built on the Pi (0010). `{arch}` is substituted by the
+# Supervisor with this machine's architecture.
+image: ghcr.io/alexisjapas/cabas-{arch}
+
+# The image is a Home Assistant base, which carries s6 as its init; the
+# Supervisor must not add a second one.
+init: false
+
+# One port, and it is the app's whole address: the page, the manifest, the
+# wasm core and the `/sync` WebSocket all answer here, because an installed
+# PWA *is* its origin and cannot have two (DECISIONS 0012, 0048). In
+# production the Cloudflare Tunnel is what reaches it; on a LAN this is also
+# how a browser does.
+ports:
+  8787/tcp: 8787
+ports_description:
+  8787/tcp: The app and its sync socket — the Cloudflare Tunnel points here
+
+# `/data` is provided and backed up by Home Assistant itself, which is what
+# makes this add-on the recovery point if every phone is lost (0010). It is
+# the relay's default data directory, so nothing here has to say so.
+
+# Deliberately empty. The relay takes a data directory and a listen address,
+# and the add-on's answer to both is the only correct one — so there is
+# nothing to get wrong in a form, and no options schema to keep in step with
+# a struct. Anything that becomes configurable later gets an entry in
+# docs/DECISIONS.md first (CONSTITUTION Rule 14).
+options: {}
+schema: {}
+
+# `/healthz` exists for exactly this line: the Supervisor restarts the add-on
+# if the process stops answering.
+watchdog: http://[HOST]:[PORT:8787]/healthz
+
+startup: application
+boot: auto
