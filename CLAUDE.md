@@ -31,13 +31,14 @@ built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
-the device. **The sync engine is in too** (`ui/src/lib/sync.svelte.ts`): the
-socket, the foreground rule, backoff, and the cursor and shadow in
-`localStorage`. `ui-test` runs it against a real relay and proves the milestone
-at browser level — a device pushes its library, loses its replica, and gets
-everything back from the relay alone, sealed throughout. What remains of M5 is
-screens: pairing (QR + typed phrase), users and devices, the event log. See
-ROADMAP "Next action".
+the device. **The sync engine and pairing are in too**: `lib/sync.svelte.ts`
+holds the socket, the foreground rule, backoff and the cursor; `screens/
+Pairing.svelte` starts or joins a family and `screens/Settings.svelte` shows
+the phrase for a second phone. `ui-test` runs the lot against a real relay and
+proves the milestone at browser level — a device pushes its library, loses its
+replica, gets everything back from the relay alone, and another joins by typing
+the twelve words, sealed throughout. What remains of M5 is two screens: users
+and devices, and the event log. See ROADMAP "Next action".
 
 ## Environment and commands
 
@@ -248,11 +249,12 @@ file:
 | `lib/core.ts` | The typed edge — the only place a cast meets the wasm `any`, plus the identity in `localStorage` (0031) |
 | `lib/session.svelte.ts` | The one `$state.raw`, `run(command)`, the debounced flush, the persisted screen and its scroll offset |
 | `lib/sync.svelte.ts` | The socket and its policy: connect on foreground, backoff, push on change, the cursor and shadow in `localStorage` (0043) |
+| `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -520,6 +522,19 @@ Key domain shapes, all settled in DECISIONS:
   about; anything the app logs arrives as `Runtime.consoleAPICalled` and used
   to fail nothing. Both are collected now, and a timeout prints them — a
   "timed out waiting for X" with no page log is a much longer afternoon.
+- **The QR encoder is fixed to version 6, level L.** That is what makes a
+  hand-written one safe — one version is one row of the spec's tables instead
+  of a wall of them — and it means a longer payload throws rather than draws
+  something unreadable. `ui-test` compares every module against `qrencode`, so
+  a change that breaks the encoder fails there and not on a phone. The one bug
+  it caught while being written: writing the generator polynomial's two terms
+  in the wrong order yields a valid polynomial and a symbol no scanner reads
+  (DECISIONS 0047).
+- **A paired device retries a relay it cannot reach, and the browser logs it.**
+  That is the engine working — the network comes back and so does it — but it
+  means `pnpm preview` answers `/sync` with the app and the console fills up.
+  `ui-test` ignores exactly those network-level entries and still fails on
+  anything the *app* logs.
 - **A secure context cannot open a `ws:`**, so the TLS that makes the app
   installable is also what stops it reaching a relay listening in plaintext —
   and the relay terminates no TLS, because in production the tunnel does. It is

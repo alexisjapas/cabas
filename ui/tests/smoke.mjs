@@ -17,12 +17,22 @@
  * a preview server on 4173 and chromium listening on 9222.
  */
 
+import { execFileSync } from 'node:child_process';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const DEVTOOLS = process.env.DEVTOOLS_URL ?? 'http://localhost:9222';
 const APP = process.env.APP_URL ?? 'http://localhost:4173';
 const SHOTS = process.env.SCREENSHOT_DIR ?? null;
+
+/** The relay `ui-test` started, and the directory it writes its sealed log to.
+ *  Both come from the script; running this file by hand is not supported, and
+ *  a sync test that quietly skipped itself would be worse than none. */
+const RELAY_DATA = process.env.CABAS_RELAY_DATA ?? null;
+const RELAY_URL = process.env.CABAS_RELAY_URL ?? null;
+if (RELAY_DATA === null || RELAY_URL === null) {
+  throw new Error('no relay: CABAS_RELAY_DATA and CABAS_RELAY_URL come from ui-test');
+}
 
 const targets = await (await fetch(`${DEVTOOLS}/json/list`)).json();
 const target = targets.find((candidate) => candidate.type === 'page');
@@ -51,6 +61,13 @@ socket.onmessage = (event) => {
   // renders correctly while throwing in the console is a bug with a fuse on it.
   if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
     const entry = message.params.entry;
+    // A sync socket that cannot reach its relay is an event, not a defect:
+    // this suite turns the network off on purpose, and the engine is meant to
+    // retry rather than to give up quietly. What it is *not* allowed to do is
+    // log something itself — a `console.error` from the app still fails the
+    // run, and the connection is asserted where it matters, by watching data
+    // arrive at the other end.
+    if (entry.source === 'network' && /WebSocket connection to/.test(entry.text ?? '')) return;
     consoleErrors.push(`[${entry.source}] ${entry.text || '(no text)'} ${entry.url ?? ''}`.trim());
   }
   // `Log.entryAdded` carries what the *browser* complains about — a failed
@@ -274,8 +291,50 @@ await evaluate(`
 `);
 
 await load(APP);
+await waitFor(`__text('h1') === 'cabas'`, 'the pairing screen');
+ok('a device with no identity is asked about its family first');
+
+// Start a family rather than join one: this is the first phone, and the
+// phrase it mints is the whole secret from here on (DECISIONS 0021, 0042).
+await evaluate(`__clickText('button', 'Commencer une famille')`);
+await waitFor(`__text('[data-phrase]')`, 'the phrase');
+const phrase = await evaluate(`__text('[data-phrase]')`);
+if (phrase.split(/\s+/).length !== 12) {
+  throw failed(`the phrase is not twelve words: ${JSON.stringify(phrase)}`);
+}
+ok(`the family's phrase is twelve words`);
+
+// The QR on screen, module for module against a reference implementation.
+// A picture that renders and does not decode is exactly the failure a hand
+// written encoder invites (DECISIONS 0047).
+const drawn = await evaluate(`
+  JSON.stringify([...document.querySelectorAll('.qr .module')].map(
+    (rect) => [+rect.getAttribute('x'), +rect.getAttribute('y'), +rect.getAttribute('width')]
+  ))
+`);
+const rendered = new Set();
+for (const [x, y, width] of JSON.parse(drawn)) {
+  for (let i = 0; i < width; i += 1) rendered.add(`${y},${x + i}`);
+}
+const reference = new Set();
+execFileSync('qrencode', ['-l', 'L', '-v', '6', '-m', '0', '-t', 'ASCII', '-o', '-'], {
+  input: phrase,
+  encoding: 'utf8',
+})
+  .split('\n')
+  .filter((row) => row.length > 0)
+  .forEach((row, y) => {
+    for (let x = 0; x * 2 < row.length; x += 1) if (row[x * 2] === '#') reference.add(`${y},${x}`);
+  });
+if (rendered.size !== reference.size || [...reference].some((cell) => !rendered.has(cell))) {
+  throw failed(`the QR differs from qrencode's: ${rendered.size} modules against ${reference.size}`);
+}
+ok(`the QR matches qrencode module for module (${reference.size} dark)`);
+await shot('00-pairing');
+
+await evaluate(`__clickText('button', "J'ai noté la phrase")`);
 await waitFor('document.querySelector("form input")', 'onboarding form');
-ok('onboarding renders on a device with no identity');
+ok('and then it asks who this device belongs to');
 
 await evaluate(`__set('input[autocomplete="given-name"]', 'Alexis')`);
 await evaluate(`__set('form label:nth-of-type(2) input', 'iPhone de test')`);
@@ -288,6 +347,21 @@ if (!identity?.user?.startsWith('usr_') || !identity?.device?.startsWith('dev_')
   throw new Error(`identity looks wrong: ${JSON.stringify(identity)}`);
 }
 ok('identity persisted to localStorage (DECISIONS 0031)');
+
+// Point this device at the relay before anything is built, the way a real one
+// is pointed at the family's own server — everything below then syncs as it
+// happens rather than in one burst at the end. In production the relay serves
+// the app and this field stays empty, which is why it says so (0043, 0044).
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'the settings screen');
+await evaluate(`__set('.family input', ${JSON.stringify(RELAY_URL)})`);
+await evaluate(`__clickText('.family button', 'Enregistrer le serveur')`);
+await waitFor(
+  `JSON.parse(localStorage.getItem('cabas.family')).relay === ${JSON.stringify(RELAY_URL)}`,
+  'the relay override, stored',
+);
+await waitFor(`__text('.family .status') === 'Synchronisé'`, 'a live connection');
+ok('the relay is set from settings, and the engine connects to it');
 await shot('01-empty-cart');
 
 // --- the library -----------------------------------------------------------
@@ -753,21 +827,6 @@ await send('Emulation.clearDeviceMetricsOverride');
 // The relay is the real binary, started by `ui-test`, because a mock of it
 // would only prove that this file and the mock agree.
 
-const RELAY_DATA = process.env.CABAS_RELAY_DATA ?? null;
-const RELAY_URL = process.env.CABAS_RELAY_URL ?? null;
-if (RELAY_DATA === null || RELAY_URL === null) {
-  throw new Error('no relay: CABAS_RELAY_DATA and CABAS_RELAY_URL come from ui-test');
-}
-
-/**
- * The BIP39 all-zero test vector — a valid phrase with a valid checksum, and
- * one no real family will ever roll. Pairing screens do not exist yet, so the
- * family is seeded the way they will write it (DECISIONS 0043).
- */
-const PHRASE =
-  'abandon abandon abandon abandon abandon abandon ' +
-  'abandon abandon abandon abandon abandon about';
-
 /** The relay's log for whichever family appeared, or `null` while it is
  *  empty. One family per run, so the first directory is the one. */
 async function relayLog() {
@@ -789,11 +848,9 @@ async function waitForRelay(label, timeoutMs = 15000) {
   }
 }
 
-const family = JSON.stringify({ phrase: PHRASE, relay: RELAY_URL });
-await evaluate(`localStorage.setItem('cabas.family', ${JSON.stringify(family)}), true`);
-await load(APP);
-await waitFor('document.querySelector("nav")', 'the app, now paired');
-
+// The family was created on the pairing screen at the top of this file and
+// the relay set right after, so everything above has been syncing as it was
+// built. What is left is to look at what reached the relay.
 const log = await waitForRelay('the push to reach the relay');
 ok(`the engine connected and pushed (${log.length} bytes of sealed log)`);
 
@@ -842,6 +899,54 @@ if (!resynced.includes('Tomates') || resynced.includes('supprimée')) {
 }
 ok('recipe, steps and the lines they point at, all of it');
 await shot('13-synced');
+
+// --- and a second device, joining by hand ------------------------------------
+//
+// Everything this device is, gone: identity, family, cursor and replica. What
+// comes back is a phone that has only the twelve words someone read out to it,
+// which is the path 0021 makes mandatory and the one that has to work when a
+// camera does not.
+
+await evaluate(`
+  (async () => {
+    localStorage.clear();
+    await new Promise((resolve) => {
+      const request = indexedDB.deleteDatabase('cabas');
+      request.onsuccess = request.onerror = request.onblocked = resolve;
+    });
+    return true;
+  })()
+`);
+await load(APP);
+await waitFor(`__text('h1') === 'cabas'`, 'the pairing screen, on a blank device');
+
+await evaluate(`__clickText('button', 'Rejoindre une famille')`);
+await waitFor('document.querySelector("textarea")', 'the phrase field');
+
+await evaluate(`__set('textarea', 'abandon abandon abandon')`);
+await evaluate(`__click('button[type="submit"]')`);
+await waitFor(`__text('[role="alert"]')?.includes('douze mots')`, 'the complaint about the count');
+ok('a phrase of the wrong length is refused, in French, before anything is stored');
+
+await evaluate(`__set('textarea', ${JSON.stringify(phrase.toUpperCase())})`);
+await evaluate(`__click('button[type="submit"]')`);
+await waitFor('document.querySelector("form input")', 'the naming form');
+ok('and the right one is accepted whatever the case it is typed in');
+
+await evaluate(`__set('input[autocomplete="given-name"]', 'Camille')`);
+await evaluate(`__set('form label:nth-of-type(2) input', 'Téléphone de Camille')`);
+await evaluate(`__click('button[type="submit"]')`);
+await waitFor('document.querySelector("nav")', 'the app, on the device that joined');
+
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the joined device');
+await evaluate(`__set('.family input', ${JSON.stringify(RELAY_URL)})`);
+await evaluate(`__clickText('.family button', 'Enregistrer le serveur')`);
+
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__all('li .name').includes('Tomates')`, 'the family library, on the new device');
+ok('twelve words typed by hand are the whole of pairing — the library follows');
+await shot('14-joined');
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

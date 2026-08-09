@@ -44,9 +44,20 @@ field and the recipe editor's mention picker stay above the keys
 worker needs to exist at all
 ([0041](docs/DECISIONS.md#0041--the-phone-installs-from-a-local-certificate-authority)).
 On the device itself the cold start is instantaneous, which closes the question
-of the 713 kB core, and the keyboard behaves as it was designed to. **Next is
-M5**: the relay, end-to-end encryption and sync between two phones. Resuming
-work starts at the "Resuming work" section of the [ROADMAP](ROADMAP.md).
+of the 713 kB core, and the keyboard behaves as it was designed to.
+
+**M5 is nearly done**: the relay brokers a sealed log it cannot read
+([0042](docs/DECISIONS.md#0042--the-relay-keeps-a-sequenced-log-it-cannot-read)),
+the PWA drives its own socket
+([0043](docs/DECISIONS.md#0043--the-pwas-websocket-lives-in-the-frontend)), and
+pairing is twelve words shown with a QR that is never scanned
+([0047](docs/DECISIONS.md#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours)).
+`ui-test` proves the round trip against the real relay binary: a device pushes
+its library, loses its replica, gets everything back, and a second one joins by
+typing the words — with nothing in the relay's log readable as text. What is
+left is the devices screen, the event log, and the exit criterion itself, which
+is two real phones. Resuming work starts at the "Resuming work" section of the
+[ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape

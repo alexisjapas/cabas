@@ -10,17 +10,26 @@
   import Ingredients from './screens/Ingredients.svelte';
   import List from './screens/List.svelte';
   import Onboarding from './screens/Onboarding.svelte';
+  import Pairing from './screens/Pairing.svelte';
   import Recipes from './screens/Recipes.svelte';
   import Settings from './screens/Settings.svelte';
+  import { rememberFamily, type Family } from './lib/sync.svelte';
 
   /**
    * Boot, in the order DECISIONS 0031 requires: the device's identity comes
    * out of `localStorage` before anything else can run, and a device that has
    * never launched is asked who it is.
+   *
+   * A first launch is asked one thing before that, though — which family this
+   * device belongs to. Pairing comes first because joining an existing one is
+   * the common case for the *second* phone, and a device that mints an
+   * identity before knowing that has already written a user into a document
+   * nobody else will ever see.
    */
   type Phase =
     | { step: 'loading' }
-    | { step: 'onboarding' }
+    | { step: 'pairing' }
+    | { step: 'onboarding'; family: Family }
     | { step: 'ready'; session: Session }
     | { step: 'failed'; message: string };
 
@@ -46,7 +55,7 @@
 
     const identity = readIdentity();
     if (identity === null) {
-      phase = { step: 'onboarding' };
+      phase = { step: 'pairing' };
       return;
     }
     void openWith(identity);
@@ -70,9 +79,13 @@
     void tick().then(() => session.restoreScroll(screen));
   });
 
-  async function register(userName: string, deviceName: string): Promise<void> {
+  async function register(family: Family, userName: string, deviceName: string): Promise<void> {
     phase = { step: 'loading' };
     try {
+      // The family before the identity, so the engine finds it the moment
+      // `Session.open` starts it — the first sync then carries this device's
+      // own user record out with everything else.
+      rememberFamily(family);
       const identity = await mintIdentity(userName, deviceName);
       // Stored before the replica opens, deliberately: if opening fails, the
       // next launch must retry with *this* identity. Minting a second one
@@ -92,8 +105,13 @@
     L'application n'a pas pu démarrer.<br />
     <span class="detail">{phase.message}</span>
   </p>
+{:else if phase.step === 'pairing'}
+  <main class="first">
+    <Pairing onpaired={(family) => (phase = { step: 'onboarding', family })} />
+  </main>
 {:else if phase.step === 'onboarding'}
-  <Onboarding onsubmit={register} />
+  {@const family = phase.family}
+  <Onboarding onsubmit={(userName, deviceName) => register(family, userName, deviceName)} />
 {:else}
   {@const session = phase.session}
   {#if session.error !== null}
@@ -121,6 +139,14 @@
   main {
     max-width: var(--content-width);
     margin: 0 auto;
+  }
+
+  /* Pairing has no tab bar and the same keyboard as onboarding: one field, on
+     the first screen the phone ever shows. */
+  .first {
+    padding: var(--space-6) var(--space-4);
+    padding-top: calc(var(--safe-top) + var(--space-7));
+    padding-bottom: max(var(--space-6), var(--keyboard-inset));
   }
 
   .notice {

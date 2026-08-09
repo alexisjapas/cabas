@@ -429,6 +429,12 @@
             # node to run the harness and a pnpm to serve `ui/dist`.
             pkgs.nodejs_22
             pkgs.pnpm
+            # The oracle for the QR code the pairing screen draws: `ui-test`
+            # compares the two module for module, so the encoder written in
+            # `ui/src/lib/qr.ts` is checked against an implementation that
+            # shares none of its assumptions (DECISIONS 0047). 16 kB, and it
+            # never ships — it exists only in this shell.
+            pkgs.qrencode
             uiTest
           ];
           shellHook = ''

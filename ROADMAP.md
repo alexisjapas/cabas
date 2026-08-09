@@ -423,8 +423,8 @@ by then the shell is precached and the question only arises once per install.
 
 - [x] `cabas-relay`: axum, WebSocket per family, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
 - [x] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
-- [ ] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021)
-- [ ] Users and devices: pairing asks who you are; a device screen that states plainly that revoking means rotating the key and re-pairing everyone
+- [x] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021). The QR is **shown and never scanned**, and the joining device types the words: the fallback is now the only path, which is the one that cannot quietly rot (DECISIONS 0047)
+- [ ] Users and devices: pairing asks who you are — **done**, it is the screen after the phrase — but the device screen that states plainly that revoking means rotating the key and re-pairing everyone is not written yet
 - [ ] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log is already *written* by every deletion and edit since M3; what is missing is a view-model for it and a screen
 - [x] Drive the sync seam M3 left: `App::version`, `App::changes_since`, `App::merge` — opaque bytes, sealed by `sync` on the way out
 - [x] Sync on foreground, live WebSocket while active, **no background sync** (DECISIONS 0011)
@@ -499,12 +499,21 @@ Two things that only appeared against a real relay, both now guarded:
   `App::opened_fresh()` reports the exact fact — storage held no snapshot — and
   the engine starts from zero when it does (DECISIONS 0045).
 
-What remains of the PWA half is screens: the pairing screens (generate/display
-the phrase and its QR, join by scanning or typing, and only then mint the local
-identity), the device-and-users screen with the revocation warning 0024
-requires, and the event-log view-model and screen. Until pairing exists the
-family is written to `localStorage` by hand, which is exactly what the sync
-test does. The relay URL defaults to the app's own origin, since
+**Pairing is in.** The first launch asks which family this device belongs to
+before it asks anything else: start one — twelve minted words, shown with their
+QR and a plain statement of what they are — or join one by typing them, and
+only then mint the identity. Settings does the same job on a device that is
+already running, shows the phrase on demand for a second phone to copy, and
+holds the relay override 0043 asked for. The QR is **displayed and never
+scanned** (DECISIONS 0047); the encoder is written here, fixed to version 6-L,
+and `ui-test` checks it against `qrencode` module for module — 821 dark modules
+agreeing exactly, which is what makes a hand-written encoder a safe thing to
+own. `ui-test` also joins a family from a wiped device by typing the words in
+the wrong case, and watches the library arrive from the relay.
+
+What remains of the PWA half is two screens: the device-and-users screen with
+the revocation warning 0024 requires, and the event log. Neither is on the path
+of the exit criterion, which is two real devices. The relay URL defaults to the app's own origin, since
 M6 serves the PWA and the socket from one (0012) — and development now has
 that same single origin too: `ui-serve` proxies `/sync` to the relay, because
 the installed PWA is served over TLS and a page in a secure context may not

@@ -1,7 +1,10 @@
 <script lang="ts">
+  import Qr from '../components/Qr.svelte';
   import Screen from '../components/Screen.svelte';
   import { readIdentity } from '../lib/core';
   import type { Session } from '../lib/session.svelte';
+  import type { SyncPhase } from '../lib/sync.svelte';
+  import Pairing from './Pairing.svelte';
 
   let { session }: { session: Session } = $props();
 
@@ -22,6 +25,38 @@
   let edited = $state<string | null>(null);
   let name = $derived(edited ?? session.state.me.name);
   let saved = $state(false);
+
+  /**
+   * The connection, in words. Frontend vocabulary rather than a core tag, so
+   * it lives here and not in `labels.ts` (DECISIONS 0035).
+   */
+  const PHASES: Record<SyncPhase, string> = {
+    unpaired: 'Cet appareil est seul',
+    idle: 'En veille',
+    connecting: 'Connexion…',
+    online: 'Synchronisé',
+    retrying: 'Hors de portée — nouvelle tentative',
+    refused: 'Refusé par le serveur',
+  };
+
+  /** Shown on demand, never by default: it is the key, and a settings screen
+   *  gets left open on a table (DECISIONS 0021). */
+  let revealed = $state(false);
+  let pairingOpen = $state(false);
+
+  /** Same shape as the name field: a draft that wins once typing starts, and
+   *  the stored value until then. */
+  let relayDraft = $state<string | null>(null);
+  let relay = $derived(relayDraft ?? session.sync.family?.relay ?? '');
+
+  function saveRelay(event: SubmitEvent): void {
+    event.preventDefault();
+    const family = session.sync.family;
+    if (family === null) return;
+    const trimmed = relay.trim();
+    session.sync.pair({ phrase: family.phrase, relay: trimmed === '' ? null : trimmed });
+    relayDraft = null;
+  }
 
   function rename(event: SubmitEvent): void {
     event.preventDefault();
@@ -73,10 +108,61 @@
     </div>
   </dl>
 
-  <p class="note">
-    Tout est enregistré sur cet appareil et fonctionne sans réseau. La synchronisation entre
-    appareils arrive plus tard.
-  </p>
+  <section class="family">
+    <h2>Famille</h2>
+    <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
+
+    {#if session.sync.family === null}
+      {#if pairingOpen}
+        <Pairing
+          onpaired={(family) => {
+            session.sync.pair(family);
+            pairingOpen = false;
+          }}
+          oncancel={() => (pairingOpen = false)}
+        />
+      {:else}
+        <p class="note">
+          Cet appareil n'est appairé à aucun autre. Tout fonctionne, rien n'est partagé.
+        </p>
+        <button type="button" onclick={() => (pairingOpen = true)}>Appairer cet appareil</button>
+      {/if}
+    {:else}
+      {@const family = session.sync.family}
+      <p class="note">
+        Pour ajouter un appareil : ouvrez cabas dessus, choisissez « Rejoindre une famille », et
+        recopiez ces douze mots.
+      </p>
+
+      {#if revealed}
+        <p class="phrase" data-phrase>{family.phrase}</p>
+        <Qr text={family.phrase} label="La phrase de votre famille, en QR code" />
+        <button type="button" class="secondary" onclick={() => (revealed = false)}>Masquer</button>
+      {:else}
+        <button type="button" class="secondary" onclick={() => (revealed = true)}>
+          Afficher la phrase
+        </button>
+      {/if}
+
+      <form onsubmit={saveRelay}>
+        <label>
+          Serveur
+          <input
+            value={relay}
+            oninput={(event) => (relayDraft = event.currentTarget.value)}
+            autocapitalize="none"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="cet appareil parle au serveur qui l'héberge"
+          />
+          <small>À laisser vide, sauf en développement.</small>
+        </label>
+        <button type="submit" disabled={relayDraft === null}>Enregistrer le serveur</button>
+      </form>
+    {/if}
+  </section>
+
+  <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
 </Screen>
 
 <style>
@@ -155,5 +241,55 @@
   .note {
     color: var(--text-faint);
     font-size: var(--text-sm);
+  }
+
+  .family {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+  }
+
+  .status {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .family .note {
+    margin: 0;
+  }
+
+  .family form {
+    margin: 0;
+    gap: var(--space-3);
+  }
+
+  .phrase {
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    font-family: var(--font-numeric);
+    line-height: var(--leading-normal);
+    word-spacing: var(--space-2);
+    -webkit-user-select: all;
+    user-select: all;
+  }
+
+  .secondary {
+    border: 1px solid var(--border-strong);
+    background: var(--surface-raised);
+    color: var(--text);
   }
 </style>

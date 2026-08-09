@@ -53,8 +53,9 @@ const RETRY_MAX_MS = 30_000;
 /** What the UI may show about the connection. Nothing here is business state:
  *  it describes a socket, not the library. */
 export type SyncPhase =
-  /** No phrase on this device — nothing to connect to. The state until the
-   *  pairing screens exist. */
+  /** No phrase on this device — nothing to connect to. A device that has
+   *  never been paired, and a perfectly good state to stay in: everything
+   *  works offline and alone. */
   | 'unpaired'
   /** Paired, but the app is not on screen. Deliberate (0011), not a failure. */
   | 'idle'
@@ -167,7 +168,14 @@ export class Sync {
    *  the replica on its usual schedule. */
   readonly #adopt: (state: StateView) => void;
 
-  #family: Family | null = null;
+  /**
+   * The family this device belongs to, or `null` until it is paired. Public
+   * and reactive because Settings shows the phrase — this is the one screen
+   * where the key is meant to be on display (DECISIONS 0021) — and because
+   * pairing from there has to re-render what it changed.
+   */
+  family = $state<Family | null>(null);
+
   #socket: WebSocket | null = null;
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #pushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -211,7 +219,7 @@ export class Sync {
    * nothing until one is written.
    */
   start(): void {
-    this.#family = readFamily();
+    this.family = readFamily();
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') this.#connect();
       else this.#park();
@@ -240,24 +248,42 @@ export class Sync {
   }
 
   /**
-   * Pairs this device and connects. The phrase has already been validated by
-   * whoever called `readPhrase` — this only stores what it is given.
+   * Pairs this device and reconnects. The phrase has already been validated by
+   * whoever called `readPhrase` — this stores what it is given.
+   *
+   * Changing the phrase resets the cursor and the shadow: they describe a
+   * position in *that* family's log, and the new one has never been read. A
+   * relay URL that changes on its own does not — it is the same log, reached
+   * by another road.
    */
   pair(family: Family): void {
+    const elsewhere = this.family?.phrase !== family.phrase;
     rememberFamily(family);
-    this.#family = family;
-    // A different family means a different log: the old cursor points into
-    // something this device may never see again.
-    this.#cursor = { epoch: '0', since: 0 };
-    this.#shadow = new Uint8Array();
-    this.#rememberProgress();
-    this.#connect();
+    this.family = family;
+    if (elsewhere) {
+      this.#cursor = { epoch: '0', since: 0 };
+      this.#shadow = new Uint8Array();
+      this.#rememberProgress(true);
+    }
+    this.#reconnect();
+  }
+
+  /** Drops whatever connection exists and starts a new one. A refusal is
+   *  forgotten here: the point of re-pairing is that something changed. */
+  #reconnect(): void {
+    clearTimeout(this.#retryTimer);
+    const socket = this.#socket;
+    this.#drop();
+    socket?.close();
+    this.#attempt = 0;
+    this.phase = 'idle';
+    if (document.visibilityState === 'visible') this.#connect();
   }
 
   // --- the socket ---------------------------------------------------------
 
   #connect(): void {
-    if (this.#family === null) {
+    if (this.family === null) {
       this.phase = 'unpaired';
       return;
     }
@@ -265,12 +291,12 @@ export class Sync {
     clearTimeout(this.#retryTimer);
 
     this.phase = 'connecting';
-    const socket = new WebSocket(relayUrl(this.#family));
+    const socket = new WebSocket(relayUrl(this.family));
     socket.binaryType = 'arraybuffer';
     this.#socket = socket;
 
     socket.onopen = () => {
-      const family = this.#family;
+      const family = this.family;
       if (family === null) return;
       try {
         socket.send(this.#core.syncHello(family.phrase, this.#cursor));

@@ -56,6 +56,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0044](#0044--in-development-the-sync-socket-goes-through-ui-serve) | In development the sync socket goes through `ui-serve` | Tooling |
 | [0045](#0045--a-cursor-is-not-resumed-on-a-replica-that-never-had-it) | A cursor is not resumed on a replica that never had it | Sync |
 | [0046](#0046--a-u64-crosses-the-wasm-boundary-as-text) | A `u64` crosses the wasm boundary as text | Architecture |
+| [0047](#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours) | The QR is shown, never scanned, and the encoder is ours | Product |
 
 ---
 
@@ -1564,3 +1565,62 @@ server's data because of a client's number format, and the epoch is a
 `postcard` wire field shared with the native hosts, which have no such limit.
 **Two 32-bit halves** — one number pretending to be two, reassembled by hand in
 every host that touches it.
+
+---
+
+## 0047 — The QR is shown, never scanned, and the encoder is ours
+
+**Date** 2026-08-09 · **Status** Accepted · **Refines**
+[0021](#0021--pairing-by-qr-with-a-mandatory-12-word-fallback) · **Relates to**
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0038](#0038--the-service-worker-is-written-by-hand)
+
+**Context.** 0021 settled pairing — a QR code, **always** with the twelve words
+as a manual fallback — on the reasoning that the camera is historically brittle
+in an installed iOS PWA. Building it showed that the two halves of that
+sentence cost nothing alike.
+
+Showing a QR is an encoder: a page of arithmetic over a finite field, no
+permissions, no hardware. Reading one is a camera prompt, a video element, a
+decode loop, and a decoder — iOS Safari has no `BarcodeDetector`, so that is
+another dependency in the bundle — plus a designed answer for every way a
+person can refuse or a camera can fail. And the thing all of it produces is a
+string that the fallback already accepts by hand.
+
+**Decision.** Pairing **displays** the phrase and its QR; the joining device
+**types or pastes** the words. There is no scanner in the app.
+
+The encoder is written here (`ui/src/lib/qr.ts`), fixed to **version 6, level
+L, byte mode** — the smallest symbol that holds the longest phrase BIP39 can
+produce, and the largest one that needs no version-information block. Fixing
+the version is what makes a hand-written encoder safe: the format is a wall of
+per-version tables, and one wrong row is a picture that renders and does not
+scan. One version is one row, and `ui-test` compares every module against
+`qrencode`, an implementation that shares none of this one's assumptions.
+
+**Consequences.** Pairing needs no permission of any kind, works the same on
+every device, and cannot regress with an iOS release — which is precisely what
+0021 was worried about. The path that 0021 called the fallback is now the only
+path, so it is the one that gets exercised every time rather than the one
+nobody notices is broken.
+
+The QR keeps its point: twelve words read off a screen and retyped is where
+transcription errors come from, and a phone camera pointed at the code shows
+them as text to copy. Adding a scanner later changes nothing here — it would be
+a second input method feeding the same `readPhrase`, and this entry is what it
+would supersede.
+
+The encoder is ~330 lines and no new dependency, which is the same trade as the
+service worker (0038) and for the same reason: a page and a half of arithmetic
+against a supply chain, in a bundle that is already the whole product.
+
+**Rejected.** **An in-app scanner now** — the expensive half, the fragile half
+on the mandatory platform, and the only feature in the app that would ask for a
+device permission, all to save typing twelve words once per device.
+**A dependency for the encoder** — reasonable, and it would have cost a
+lockfile entry, a transitive tree to audit, and a version to keep honest,
+against arithmetic that is fully specified and now pinned by a test.
+**Putting the phrase in a URL for the OS camera to open** — it would make
+scanning work today with no decoder at all, and it would write the family key
+into browser history, the camera app's log, and whatever the tap passes it
+through. The phrase is the key (0042); it goes on a screen, not in a URL.
