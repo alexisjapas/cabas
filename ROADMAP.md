@@ -12,7 +12,7 @@ verified on each one, and nobody was told, because nobody looked. A red gate
 that goes unread is worse than an absent one: it costs the same to run and it
 buys a false belief instead of no belief.
 
-## Overview (status as of 2026-08-09)
+## Overview (status as of 2026-08-11)
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
@@ -22,7 +22,7 @@ buys a false belief instead of no belief.
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
-| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 |
+| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 running on the Pi; tunnel and restore drill left |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
@@ -91,18 +91,22 @@ in it. The relay also grew the two subcommands an abandoned family log needs —
 `families` and `forget` — because nothing automatic could ever be right about
 it (DECISIONS 0050).
 
-**Next action: put it on the Pi.** Everything above is verified up to the
-Dockerfile and no further — there is no container runtime in the devShell, so
-the image is first built on a runner and first run on the appliance. So:
-watch the `image` job go green, add this repository under Settings → Add-ons →
-Repositories, install **cabas**, start it, and open `http://<home-assistant>:8787`
-on the LAN. The log's first line says how many files it is serving; `0` means
-an image with no app in it.
+**The Pi answers.** The add-on is installed and running on it, and the app
+loads from it over the LAN — what was observed is recorded against M6's third
+item below. Six of this milestone's eight items are closed; the relay is no
+longer a process in somebody's terminal. It is not yet how the phones get the
+app, which is the next paragraph.
 
-After that: the Cloudflare Tunnel onto the owned domain — **and that is the
-moment the origin becomes permanent**, so both phones reinstall from it that
-day and never from anything else — then the restore drill. The abandoned-log
-question is settled (0050) and needs no hardware.
+**Next action: the Cloudflare Tunnel onto the owned domain.** It is not a
+finishing touch. The LAN address the Pi answers on is plain HTTP, which is not
+a secure context, so there is no service worker on it at all — the app loads
+there and can never be installed from there. Until the tunnel exists, the
+phones are still installed from `ui-serve` on a laptop.
+
+**The day that domain serves the app is the day the origin becomes permanent**
+(DECISIONS 0012), so both phones reinstall from it that day and never from
+anything else. Then the restore drill. The abandoned-log question is settled
+(0050) and needs no hardware.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -539,10 +543,17 @@ closed could not reach a relay at all.
       runner instead of on the Pi. `check-addon` gates the manifest against the
       workspace. A pull request publishes nothing; `main` publishes `-dev`; a
       release comes from its `vX.Y.Z` tag
-- [ ] **Install it on the Pi and open the app from it.** Everything above is
-      verified up to the Dockerfile — there is no container runtime in the
-      devShell, so the image is first executed on a runner and first *run* on
-      the appliance
+- [x] **Install it on the Pi and open the app from it.** Done on 2026-08-11
+      with `0.1.0-dev`: the add-on installed from this repository, s6 brought
+      it up, and the log's first line read `cabas-relay up addr="0.0.0.0:8787"
+      data=/data files=15`. That `files` count is the whole difference between
+      a working image and one with no app in it. The app then booted from
+      `http://homeassistant.local:8787` in a real browser — pairing screen
+      rendered 345 ms after navigation, nothing on the console — and `/sync`
+      accepted a WebSocket upgrade. What that address cannot do is *install*:
+      plain HTTP is not a secure context, so `navigator.serviceWorker` is
+      undefined on it and no phone can install the app from it at all. Nothing
+      was installed from it; that is the tunnel's job, below
 - [x] Data in `/data` so HA's own backups cover it — the recovery point if all
       devices are lost. The relay defaults there and the add-on frame provides
       it, so there is nothing to configure and nothing to map. That HA's

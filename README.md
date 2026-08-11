@@ -64,17 +64,19 @@ both while both are open and while neither is ever open with the other. The
 same PWA runs on both, so M7's Android app is a better wrapper rather than a
 requirement.
 
-**M6 is under way, and the artifact exists.** All of this lives on one wifi
-today, behind a certificate authority installed by hand, with the relay in a
-terminal — deployment is what makes it survive the laptop being closed. The
-Svelte bundle is compiled into `cabas-relay` by a build script, so one binary
-answers both the page and `/sync` on one origin
+**M6 is under way, and the relay is on the Pi.** It runs there as a Home
+Assistant add-on rather than in a terminal, and the app loads from it. What is
+still on one wifi is the *installing*: the Pi answers on plain HTTP, which is
+not a secure context, so the phones cannot install from it and still do so from
+a laptop behind a hand-installed certificate authority. The tunnel is what ends
+that. The Svelte bundle is compiled into `cabas-relay` by a build script, so
+one binary answers both the page and `/sync` on one origin
 ([0048](docs/DECISIONS.md#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)),
 which is the shape [0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)
 requires; that binary is cross-compiled to static musl and published by CI as a
 Home Assistant add-on image, and this repository is the add-on repository
 ([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
-Next is running it on the Pi, then the tunnel. Resuming work starts at the
+Next is the tunnel, then the restore drill. Resuming work starts at the
 "Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
@@ -270,9 +272,13 @@ phones.
 ### Installing the add-on
 
 The relay ships as a Home Assistant add-on, and **this repository is the add-on
-repository**: in Home Assistant, Settings → Add-ons → Add-on store → ⋮ →
+repository**: in Home Assistant, Settings → Apps → App store → ⋮ →
 Repositories, add `https://github.com/alexisjapas/cabas`, then install **cabas**
 and start it. `cabas-relay/DOCS.md` is the page shown beside it.
+
+Home Assistant 2026.2 renamed "Add-ons" to "Apps", so on anything older the
+same path reads Settings → Add-ons → Add-on store → ⋮ → Repositories. The
+version-independent way is `/config/apps/repositories` in the URL bar.
 
 There is nothing to configure. The relay takes a data directory and a listen
 address; inside an add-on the only correct answers are `/data` — the volume
@@ -280,7 +286,17 @@ Home Assistant's own backups cover, which is what makes this the recovery point
 if every phone is lost — and `0.0.0.0:8787`, and both are already the defaults
 ([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
 The log's first line says how many files it is serving; `0` means an image with
-no app in it.
+no app in it. On the Pi it reads:
+
+```
+INFO cabas-relay up addr="0.0.0.0:8787" data=/data files=15
+```
+
+Then `http://<home-assistant>:8787` loads the app on the LAN — and that is all
+that address can do. It is plain HTTP, so it is not a secure context, so there
+is no service worker on it: **the app cannot be installed from it.** Installing
+waits for the tunnel, which is also the moment the origin becomes permanent
+([0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)).
 
 The image is never built on the Pi. CI cross-compiles the relay to static musl
 for `aarch64` and `amd64`, copies the one file into a Home Assistant base image

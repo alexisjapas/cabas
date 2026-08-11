@@ -28,15 +28,19 @@ nothing to get wrong.
 
 ## Installing
 
-1. **Settings → Add-ons → Add-on store → ⋮ → Repositories**, and add
-   `https://github.com/alexisjapas/cabas`.
+1. **Settings → Apps → App store → ⋮ → Repositories**, and add
+   `https://github.com/alexisjapas/cabas`. (Before Home Assistant 2026.2 the
+   panel is called Add-ons and the store the Add-on store. Typing
+   `/config/apps/repositories` in the URL bar works either way.)
 2. Install **cabas** from the store, and start it.
 3. Check the log. It says `cabas-relay up` with the number of files it is
    serving. If that number is `0`, this image was built without an app in it —
    report it, do not try to work around it.
 
 Then reach it once over the LAN, at `http://<home-assistant>:8787`, to confirm
-the page loads.
+the page loads. That address is for confirming, not for installing: it is plain
+HTTP, so the browser gives it no service worker and no phone can install the app
+from it. That is what the tunnel below is for.
 
 ## Making it reachable from outside
 

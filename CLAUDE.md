@@ -17,11 +17,13 @@ binary is cross-compiled to static musl and published by CI as a Home Assistant
 add-on image — `repository.yaml` and `cabas-relay/` make this repo an add-on
 repository (DECISIONS 0049). The abandoned family log is settled too: forgotten
 by hand or not at all, through `cabas-relay families` / `forget` (DECISIONS
-0050). **Next is running it on the Pi**: everything is
-verified up to the Dockerfile and no further, because there is no container
-runtime in the devShell. Then the Cloudflare Tunnel and the restore drill —
-everything works today only on one wifi, behind a hand-installed certificate
-authority, with the relay in a terminal.
+0050). **That add-on runs on the Raspberry Pi**: installed from this
+repository, started by s6, serving the app out of `/data` — the app boots from
+it in a browser and `/sync` upgrades. **Next is the Cloudflare Tunnel**, and
+then the restore drill. The LAN address the Pi answers on is plain HTTP, so it
+is not a secure context and nothing can be *installed* from it: the phones
+still install from `ui-serve` on a laptop, behind a hand-installed certificate
+authority, until that domain exists.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -640,11 +642,15 @@ Key domain shapes, all settled in DECISIONS:
   aarch64-unknown-linux-musl` fails at the link step looking for a cross-gcc
   that this shell deliberately does not carry. `build-relay <arch>` sets
   `CARGO_TARGET_*_LINKER` along with `CABAS_EMBED_UI=required`; use it.
-- **Nothing here has ever run the add-on image.** There is no container
-  runtime in the devShell, so the Dockerfile is first executed on a runner and
-  the image first run on the appliance. `build-relay` and `check-addon` cover
-  everything up to that line and nothing past it — do not describe the add-on
-  as verified.
+- **The image runs on the appliance and still cannot be run from here.** There
+  is no container runtime in the devShell, so the Dockerfile is executed on a
+  runner and the image on the Pi; `build-relay` and `check-addon` cover
+  everything up to that line and nothing past it. What *can* be checked
+  locally is the artifact rather than its frame, because the binary is static:
+  pull the published layer from ghcr with `curl`, untar it, and run
+  `usr/bin/cabas-relay` directly — that is how the amd64 image was checked
+  before the aarch64 one was started on the Pi. It says nothing about s6,
+  `/data` or the Supervisor, which remain the appliance's word alone.
 - **Surveying the data directory must never open a log.** `FamilyLog::open`
   mints an epoch for a family that has none and rewrites `meta`, so a
   "read-only" listing built on it would cost every device of every family a
