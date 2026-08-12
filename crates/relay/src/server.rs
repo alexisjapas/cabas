@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::Bytes;
@@ -43,6 +44,10 @@ use crate::log::FamilyLog;
 pub struct Relay {
     root: PathBuf,
     families: RwLock<HashMap<FamilyId, Arc<Family>>>,
+    /// How often a connection is pinged. A field rather than a bare constant
+    /// so the test below can watch one arrive without sitting out
+    /// `PING_EVERY`; nothing outside this module can set it.
+    ping_every: Duration,
 }
 
 struct Family {
@@ -57,12 +62,31 @@ struct Family {
 /// the gap. Losing a channel message is therefore never losing data.
 const FORWARD_BUFFER: usize = 256;
 
+/// How often an otherwise silent connection is pinged (DECISIONS 0051).
+///
+/// A proxy closes a WebSocket that carries nothing for long enough, and
+/// Cloudflare — which is what faces the internet here (0012) — says so in as
+/// many words without publishing the number. A ping is the smallest frame
+/// that resets that clock, and a browser answers it inside its own socket
+/// implementation, so a live connection costs no protocol version (0042) and
+/// no line of frontend.
+///
+/// Thirty seconds is well under every timeout anyone publishes, and the cost
+/// is two bytes a minute on a socket that only exists while somebody has the
+/// app on screen (0011).
+const PING_EVERY: Duration = Duration::from_secs(30);
+
 impl Relay {
     pub fn open(root: PathBuf) -> std::io::Result<Arc<Self>> {
+        Self::open_every(root, PING_EVERY)
+    }
+
+    fn open_every(root: PathBuf, ping_every: Duration) -> std::io::Result<Arc<Self>> {
         std::fs::create_dir_all(&root)?;
         Ok(Arc::new(Relay {
             root,
             families: RwLock::new(HashMap::new()),
+            ping_every,
         }))
     }
 
@@ -163,6 +187,17 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
         return;
     }
 
+    // Ticks on a schedule rather than idling out from the last message: a
+    // ping on a busy socket costs two bytes and a branch, and tracking
+    // activity would be a second clock to keep honest for no gain. The first
+    // tick is a period away, so a connection that says its piece and leaves
+    // is never pinged at all.
+    let mut ping = tokio::time::interval_at(
+        tokio::time::Instant::now() + relay.ping_every,
+        relay.ping_every,
+    );
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
         tokio::select! {
             incoming = socket.recv() => {
@@ -223,6 +258,16 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
                     Err(broadcast::error::RecvError::Closed) => return,
                 }
             }
+            _ = ping.tick() => {
+                // No pong is waited for. This is a keepalive, not a liveness
+                // check: a peer that has genuinely gone is discovered by a
+                // send failing, which every branch here already returns on.
+                // Answering the pong is the browser's job and it does it
+                // without the page knowing.
+                if socket.send(Message::Ping(Bytes::new())).await.is_err() {
+                    return;
+                }
+            }
         }
     }
 }
@@ -278,4 +323,87 @@ async fn refuse(socket: &mut WebSocket, reason: &str) {
         },
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use cabas_sync::protocol::encode_client;
+    use futures::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite;
+
+    /// A directory that cleans itself up, so this needs no dev-dep — the
+    /// same shape `tests/convergence.rs` uses.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push(format!(
+                "cabas-server-{tag}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The keepalive of DECISIONS 0051: a connection that has said hello and
+    /// then falls silent is pinged anyway.
+    ///
+    /// The period is milliseconds here for obvious reasons; what the test
+    /// pins is that a ping arrives *without traffic*, which is the property
+    /// Cloudflare's idle timeout cares about. A relay that only pinged in
+    /// response to something would pass every other test in this repo and
+    /// drop the socket in a supermarket.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_silent_connection_is_still_pinged() {
+        let dir = TempDir::new("ping");
+        let relay = Relay::open_every(dir.0.clone(), Duration::from_millis(50)).expect("data dir");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, router(relay)).await.expect("serve");
+        });
+
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/sync"))
+            .await
+            .expect("connect");
+
+        let hello = encode_client(&ClientMessage::Hello {
+            protocol: PROTOCOL,
+            family: FamilyId::from_hex("00112233445566778899aabbccddeeff").expect("a family id"),
+            epoch: 0,
+            since: 0,
+        })
+        .expect("encode");
+        ws.send(tungstenite::Message::Binary(hello))
+            .await
+            .expect("send hello");
+
+        // Welcome and CaughtUp arrive first and are traffic; the ping is what
+        // comes after them, on a socket this test deliberately stops using.
+        let ping = tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(message) = ws.next().await {
+                if let tungstenite::Message::Ping(_) = message.expect("a healthy socket") {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .expect("a ping within 5s");
+
+        assert!(ping, "the socket closed before a keepalive arrived");
+    }
 }

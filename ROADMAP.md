@@ -568,6 +568,14 @@ closed could not reach a relay at all.
       endpoint: a family id is the only access control the relay has, and the
       port faces the tunnel. The rotation screen now names the leftover as its
       fourth consequence, and `cabas-relay/DOCS.md` carries the procedure
+- [x] **The relay pings every 30 seconds** (DECISIONS 0051). Cloudflare closes
+      a WebSocket that carries nothing and does not publish the period, and
+      neither end sent a keepalive. Nothing breaks without it — the socket
+      reconnects and the cursor replays — but it would drop every few minutes
+      while the app sits open in a shop, flicker the status on the Settings
+      screen, and be invisible anywhere except behind the tunnel. Done before
+      the tunnel rather than after, so a low permanent rate of disconnection
+      never becomes the thing every future network bug is blamed on
 - [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)
 - [ ] Restore drill: wipe a device, re-pair, verify the data comes back
 

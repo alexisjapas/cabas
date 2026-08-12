@@ -60,6 +60,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script) | The bundle is compiled into the relay, by a build script | Deployment |
 | [0049](#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi) | The add-on is cross-compiled here, and never built on the Pi | Deployment |
 | [0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all) | An abandoned family log is forgotten by hand, or not at all | Sync |
+| [0051](#0051--the-relay-pings-because-the-proxy-closes-a-silent-socket) | The relay pings, because the proxy closes a silent socket | Sync |
 
 ---
 
@@ -1889,3 +1890,75 @@ irreversible one. **A retention option in `config.yaml`** — a number the
 operator would have to guess, dressed as configuration (0049 rejected
 configurability for the same reason). **Listing families over HTTP** — see
 above; it publishes the only secret the relay has.
+
+---
+
+## 0051 — The relay pings, because the proxy closes a silent socket
+
+**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+[0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0011](#0011--no-background-sync-no-push-in-v1),
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend)
+
+**Context.** Every socket this project has ever opened went to a relay on the
+same machine or the same wifi, where a connection with nothing to say costs
+nothing and lasts forever. The Cloudflare Tunnel (0012) puts a proxy in the
+middle, and Cloudflare's own documentation says it "will close a WebSocket
+connection when no data is transmitted in either direction for a period of
+time" — without publishing the period, and recommending a keepalive.
+
+Neither end sent one. The relay treated ping and pong as "not ours" and
+carried on; the frontend had a backoff on `onclose` and nothing else. So the
+failure is not that sync breaks — it does not. A closed socket is a
+reconnection, the cursor replays, and Rule 6 already means no user action was
+waiting on it. The failure is that it happens **every few minutes while the
+app sits open in a shop**, that the status on the Settings screen flickers
+between connected and reconnecting while it does, and that none of it can be
+observed anywhere except behind the tunnel. It would have been discovered by
+somebody standing in a supermarket, and attributed to the supermarket's wifi.
+
+**Decision.** The relay sends a WebSocket ping every 30 seconds on every
+connection past its `Hello`.
+
+**It is the relay that pings, and that is the whole economy of this entry.** A
+browser's `WebSocket` cannot send a ping — the API has no method for it — so a
+client-side keepalive would have to be an application message, which means a
+new `ClientMessage` variant, which means the wire contract of 0042 gains a
+member and every future reader has to ask whether a heartbeat is part of the
+protocol. It is not. It is a property of the pipe. A server-sent ping is
+answered by the browser inside its own socket implementation, so the page
+never learns it happened: no protocol version, no frontend code, no view-model
+touched.
+
+Thirty seconds is chosen against a number nobody publishes, which is
+uncomfortable and cheap to over-serve: it is well under every proxy timeout
+anyone documents, and the cost is two bytes a minute on a socket that only
+exists while the app is on screen at all (0011). A tick is unconditional
+rather than reset by traffic — activity tracking would be a second clock to
+keep honest, and the saving is one frame per thirty seconds on a busy socket.
+
+**No pong is waited for.** This is a keepalive, not a liveness check. Timing a
+pong out would make the relay the judge of whether a phone is still there, and
+the answer it would act on — close the socket — is one the failing `send`
+already produces on its own, without a policy or a second timer. A half-open
+connection costs one entry in a broadcast channel until the next write finds
+it.
+
+**Consequences.** `crates/relay` gains tokio's `time` feature and a field on
+`Relay` that only the test sets, so a case that would otherwise take thirty
+seconds runs in fifty milliseconds. The test asserts the thing that is easy to
+get wrong by accident: a ping arrives on a connection that has said hello and
+then *stopped talking*. A relay that only pinged in response to traffic would
+pass every other test in this repository and drop the socket in a shop.
+
+**Rejected.** **A `Ping`/`Pong` pair in the protocol** — a wire change for a
+transport concern, and 0042's contract is worth keeping small; the browser
+cannot send a control ping anyway, so this buys nothing it does not also cost.
+**Client-side reconnect-on-a-timer** — treating the symptom, and it makes the
+status flicker deliberate rather than accidental. **Nothing at all** — the
+reconnection genuinely does recover, and this was tempting; what it fails is
+observability. A permanent low rate of disconnection is a thing every future
+network bug gets blamed on. **A configurable period** — a number the operator
+would have to guess about somebody else's proxy (0049 and 0050 rejected
+configurability for the same reason).

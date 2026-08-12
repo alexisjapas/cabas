@@ -33,7 +33,7 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 179 native tests plus 10 in
+its own binary**. 180 native tests plus 10 in
 a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
@@ -195,8 +195,10 @@ Every crate holds code since M5's first half. `crates/sync` — read
 `crates/relay` (binary + lib, never in `wasm-check`): `log.rs` is one
 family's persisted sealed log — append, replay, snapshot-truncate, torn-tail
 recovery, the minted `epoch` — and `server.rs` is the axum WebSocket side:
-replay under the same lock as the subscription, then live forwarding. It
-depends on `cabas-sync` for the protocol types and never for a key.
+replay under the same lock as the subscription, then live forwarding, plus a
+30-second ping so the tunnel does not close a socket for having nothing to say
+(DECISIONS 0051). It depends on `cabas-sync` for the protocol types and never
+for a key.
 `assets.rs` is the static half — the PWA, served from the same origin as
 `/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
 0048). It shares nothing with the sync side but the port. `admin.rs` is the
@@ -651,6 +653,15 @@ Key domain shapes, all settled in DECISIONS:
   `usr/bin/cabas-relay` directly — that is how the amd64 image was checked
   before the aarch64 one was started on the Pi. It says nothing about s6,
   `/data` or the Supervisor, which remain the appliance's word alone.
+- **A WebSocket that carries nothing gets closed by whatever proxy is in
+  front of it.** Cloudflare documents this and does not publish the period,
+  which is why the relay pings every 30 seconds (DECISIONS 0051). There is no
+  frontend half: a browser's `WebSocket` cannot send a ping and answers the
+  server's without telling the page. None of it reproduces locally — nothing
+  between two sockets on one machine times anything out — so the test drives
+  the relay's own period down to milliseconds instead of trying to stage a
+  tunnel. Anything added here that holds a socket open and quiet inherits the
+  same problem.
 - **Surveying the data directory must never open a log.** `FamilyLog::open`
   mints an epoch for a family that has none and rewrites `meta`, so a
   "read-only" listing built on it would cost every device of every family a
