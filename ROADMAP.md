@@ -98,6 +98,13 @@ words, the old install and its `cabas local CA` profile gone. Eleven of this
 milestone's thirteen items are closed; the two that are left need a shell on
 the Pi and a backup taken on it, not a change to this repository.
 
+**Nothing else is waiting on them except M7**, which this file's own rule keeps
+shut until M6's criterion holds. The standing cost of leaving them is narrower
+than it looks and worth stating plainly: the app works, both fixes are shipped
+and tested, and what remains unproven is whether Home Assistant's backups
+actually carry `/data` — the recovery point if both phones are ever lost. It
+does not decay while it waits.
+
 That address is now **the** address (DECISIONS 0012). Both phones install from
 it and never from anything else, and the local certificate authority `ui-serve`
 mints retires with it — it existed only because a LAN address could not be a
@@ -118,11 +125,28 @@ before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
 does not reach into those. The README carries the corrected procedure.
 
-**Check the build before starting.** Both fixes below are client-side, so a
-phone still serving the old bundle would rehearse the bug rather than the fix,
-and a service worker hands a new build over one launch late (0038). Settings
-now names the version each phone is running (DECISIONS 0055) — it must match
-the add-on's, which the Supervisor's page shows.
+**Every precondition is closed as of 2026-08-12.** The relay on the Pi, both
+phones and the published images are all at **0.2.0**; the phones say so
+themselves now, at the bottom of Settings (DECISIONS 0055), and the module the
+tunnel serves was checked from outside to be that build. This mattered because
+both restore fixes are client-side: a phone still serving the old bundle would
+have rehearsed the bug rather than the fix, and a service worker hands a new
+build over one launch late (0038). Nothing about the drill needs preparing any
+more — it needs a shell on the Pi and an afternoon.
+
+What is left, in order, with the detail of each in the README:
+
+1. `cabas-relay forget cabaf00dcabaf00dcabaf00dcabaf00d` — the test family the
+   keepalive check created, and the first real run of that procedure. Note the
+   real family's frame count while there.
+2. **Half one**: one phone closed, the other wiped and reinstalled from the
+   tunnel, twelve words. It must open on the pairing screen.
+3. **Half two**: one phone closed for the whole window; frame count, backup,
+   `TÉMOIN`, frame count, restore, frame count — that last one **before
+   opening any phone**, because the first to reconnect truncates the log to a
+   snapshot (0054) and the evidence is gone.
+4. Open both, change something on one, confirm it crosses — and that the phone
+   which was closed gets everything it missed.
 
 Writing the drill down, and then reading it against the code a second time,
 found two bugs that a run would have hit and neither phone would have reported:
