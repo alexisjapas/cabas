@@ -174,9 +174,27 @@ behind the one still running, and the *next* launch is the one it takes over
 after rebuilding, close the app and reopen it — reloading achieves nothing, and
 a phone left open stays a build behind.
 
-The CA's private key is a trust anchor on every phone that installed it. It is
-generated per machine into `ui/.certs/` (gitignored), never travels, and the
-profile is worth removing from the phone once M6's permanent origin exists.
+**This whole path is development-only now.** The permanent origin exists — the
+tunnel below — and that is where the family's phones install from. `ui-serve`
+is for putting an unreleased build in front of a real phone, which lands as a
+*separate* app with its own empty storage, because it is a separate origin.
+
+**Retiring the CA from a phone.** The CA's private key is a trust anchor on
+every phone that installed it. It is generated per machine into `ui/.certs/`
+(gitignored) and never travels, but a phone that no longer needs it should stop
+trusting it. It is called `cabas local CA`:
+
+- **iOS** — Settings → General → VPN & Device Management → *Configuration
+  Profile* → `cabas local CA` → **Remove Profile**. That is enough; the trust
+  toggle under General → About → Certificate Trust Settings goes with it.
+- **Android** — Settings → Security & privacy → More security & privacy →
+  Encryption & credentials → Trusted credentials → **USER** tab → remove it.
+  This path moves between releases; searching the settings for `credentials`
+  is what survives.
+
+Delete the old home-screen icon at the same time. Two installs of this app are
+indistinguishable on a home screen and share nothing at all, which is a good
+way to add groceries to the wrong one for a month.
 
 ### Reaching a development relay from the phone
 
@@ -292,6 +310,21 @@ explicit `max-age` a four-hour browser TTL, which silently rewrites the
 relay's `no-cache` on the service worker — the one file that decides whether
 an installed app notices a new version
 ([0052](docs/DECISIONS.md#0052--the-edge-must-not-re-ttl-the-service-worker)).
+
+**Moving phones onto this origin is not a migration.** An app installed from
+an older address is a different app: its library sits in that origin's storage,
+and its family log sits on whatever relay that origin proxied to. Installing
+from the tunnel gives an empty app, and pairing it with the old twelve words
+finds nothing, because this relay never held that family. Two ways through, and
+the first one is usually right:
+
+- **Start a new family** on the new origin, and let the old install go. New
+  twelve words, written down somewhere that is not a phone.
+- **Or push the old library here first**, by pointing the old origin's proxy at
+  this relay — `CABAS_RELAY=<pi-address>:8787 ui-serve` — and opening the old
+  app once so it syncs. The new install then replays it from the log with the
+  same twelve words. Do this *before* removing the certificate that lets the
+  old app load at all.
 
 ### Installing the add-on
 

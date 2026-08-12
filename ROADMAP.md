@@ -22,7 +22,7 @@ buys a false belief instead of no belief.
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
-| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`; restore drill left |
+| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`; phones, cleanup and restore drill left |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
@@ -93,8 +93,9 @@ it (DECISIONS 0050).
 
 **The app is on the internet, at its permanent address.**
 `https://cabas.cladelabs.com` reaches the relay on the Pi through a Cloudflare
-Tunnel. Seven of this milestone's eight items are closed; what is left is the
-restore drill.
+Tunnel. Eight of this milestone's eleven items are closed; the three that are
+left need a phone in a hand or a shell on the Pi, not a change to this
+repository.
 
 That address is now **the** address (DECISIONS 0012). Both phones install from
 it and never from anything else, and the local certificate authority `ui-serve`
@@ -102,11 +103,13 @@ mints retires with it — it existed only because a LAN address could not be a
 secure context, which is exactly what stopped a phone installing from the Pi
 directly.
 
-**Next action: the restore drill**, and the phones onto the new origin. The
-drill is the one thing between here and M6's exit criterion: wipe a device,
-re-pair, verify the library comes back — which is also the first evidence that
-Home Assistant's backups really do carry `/data`, something this repository can
-assert about the relay's own behaviour and not about HA's.
+**Next action: the two phones onto the new origin**, which starts a new family
+rather than migrating the old one — see the item below for why that is a choice
+and not an accident. Then the leftover test family gets forgotten, and then the
+restore drill, which is the last thing between here and M6's exit criterion:
+wipe a device, re-pair, verify the library comes back. That drill is also the
+first evidence that Home Assistant's backups really do carry `/data` — a claim
+this repository can make about the relay's behaviour and not about HA's.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -114,9 +117,10 @@ each other's names off the roster and the journal. It needed one wifi, a
 certificate authority installed by hand and a relay in a terminal; M6 removed
 all three.
 
-**Shipping a new build to the phones now goes through a release.** There is no
-laptop in the path any more, and no address to retype — the phones already
-point at the permanent origin, so what has to move is what the add-on serves:
+**Shipping a new build to the phones goes through a release**, once they are
+installed from the tunnel. There is no laptop in the path and no address to
+retype: a phone pointed at the permanent origin gets whatever the add-on
+serves, so that is what has to move.
 
 ```sh
 build-wasm && pnpm -C ui build       # the bundle build.rs embeds
@@ -597,6 +601,20 @@ closed could not reach a relay at all.
       seconds stayed open and took four keepalive pings (0051) — the only place
       that behaviour can be observed. One cache rule was needed and is part of
       the deployment (0052)
+- [ ] **Forget the test family on the Pi.** Verifying the keepalive through the
+      tunnel meant opening a real connection, and any connection creates its
+      family's directory — `FamilyLog::open` mints an epoch. So `/data` holds
+      one log that belongs to nobody:
+      `cabas-relay forget cabaf00dcabaf00dcabaf00dcabaf00d`, from a shell on the
+      machine (DECISIONS 0050). It costs a few hundred bytes and no correctness;
+      it is here because nothing on that machine can work out on its own that
+      this family is fictional, which is the entire premise of 0050 — and
+      because it doubles as the first real run of that procedure
+- [ ] **Both phones onto the new origin.** Deliberately *not* a migration: the
+      family moving with them was never on this relay, so it starts fresh —
+      new twelve words, written down somewhere that is not a phone — and the
+      old install is deleted along with the `cabas local CA` profile that let
+      it load. The README's phone section carries both procedures
 - [ ] Restore drill: wipe a device, re-pair, verify the data comes back
 
 **Exit**: reachable from 4G; a backup restore is tested end to end.
