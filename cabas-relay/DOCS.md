@@ -42,6 +42,22 @@ the page loads. That address is for confirming, not for installing: it is plain
 HTTP, so the browser gives it no service worker and no phone can install the app
 from it. That is what the tunnel below is for.
 
+## Updating
+
+The store offers an update when this add-on's version differs from the one
+installed. Take it, and the relay restarts with the new app compiled into it.
+
+**The phones follow one launch later**, and that is by design: the new app
+installs behind the running one and takes over the next time the app is opened
+from scratch, because activating sooner would pull files out from under a page
+still loading. So a phone that is never closed stays a version behind, and
+"my phone hasn't got it" is answered by closing the app and reopening it.
+
+The bottom of Settings, on the phone, names the version it is actually running.
+That is the way to tell — it should match the version this add-on's page shows.
+Anything that depends on a fix being present, the restore drill below in
+particular, is worth checking that way first.
+
 ## Making it reachable from outside
 
 The point of the app is a phone in a shop, on 4G, so the last step is a
@@ -96,33 +112,46 @@ A restored `/data` without it is a directory of ciphertext nobody can open.
 ## Restoring one, and checking that you can
 
 A restore that does nothing at all looks exactly like a restore that worked —
-the app still opens, the library is still there. So the only way to learn
-anything is to plant something the restore is expected to destroy:
+the app still opens, the library is still there. So plant something the restore
+is expected to destroy, and read the answer **here**, not on a phone:
+
+```sh
+cabas-relay families          # (a) note the frame count
+```
 
 1. Take the backup.
 2. On a phone, add an ingredient with a name you will recognise — `TÉMOIN` —
    and wait until Settings reports `online`, which means it reached here.
+   `cabas-relay families` again: the count has grown.
 3. Restore.
-4. Open the app on **every** phone.
+4. `cabas-relay families` once more, **before opening any phone.**
 
-`TÉMOIN` being **gone** is the proof. Everything older being present is the
-other half.
+The count being back to `(a)` is the proof, and a family that is not listed at
+all means the backup did not carry `/data`.
 
-Then change something on one phone and check that it arrives on the other.
-This matters more than it looks: a restored log stops where the backup was
-taken, while the phones hold cursors from further along. The relay replays
-everything *after* a device's cursor, so those cursors have to be recognised as
-pointing past the end of a log that was rolled back — they are, since 0.1.1,
-and before that a restore left the family silently non-converging until the log
-grew back to where it had been. If a change stops crossing between phones right
-after a restore, that is what you are looking at.
+**Do not look for `TÉMOIN` on a phone.** It lives in the replica of every phone
+that saw it, and a restore does not reach into those — a phone still showing it
+afterwards tells you nothing. This machine is the only party a backup rolls
+back, so this machine is where the evidence is.
 
-```sh
-cabas-relay families
-```
+Before opening a phone is also the only chance: the first one to reconnect
+finds a log it does not recognise, pushes its whole library, and the log is
+truncated to that — after which the count resembles neither number. That is
+correct behaviour, and it is why the reading comes first.
 
-is how you check the machine's side: a family that is not listed after a
-restore means the backup did not carry `/data` at all.
+Then open the phones, change something on one, and check that it arrives on the
+other. A restored log stops where the backup was taken while the phones hold
+cursors from further along, and both directions have to survive that: the relay
+must notice a cursor pointing past the end of its log (since 0.1.1), and the
+phone that shopped through the rolled-back window must stop trusting its own
+record of what was sent (since 0.1.2) — otherwise it never offers that window
+again, and a phone that was switched off across it can accept frames forever
+and apply none of them. If a change stops crossing between phones right after a
+restore, or one phone goes quiet while looking perfectly online, that is what
+you are looking at, and the fix is a version above those.
+
+The sharpest version of this check keeps one phone **switched off** from step 1
+to step 4, because that is the case the log alone has to answer.
 
 ## After changing the family phrase
 
