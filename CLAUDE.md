@@ -17,13 +17,15 @@ binary is cross-compiled to static musl and published by CI as a Home Assistant
 add-on image — `repository.yaml` and `cabas-relay/` make this repo an add-on
 repository (DECISIONS 0049). The abandoned family log is settled too: forgotten
 by hand or not at all, through `cabas-relay families` / `forget` (DECISIONS
-0050). **That add-on runs on the Raspberry Pi**: installed from this
-repository, started by s6, serving the app out of `/data` — the app boots from
-it in a browser and `/sync` upgrades. **Next is the Cloudflare Tunnel**, and
-then the restore drill. The LAN address the Pi answers on is plain HTTP, so it
-is not a secure context and nothing can be *installed* from it: the phones
-still install from `ui-serve` on a laptop, behind a hand-installed certificate
-authority, until that domain exists.
+0050). **That add-on runs on the Raspberry Pi and the app is on the internet**,
+at `https://cabas.cladelabs.com` through a Cloudflare Tunnel — which is
+therefore **the permanent origin** (0012) and the only address a phone may be
+installed from. Verified end to end from outside: TLS, the bundle, no `Vary`,
+the service worker registering, and a silent socket held open by the relay's
+keepalive (0051). One cache rule keeps the edge from re-TTLing `/sw.js`
+(0052). **Next is the restore drill**, which is all that stands between here
+and M6's exit criterion. `ui-serve` and its hand-rolled certificate authority
+are development-only from now on.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -666,6 +668,16 @@ Key domain shapes, all settled in DECISIONS:
   `usr/bin/cabas-relay` directly — that is how the amd64 image was checked
   before the aarch64 one was started on the Pi. It says nothing about s6,
   `/data` or the Supervisor, which remain the appliance's word alone.
+- **The headers `assets.rs` sends are not the headers the phone receives.**
+  Cloudflare gives any cacheable response with no explicit `max-age` a default
+  four-hour *browser* TTL, which turned the relay's `Cache-Control: no-cache`
+  on `/sw.js` into `max-age=14400` — on the one file that decides whether an
+  installed app ever notices a new build (0038). A cache rule on the zone
+  bypasses cache for that path and restores it (DECISIONS 0052). The lesson
+  generalises past this instance: `assets.rs`'s tests assert what the *origin*
+  serves, and nothing in this repository can see what survives the edge. A
+  header that matters has to be checked through the tunnel, from outside, with
+  `curl`.
 - **A WebSocket that carries nothing gets closed by whatever proxy is in
   front of it.** Cloudflare documents this and does not publish the period,
   which is why the relay pings every 30 seconds (DECISIONS 0051). There is no

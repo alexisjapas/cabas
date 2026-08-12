@@ -61,6 +61,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0049](#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi) | The add-on is cross-compiled here, and never built on the Pi | Deployment |
 | [0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all) | An abandoned family log is forgotten by hand, or not at all | Sync |
 | [0051](#0051--the-relay-pings-because-the-proxy-closes-a-silent-socket) | The relay pings, because the proxy closes a silent socket | Sync |
+| [0052](#0052--the-edge-must-not-re-ttl-the-service-worker) | The edge must not re-TTL the service worker | Deployment |
 
 ---
 
@@ -1962,3 +1963,67 @@ observability. A permanent low rate of disconnection is a thing every future
 network bug gets blamed on. **A configurable period** — a number the operator
 would have to guess about somebody else's proxy (0049 and 0050 rejected
 configurability for the same reason).
+
+---
+
+## 0052 — The edge must not re-TTL the service worker
+
+**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+[0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0038](#0038--the-service-worker-is-written-by-hand),
+[0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)
+
+**Context.** The relay serves `/sw.js` with `Cache-Control: no-cache` — revalidate
+every time — because that file is the entire update mechanism of 0038: a new
+build is noticed when the browser fetches the worker and finds it changed.
+`assets.rs` has always sent that header and a test asserts what it serves.
+
+Behind the tunnel, it stopped being what arrives. Cloudflare applies a default
+four-hour *browser* cache TTL to any cacheable response whose origin sets no
+explicit `max-age`, and `no-cache` sets none — so the header reaching the phone
+became `max-age=14400`. The hashed files under `/assets/` were untouched,
+because they carry their own year-long `max-age`; `/sw.js` was the only
+casualty, and it was the worst possible one.
+
+The edge itself behaved: `cf-cache-status` was `REVALIDATED`, so nothing stale
+was ever served *from* Cloudflare. What changed was the instruction given to
+the browser.
+
+**Decision.** A cache rule on the zone bypasses cache for `/sw.js`, scoped to
+the app's hostname:
+
+```
+(http.host eq "cabas.cladelabs.com" and http.request.uri.path eq "/sw.js")
+```
+
+with cache eligibility set to *Bypass cache*. Verified after deploying: the
+header arrives as `no-cache` again, `cf-cache-status` is `DYNAMIC`, and
+`/assets/*` still carries `immutable` and still reports `HIT`.
+
+**Why not rely on the browser.** A registration's `updateViaCache` defaults to
+`"imports"`, which means the worker script itself already bypasses the HTTP
+cache during an update check — so this may well have been harmless. That is
+exactly the reason not to leave it: it would have made the update path depend
+on a default this project never chose, never wrote down and cannot test, in the
+one mechanism whose failure mode is a phone that quietly never updates again.
+A rule that costs nothing is cheaper than a property nobody can see.
+
+**Consequences.** There is now a piece of load-bearing configuration that lives
+in a dashboard and not in this repository, which no test can reach and no
+`nix develop` can check. It is written down in three places for that reason —
+here, in the README's tunnel section, and in `cabas-relay/DOCS.md` for whoever
+sets this up on another machine. Anyone rebuilding the tunnel from scratch has
+to recreate it, and the symptom of forgetting is not an error: it is an app
+that updates a few hours later than it should, or on a phone left open, not at
+all.
+
+The rule is deliberately narrow. Widening it to `/assets/*` would throw away
+the caching that makes a cold start over 4G worth having, and those files are
+content-hashed, so they are the one thing that is safe to cache forever.
+
+**Rejected.** **Setting an explicit `max-age=0, must-revalidate` at the
+origin** — it would survive the proxy, but it encodes one CDN's defaults into
+the relay's own headers, and the next proxy will have different ones; the
+origin already states its intent correctly. **Turning off the zone's browser
+TTL globally** — it would fix `/sw.js` by making every other file worse.
+**Relying on `updateViaCache`** — see above.

@@ -64,20 +64,21 @@ both while both are open and while neither is ever open with the other. The
 same PWA runs on both, so M7's Android app is a better wrapper rather than a
 requirement.
 
-**M6 is under way, and the relay is on the Pi.** It runs there as a Home
-Assistant add-on rather than in a terminal, and the app loads from it. What is
-still on one wifi is the *installing*: the Pi answers on plain HTTP, which is
-not a secure context, so the phones cannot install from it and still do so from
-a laptop behind a hand-installed certificate authority. The tunnel is what ends
-that. The Svelte bundle is compiled into `cabas-relay` by a build script, so
-one binary answers both the page and `/sync` on one origin
+**M6 is nearly done: the app is on the internet.** It is served from a
+Raspberry Pi at home, as a Home Assistant add-on, reachable at
+**`https://cabas.cladelabs.com`** through a Cloudflare Tunnel — no port opened
+on the router, and no laptop in the path. The Svelte bundle is compiled into
+`cabas-relay` by a build script, so one binary answers both the page and
+`/sync` on one origin
 ([0048](docs/DECISIONS.md#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)),
 which is the shape [0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)
 requires; that binary is cross-compiled to static musl and published by CI as a
 Home Assistant add-on image, and this repository is the add-on repository
 ([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
-Next is the tunnel, then the restore drill. Resuming work starts at the
-"Resuming work" section of the [ROADMAP](ROADMAP.md).
+That address is **permanent**: an installed web app is identified by its
+origin, so moving it later would cost both phones their library. What is left
+of M6 is the restore drill. Resuming work starts at the "Resuming work"
+section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -266,8 +267,31 @@ the socket is up.
    still agrees.
 
 That is M5. What it deliberately does not cover is reaching the relay from
-outside the wifi — that is M6's tunnel, which also retires the local CA on both
-phones.
+outside the wifi — that is the tunnel below, which also retires the local CA on
+both phones.
+
+### The tunnel
+
+The relay is reached from outside on **`https://cabas.cladelabs.com`**, which
+is the app's permanent origin
+([0012](docs/DECISIONS.md#0012--cloudflare-tunnel-on-an-owned-domain)) and the
+only address the phones may ever be installed from.
+
+A second add-on, **Cloudflared** (from
+`https://github.com/homeassistant-apps/repository`), runs the connector in
+remote-managed mode: the tunnel and its routes live in the Cloudflare
+dashboard, and the add-on is given nothing but `tunnel_token`. The route is a
+*Published application* pointing the hostname at `http://192.168.1.25:8787` —
+the relay's LAN address, in plain HTTP, because the tunnel is what terminates
+TLS (0044). Home Assistant itself is deliberately not routed: the relay knows
+nothing, and HA runs the house.
+
+One cache rule belongs with it, on the domain rather than the account:
+bypass cache for `/sw.js`. Cloudflare gives any cacheable file with no
+explicit `max-age` a four-hour browser TTL, which silently rewrites the
+relay's `no-cache` on the service worker — the one file that decides whether
+an installed app notices a new version
+([0052](docs/DECISIONS.md#0052--the-edge-must-not-re-ttl-the-service-worker)).
 
 ### Installing the add-on
 

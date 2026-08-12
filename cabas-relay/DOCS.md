@@ -53,6 +53,36 @@ its origin: install the phones from `cabas.example.com` and later move to
 icon, empty library, and the twelve words have to be typed again. Pick the
 hostname you intend to keep before anyone installs anything.
 
+The tunnel runs as a second add-on — **Cloudflared**, from
+`https://github.com/homeassistant-apps/repository` — in remote-managed mode:
+create the tunnel in the Cloudflare dashboard under Networking → Tunnels, and
+give the add-on nothing but `tunnel_token`. Everything else it offers is
+ignored in that mode, which is what keeps `external_hostname` from quietly
+publishing Home Assistant itself. Then add a route of type *Published
+application* pointing your hostname at `http://<this-machine>:8787` — the
+port below, on the LAN, in plain HTTP. This add-on terminates no TLS on
+purpose; the tunnel does that on the façade.
+
+**One cache rule is needed, and it is not optional.** Cloudflare applies its
+default four-hour browser TTL to any cacheable file whose origin sets no
+explicit `max-age`, which turns this add-on's `Cache-Control: no-cache` on
+`/sw.js` into `max-age=14400`. That file is how an installed app notices a new
+version. Add a rule under Caching → Cache Rules on the *domain* (not the
+account):
+
+```
+(http.host eq "<your-host>" and http.request.uri.path eq "/sw.js")
+```
+
+with **Cache eligibility → Bypass cache**. The hashed files under `/assets/`
+carry their own `max-age` and must keep being cached — do not widen the rule
+to cover them.
+
+Do not put a Cloudflare Access policy in front of the hostname. The family id
+is the whole of the access control here and everything is encrypted before it
+arrives; a login page in front would break the service worker and the `/sync`
+socket without protecting anything that is not already unreadable.
+
 ## Backups
 
 Everything this add-on holds lives in `/data`, which Home Assistant's own

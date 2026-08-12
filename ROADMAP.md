@@ -12,7 +12,7 @@ verified on each one, and nobody was told, because nobody looked. A red gate
 that goes unread is worse than an absent one: it costs the same to run and it
 buys a false belief instead of no belief.
 
-## Overview (status as of 2026-08-11)
+## Overview (status as of 2026-08-12)
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
@@ -22,7 +22,7 @@ buys a false belief instead of no belief.
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
-| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 running on the Pi; tunnel and restore drill left |
+| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`; restore drill left |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
@@ -91,47 +91,53 @@ in it. The relay also grew the two subcommands an abandoned family log needs —
 `families` and `forget` — because nothing automatic could ever be right about
 it (DECISIONS 0050).
 
-**The Pi answers.** The add-on is installed and running on it, and the app
-loads from it over the LAN — what was observed is recorded against M6's third
-item below. Six of this milestone's eight items are closed; the relay is no
-longer a process in somebody's terminal. It is not yet how the phones get the
-app, which is the next paragraph.
+**The app is on the internet, at its permanent address.**
+`https://cabas.cladelabs.com` reaches the relay on the Pi through a Cloudflare
+Tunnel. Seven of this milestone's eight items are closed; what is left is the
+restore drill.
 
-**Next action: the Cloudflare Tunnel onto the owned domain.** It is not a
-finishing touch. The LAN address the Pi answers on is plain HTTP, which is not
-a secure context, so there is no service worker on it at all — the app loads
-there and can never be installed from there. Until the tunnel exists, the
-phones are still installed from `ui-serve` on a laptop.
+That address is now **the** address (DECISIONS 0012). Both phones install from
+it and never from anything else, and the local certificate authority `ui-serve`
+mints retires with it — it existed only because a LAN address could not be a
+secure context, which is exactly what stopped a phone installing from the Pi
+directly.
 
-**The day that domain serves the app is the day the origin becomes permanent**
-(DECISIONS 0012), so both phones reinstall from it that day and never from
-anything else. Then the restore drill. The abandoned-log question is settled
-(0050) and needs no hardware.
+**Next action: the restore drill**, and the phones onto the new origin. The
+drill is the one thing between here and M6's exit criterion: wipe a device,
+re-pair, verify the library comes back — which is also the first evidence that
+Home Assistant's backups really do carry `/data`, something this repository can
+assert about the relay's own behaviour and not about HA's.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
-each other's names off the roster and the journal. Everything the family needs
-exists — and it still only exists on one wifi, behind a certificate authority
-installed by hand, with the relay running in a terminal on a laptop. M6 is what
-turns that into something that survives the laptop being closed.
+each other's names off the roster and the journal. It needed one wifi, a
+certificate authority installed by hand and a relay in a terminal; M6 removed
+all three.
 
-Two things carried out of M5 that belong to M6's first hour. **The origin is
-permanent** (DECISIONS 0012) — the day the tunnel's domain serves the app is
-the day both phones must install from it and never from anything else, because
-iOS and Android both key the app's storage to it. And **rotating the family
-phrase leaves an abandoned log** on the relay, sealed and orphaned, which
-nothing prunes; the checklist below says so.
-
-Putting a later build on the phones is two commands, since each certificate is
-installed and trusted once and for all:
+**Shipping a new build to the phones now goes through a release.** There is no
+laptop in the path any more, and no address to retype — the phones already
+point at the permanent origin, so what has to move is what the add-on serves:
 
 ```sh
-build-wasm && pnpm -C ui build     # the artifact that gets installed
-ui-serve                           # prints both URLs and the CA fingerprint
+build-wasm && pnpm -C ui build       # the bundle build.rs embeds
+# then: bump [workspace.package].version and cabas-relay/config.yaml (Rule 15),
+# commit, and push an annotated vX.Y.Z tag — CI publishes the images
 ```
 
-Install from **the same address every time**: the origin is the app's identity
-(DECISIONS 0012), and a different one is a different app with empty storage.
+The Supervisor then offers the add-on an update, and the phone takes it **one
+launch later**, because the worker that arrives installs behind the running one
+and takes over at the next start (DECISIONS 0038). Nothing here is optional:
+**a version that does not move never reaches the Pi**, since that string is
+what the Supervisor compares.
+
+One tail from M5 remains true and needs no hardware: **rotating the family
+phrase leaves an abandoned log** on the relay, sealed and orphaned, which
+nothing prunes. It is forgotten by hand or not at all (DECISIONS 0050).
+
+`ui-serve` and its local certificate authority are now development-only. They
+existed because a LAN address cannot be a secure context and so cannot install
+anything (0041); the tunnel supersedes them for everything except testing a
+build on a phone before it is released.
 
 The frontend's shape, for anyone picking it up: `ui/src/lib/core.ts` is the
 only place the wasm `any` meets a generated type, `ui/src/lib/session.svelte.ts`
@@ -576,7 +582,21 @@ closed could not reach a relay at all.
       screen, and be invisible anywhere except behind the tunnel. Done before
       the tunnel rather than after, so a low permanent rate of disconnection
       never becomes the thing every future network bug is blamed on
-- [ ] Cloudflare Tunnel onto an owned domain; **the origin is permanent** — changing it later makes iOS treat the PWA as a new app and drops its storage (DECISIONS 0012)
+- [x] **Cloudflare Tunnel onto an owned domain.** Done on 2026-08-12:
+      `https://cabas.cladelabs.com` reaches the relay, and **the origin is now
+      permanent** — changing it later makes a phone treat the PWA as a new app
+      and drops its storage (DECISIONS 0012). The connector is the Cloudflared
+      add-on in remote-managed mode, given nothing but `tunnel_token`; the
+      route points the hostname at `http://192.168.1.25:8787`. Verified from
+      outside: TLS and HTTP/2, the page and every asset it names, `immutable`
+      on `/assets/*`, **no `Vary` anywhere** — the thing a proxy was most
+      likely to reintroduce — a 404 for an unknown path, and the app booting in
+      a real browser in 295 ms with nothing on the console. Two facts only this
+      origin could produce: **the service worker registers**, which is what
+      makes the app installable at all, and a socket left silent for 150
+      seconds stayed open and took four keepalive pings (0051) — the only place
+      that behaviour can be observed. One cache rule was needed and is part of
+      the deployment (0052)
 - [ ] Restore drill: wipe a device, re-pair, verify the data comes back
 
 **Exit**: reachable from 4G; a backup restore is tested end to end.
