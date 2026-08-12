@@ -10,7 +10,7 @@
 # tag that already exists changes nothing on an appliance that already
 # pulled it — a fix that does not move this number never reaches the Pi.
 name: cabas
-version: "0.1.2"
+version: "0.2.0"
 slug: cabas_relay
 description: >-
   Sync relay and host for the cabas shopping list — serves the app and brokers

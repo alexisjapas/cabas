@@ -118,6 +118,12 @@ before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
 does not reach into those. The README carries the corrected procedure.
 
+**Check the build before starting.** Both fixes below are client-side, so a
+phone still serving the old bundle would rehearse the bug rather than the fix,
+and a service worker hands a new build over one launch late (0038). Settings
+now names the version each phone is running (DECISIONS 0055) — it must match
+the add-on's, which the Supervisor's page shows.
+
 Writing the drill down, and then reading it against the code a second time,
 found two bugs that a run would have hit and neither phone would have reported:
 

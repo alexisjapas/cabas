@@ -101,6 +101,19 @@ export function mintUsageId(): string {
 }
 
 /**
+ * Which build is running, from the core — the workspace version, which is
+ * also the add-on's (Rule 15).
+ *
+ * Worth having on screen because a new build takes over a launch after it
+ * arrives (DECISIONS 0038): without this, "did the update land" is answered by
+ * counting relaunches. Synchronous for the same reason `mintUsageId` is — it
+ * is only reachable once `Core.open` has instantiated the module.
+ */
+export function buildVersion(): string {
+  return CabasApp.buildVersion();
+}
+
+/**
  * A new family's recovery phrase — twelve words, minted once, on the device
  * that starts the family (DECISIONS 0042). Every other device joins with the
  * same words, scanned or typed (0021).

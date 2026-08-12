@@ -67,6 +67,21 @@ impl CabasApp {
         to_js(&identity)
     }
 
+    /// Which build this is — the workspace version, and so the exact string
+    /// the Supervisor compares to decide the add-on has an update (Rule 15).
+    ///
+    /// It answers a question nothing else on the device can: a service worker
+    /// installs a new build behind the running one and takes over at the next
+    /// launch (DECISIONS 0038), so "is this phone running what the relay
+    /// serves" has a real answer and no way to read it. The core is the right
+    /// place for it because the core *is* the artifact — the bundle is
+    /// compiled into the relay binary (0048), so the version a phone displays
+    /// is the version of the relay build that served it.
+    #[wasm_bindgen(js_name = buildVersion)]
+    pub fn build_version() -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
     /// Mints the id of a recipe line the editor is about to create.
     ///
     /// Synchronous and free of the replica on purpose: it is called while a

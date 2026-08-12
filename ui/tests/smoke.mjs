@@ -22,7 +22,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEVTOOLS = process.env.DEVTOOLS_URL ?? 'http://localhost:9222';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:8788';
@@ -1029,6 +1030,31 @@ await shot('14-joined');
 // family has one of each and proves nothing about grouping.
 
 await evaluate(`__clickText('nav button', 'Réglages')`);
+
+// --- and it says which build it is -------------------------------------------
+//
+// The answer to "did the update land", which a service worker otherwise makes
+// unanswerable: a new build installs behind the running one and takes over at
+// the next launch (0038). It comes from the core, so this compares it to the
+// workspace version — the string the Supervisor compares too (Rule 15), and
+// the one `check-addon` holds the add-on manifest to.
+
+await waitFor(`__text('h1') === 'Réglages'`, 'settings, to read the build off');
+
+const cargoToml = await readFile(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Cargo.toml'),
+  'utf8',
+);
+const workspaceVersion = /^version = "([^"]+)"$/m.exec(cargoToml)?.[1];
+const shown = await evaluate(`document.querySelector('.build')?.dataset.version ?? null`);
+if (shown !== workspaceVersion) {
+  throw new Error(
+    `settings shows version ${JSON.stringify(shown)}, the workspace is at ` +
+      `${JSON.stringify(workspaceVersion)} — a stale build-wasm, or the line is gone`,
+  );
+}
+ok(`settings names the build it is running (${shown})`);
+
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
 await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster');
 await waitFor(`__all('.people > li .name').includes('Alexis')`, 'the person who started it');

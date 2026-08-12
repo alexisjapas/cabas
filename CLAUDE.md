@@ -309,7 +309,7 @@ file:
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
 
 `screens/Settings.svelte` is three views behind one tab — itself, the roster
-and the log — and
+and the log — and it is also where the running build names itself (0055), and
 `screens/Recipes.svelte` is three behind another — the shelf, the one being
 read, and the one being written — and the shape is worth knowing before
 touching it. Which recipe is *open* is core state (`OpenRecipe`, never
@@ -625,7 +625,10 @@ Key domain shapes, all settled in DECISIONS:
   caches a running page is still loading from (DECISIONS 0038). Observed on the
   phone at M5. So "my change isn't there" is answered by *closing the app and
   reopening it*, not by reloading — and a phone that is never closed stays a
-  build behind.
+  build behind. **Settings names the build** since 0.2.0, so which one is
+  running is read rather than counted (DECISIONS 0055): the string comes from
+  the core, which is what the relay compiled in, and `ui-test` holds it against
+  `Cargo.toml`.
 - **The QR encoder is fixed to version 6, level L.** That is what makes a
   hand-written one safe — one version is one row of the spec's tables instead
   of a wall of them — and it means a longer payload throws rather than draws

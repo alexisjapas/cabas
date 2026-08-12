@@ -1,7 +1,7 @@
 <script lang="ts">
   import Qr from '../components/Qr.svelte';
   import Screen from '../components/Screen.svelte';
-  import { readIdentity } from '../lib/core';
+  import { buildVersion, readIdentity } from '../lib/core';
   import type { Session } from '../lib/session.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
   import Events from './Events.svelte';
@@ -25,6 +25,14 @@
    * it. Read once — it cannot change while the app is running.
    */
   const identity = readIdentity();
+
+  /**
+   * Which build this is. Read once for the same reason as the identity, and
+   * from the core rather than from a constant here, because the core is what
+   * the relay compiled in (0048) — a bundle and a wasm module that disagreed
+   * would be the one thing this line exists to reveal.
+   */
+  const version = buildVersion();
 
   /**
    * The field follows the name in the document until somebody starts typing,
@@ -187,6 +195,11 @@
     </div>
 
     <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
+
+    <p class="note build" data-version={version}>
+      Version {version}. Une mise à jour s'installe en arrière-plan et s'applique à l'ouverture
+      suivante.
+    </p>
   </Screen>
 {/if}
 
@@ -292,6 +305,10 @@
 
   .family .note {
     margin: 0;
+  }
+
+  .build {
+    font-size: var(--text-xs);
   }
 
   .family form {

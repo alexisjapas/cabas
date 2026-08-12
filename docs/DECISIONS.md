@@ -2148,3 +2148,46 @@ are worth more than tidy ones here (0042). **Resetting the shadow in each host**
 — two hosts, one rule, and the second one arrives at M7 with nobody to notice it
 was forgotten. **Always pushing a snapshot** — it turns every connection into a
 document upload to spare one per restore.
+
+## 0055 — The running build says its own name, in Settings
+
+**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+[0038](#0038--a-hand-written-service-worker-cache-first-over-a-precached-shell),
+[0048](#0048--the-bundle-is-compiled-into-the-relay-by-a-build-script)
+
+**Context.** A service worker installs a new build behind the running one and
+takes over at the next launch (0038). That is the right behaviour and it makes
+one question unanswerable from the device: *is this phone running what the
+relay serves?* Until now the answer was to close the app, reopen it, and
+believe it — during the restore drill, on the one procedure where being wrong
+about the build under test invalidates the result.
+
+Nothing else could answer it either. The relay logs no version, `cabas-relay`
+has no `--version`, and two consecutive releases can serve a byte-identical
+bundle, so nothing observable from outside distinguishes them. The Supervisor's
+add-on page knows, which is a different machine from the one holding the phone.
+
+**Decision.** Settings names the build: `CabasApp.buildVersion()`, from
+`CARGO_PKG_VERSION` in the core, rendered at the bottom of the screen with a
+line saying an update applies at the next opening.
+
+It comes from the **core**, not from a constant in the frontend or from
+`package.json`, because the core is the artifact: the bundle is compiled into
+the relay binary (0048), so the version a phone displays is the version of the
+relay build that served it, and a wasm module that disagreed with the bundle
+around it is exactly what this line would reveal. It is the same string the
+Supervisor compares to offer an update and the same one `check-addon` holds the
+add-on manifest to (Rule 15) — one version, one meaning, everywhere.
+
+**Consequences.** `ui-test` reads it off the screen and compares it to
+`Cargo.toml`, so a stale `build-wasm` fails the suite rather than shipping a
+number that describes a different build than the one running.
+
+It is not business state and never enters a view-model (Rule 9): it is a fact
+about this binary, like the device identity next to it (0031).
+
+**Rejected.** **A build timestamp or a commit hash** — precise, and unusable in
+the one conversation it is for, which is with the Supervisor's version list.
+**Showing the relay's version too** — the phone would have to ask for it over
+the wire, and it already knows: whatever served the bundle is what the bundle
+says it is.
