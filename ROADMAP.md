@@ -126,13 +126,21 @@ ingredient survives in the replica of every phone that saw it, and a restore
 does not reach into those. The README carries the corrected procedure.
 
 **Every precondition is closed as of 2026-08-12.** The relay on the Pi, both
-phones and the published images are all at **0.2.0**; the phones say so
-themselves now, at the bottom of Settings (DECISIONS 0055), and the module the
-tunnel serves was checked from outside to be that build. This mattered because
-both restore fixes are client-side: a phone still serving the old bundle would
-have rehearsed the bug rather than the fix, and a service worker hands a new
-build over one launch late (0038). Nothing about the drill needs preparing any
-more — it needs a shell on the Pi and an afternoon.
+phones and the published images were all brought to **0.2.0**; the phones say
+so themselves now, at the bottom of Settings (DECISIONS 0055), and the module
+the tunnel serves was checked from outside to be that build. This mattered
+because both restore fixes are client-side: a phone still serving the old
+bundle would have rehearsed the bug rather than the fix, and a service worker
+hands a new build over one launch late (0038). Nothing about the drill needs
+preparing any more — it needs a shell on the Pi and an afternoon.
+
+**The workspace has since moved to 0.3.0** — creating an ingredient from the
+list and from a recipe, and the `Items` aisle (DECISIONS 0056, 0057). The
+precondition is *agreement*, not a particular number: whatever is on the Pi is
+what both phones must be showing in Settings before the drill starts. Releasing
+0.3.0 means updating the add-on and opening each phone twice; leaving the
+appliance on 0.2.0 is equally valid, since neither change touches sync, the
+persisted schema or either restore fix.
 
 What is left, in order, with the detail of each in the README:
 

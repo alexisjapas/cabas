@@ -46,6 +46,25 @@ pub fn mint_usage_id(platform: &impl Platform) -> Result<String> {
     mint(platform, USAGE)
 }
 
+/// Mints the id of an ingredient, for a host that has to name one the instant
+/// it is created (DECISIONS 0056).
+///
+/// The same bargain as [`mint_usage_id`], for the same reason. An ingredient
+/// created from a picker has to be *selected* in that picker the moment it
+/// exists, and [`crate::Command::SaveIngredient`] hands back a whole state
+/// rather than the id it minted — so the host that will need the id mints it,
+/// sends it as the input's `id`, and selects it. The alternative is the
+/// frontend comparing the ingredient list before and after and inferring which
+/// one is new, which is a guess where this is a fact.
+///
+/// From here rather than from the host's own random source, because two
+/// devices creating an ingredient offline must not choose the same id — under
+/// a CRDT that is not a conflict but two different ingredients silently
+/// merging into one.
+pub fn mint_ingredient_id(platform: &impl Platform) -> Result<String> {
+    mint(platform, INGREDIENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +103,18 @@ mod tests {
         let host = mint_usage_id(&platform).expect("mint");
         let internal = mint(&platform, USAGE).expect("mint");
         assert!(host.starts_with(USAGE));
+        assert_eq!(host.len(), internal.len());
+    }
+
+    #[test]
+    fn a_host_minted_ingredient_id_is_an_ordinary_ingredient_id() {
+        // Same contract as the usage id above: an ingredient created from a
+        // picker is an ingredient, and `save_ingredient` must not be able to
+        // tell which side minted its id (DECISIONS 0056).
+        let platform = Sequence(Cell::new(0));
+        let host = mint_ingredient_id(&platform).expect("mint");
+        let internal = mint(&platform, INGREDIENT).expect("mint");
+        assert!(host.starts_with(INGREDIENT));
         assert_eq!(host.len(), internal.len());
     }
 

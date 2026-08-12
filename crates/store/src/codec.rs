@@ -182,6 +182,7 @@ pub(crate) fn aisle_tag(aisle: Aisle) -> &'static str {
         Aisle::Frozen => "frozen",
         Aisle::Beverages => "beverages",
         Aisle::Household => "household",
+        Aisle::Items => "items",
         Aisle::Other => "other",
     }
 }
@@ -199,9 +200,15 @@ pub(crate) fn aisle(value: &LoroValue, path: &str) -> Result<Aisle> {
         "frozen" => Aisle::Frozen,
         "beverages" => Aisle::Beverages,
         "household" => Aisle::Household,
+        "items" => Aisle::Items,
         // An aisle only decides sort order, so an unknown one is survivable
         // where an unknown unit is not: falling back to `Other` puts the item
         // at the end of the walk instead of refusing to open the document.
+        //
+        // It is also what makes adding one a non-breaking change: a phone
+        // three weeks out of date reads "items" as `Other` and shows the line
+        // at the end of the cart, rather than failing to open the document
+        // its family just synced to it (DECISIONS 0057).
         _ => Aisle::Other,
     })
 }
@@ -308,7 +315,7 @@ mod tests {
         Unit::ToTaste,
     ];
 
-    const ALL_AISLES: [Aisle; 11] = [
+    const ALL_AISLES: [Aisle; 12] = [
         Aisle::Produce,
         Aisle::Butcher,
         Aisle::Fish,
@@ -319,6 +326,7 @@ mod tests {
         Aisle::Frozen,
         Aisle::Beverages,
         Aisle::Household,
+        Aisle::Items,
         Aisle::Other,
     ];
 

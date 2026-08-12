@@ -22,6 +22,11 @@ pub enum Aisle {
     Frozen,
     Beverages,
     Household,
+    /// What is bought whole and never cooked: toilet paper, soap, bin bags
+    /// (DECISIONS 0057). An aisle like any other — it decides where the line
+    /// falls in the walking order and nothing else. Nothing here forbids one
+    /// in a recipe; the classification is the shopper's word, not a rule.
+    Items,
     Other,
 }
 

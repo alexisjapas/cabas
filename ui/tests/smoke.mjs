@@ -377,21 +377,24 @@ await shot('01-empty-cart');
 
 // --- the library -----------------------------------------------------------
 
+// The form is a panel rather than a `<form>`, and its fields are found by
+// `data-field`: the same component opens inside the list's form and inside the
+// recipe editor's, and a nested `<form>` is not parsed (DECISIONS 0056).
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'ingredients screen');
 await evaluate(`__clickText('button', 'Nouveau')`);
-await waitFor('document.querySelector("form")', 'ingredient form');
-await evaluate(`__set('form label:nth-of-type(1) input', 'Tomates')`);
-await evaluate(`__set('form select', 'produce')`);
-await evaluate(`__click('button[type="submit"]')`);
+await waitFor('document.querySelector(".ingredient-form")', 'ingredient form');
+await evaluate(`__set('[data-field="name"]', 'Tomates')`);
+await evaluate(`__set('[data-field="aisle"]', 'produce')`);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates in the library');
 ok('an ingredient is created and listed');
 
 await evaluate(`__clickText('button', 'Nouveau')`);
-await waitFor('document.querySelector("form")', 'ingredient form');
-await evaluate(`__set('form label:nth-of-type(1) input', 'Sel')`);
-await evaluate(`__click('form input[type="checkbox"]')`);
-await evaluate(`__click('button[type="submit"]')`);
+await waitFor('document.querySelector(".ingredient-form")', 'ingredient form');
+await evaluate(`__set('[data-field="name"]', 'Sel')`);
+await evaluate(`__click('[data-field="staple"]')`);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__all('li .name').includes('Sel')`, 'Sel in the library');
 ok('a staple is created');
 await shot('02-library');
@@ -428,15 +431,48 @@ await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates on the list');
 ok('an ingredient goes onto the list');
 await shot('03-list');
 
+// --- and one the library has never heard of --------------------------------
+//
+// Wanting something mid-shop that is not in the library used to mean leaving
+// the screen for another tab and losing what was being typed. The picker's
+// last option is the whole library form, and what it creates is selected in
+// the picker it was created from (DECISIONS 0056).
+//
+// It is an item rather than a food, which is what the aisle is for: toilet
+// paper is bought whole, alone, and never cooked (DECISIONS 0057).
+await evaluate(`__clickText('button', 'Ajouter')`);
+await waitFor('document.querySelector("form select")', 'the add form again');
+await evaluate(`__pick('form select', 0, '+ Nouvel ingrédient')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the list');
+await evaluate(`__set('[data-field="name"]', 'Papier toilette')`);
+await evaluate(`__set('[data-field="aisle"]', 'items')`);
+await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
+await waitFor(
+  `document.querySelector('form select')?.selectedOptions[0]?.textContent.trim() === 'Papier toilette'`,
+  'the new ingredient, chosen in the picker it was created from',
+);
+ok('an ingredient is created from the list, and the line carries on');
+
+await evaluate(`__set('input[aria-label="Quantité"]', '1')`);
+await evaluate(`__set('select[aria-label="Unité"]', 'piece')`);
+await evaluate(`__clickText('button', 'Ajouter à la liste')`);
+await waitFor(`__all('li .name').includes('Papier toilette')`, 'the item on the list');
+ok('and it goes onto the list like any other');
+
 // --- the cart derives ------------------------------------------------------
 
 await evaluate(`__clickText('nav button', 'Courses')`);
 await waitFor(`__text('h1') === 'Courses'`, 'cart screen');
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates in the cart');
 
+// Both aisles, and "Items" is the one that has to be there: it is the newest
+// one in the domain, and an aisle nothing ever renders is an aisle nobody can
+// shop by (DECISIONS 0057).
 const aisles = await evaluate(`__all('section h2')`);
-if (!aisles.includes('Fruits et légumes')) {
-  throw new Error(`expected an aisle heading, got ${JSON.stringify(aisles)}`);
+for (const heading of ['Fruits et légumes', 'Items']) {
+  if (!aisles.includes(heading)) {
+    throw new Error(`expected the ${heading} aisle, got ${JSON.stringify(aisles)}`);
+  }
 }
 ok(`the cart derives and groups by aisle (${JSON.stringify(aisles)})`);
 await shot('04-cart');
@@ -483,6 +519,31 @@ await evaluate(`__pick('select[aria-label="Ingrédient"]', 1, 'Sel')`);
 await evaluate(`__setNth('input[aria-label="Quantité"]', 1, '5')`);
 await evaluate(`__setNth('select[aria-label="Unité"]', 1, 'g')`);
 ok('two ingredient lines, each named before the recipe exists');
+
+// The third line names something the library does not hold yet — the same
+// panel as the list's, inside the one big form the editor is, which is why it
+// is not a `<form>` itself (DECISIONS 0056). The recipe around it is a draft
+// and stays one: what this sends is a `SaveIngredient` and nothing else.
+await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
+await waitFor(`__count('select[aria-label="Ingrédient"]') === 3`, 'the third line');
+await evaluate(`__pick('select[aria-label="Ingrédient"]', 2, '+ Nouvel ingrédient')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the editor');
+await evaluate(`__set('[data-field="name"]', "Huile d'olive")`);
+await evaluate(`__set('[data-field="density"]', '0,91')`);
+await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
+await waitFor(
+  `document.querySelectorAll('select[aria-label="Ingrédient"]')[2]?.selectedOptions[0]?.textContent.trim() === "Huile d'olive"`,
+  'the new ingredient, chosen in the line it was created from',
+);
+const stillWriting = await evaluate(
+  `document.querySelector('input[placeholder="Tarte aux tomates"]').value`,
+);
+if (stillWriting !== 'Salade de tomates') {
+  throw failed(`the draft was lost to the command: ${JSON.stringify(stillWriting)}`);
+}
+await evaluate(`__setNth('input[aria-label="Quantité"]', 2, '2')`);
+await evaluate(`__setNth('select[aria-label="Unité"]', 2, 'tbsp_fr')`);
+ok('an ingredient is created from a recipe line, without leaving the draft');
 
 // Typing "@tom" offers the recipe's own tomato line, and picking it splits the
 // prose around a reference — never a marker inside a string (DECISIONS 0022).
@@ -1112,15 +1173,15 @@ ok("the journal shows what the other device did, in the other device's name");
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
 await evaluate(`__clickText('button', 'Nouveau')`);
-await waitFor('document.querySelector("form")', 'the ingredient form');
-await evaluate(`__set('form label:nth-of-type(1) input', 'Cannelle')`);
-await evaluate(`__click('button[type="submit"]')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the ingredient form');
+await evaluate(`__set('[data-field="name"]', 'Cannelle')`);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__all('li .name').includes('Cannelle')`, 'the throwaway ingredient');
 
 await evaluate(`__clickText('li button', 'Cannelle')`);
-await waitFor('document.querySelector("form")', 'the edit form');
-await evaluate(`__clickText('form button', 'Supprimer')`);
-await evaluate(`__clickText('form button', 'Confirmer la suppression')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the edit form');
+await evaluate(`__clickText('.ingredient-form button', 'Supprimer')`);
+await evaluate(`__clickText('.ingredient-form button', 'Confirmer la suppression')`);
 await waitFor(`!__all('li .name').includes('Cannelle')`, 'the ingredient, gone');
 
 await evaluate(`__clickText('nav button', 'Réglages')`);

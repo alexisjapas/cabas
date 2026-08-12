@@ -119,6 +119,7 @@ pub enum AisleTag {
     Frozen,
     Beverages,
     Household,
+    Items,
     Other,
 }
 
@@ -135,6 +136,7 @@ impl From<Aisle> for AisleTag {
             Aisle::Frozen => AisleTag::Frozen,
             Aisle::Beverages => AisleTag::Beverages,
             Aisle::Household => AisleTag::Household,
+            Aisle::Items => AisleTag::Items,
             Aisle::Other => AisleTag::Other,
         }
     }
@@ -153,6 +155,7 @@ impl From<AisleTag> for Aisle {
             AisleTag::Frozen => Aisle::Frozen,
             AisleTag::Beverages => Aisle::Beverages,
             AisleTag::Household => Aisle::Household,
+            AisleTag::Items => Aisle::Items,
             AisleTag::Other => Aisle::Other,
         }
     }
@@ -281,7 +284,7 @@ mod tests {
         Unit::ToTaste,
     ];
 
-    const ALL_AISLES: [Aisle; 11] = [
+    const ALL_AISLES: [Aisle; 12] = [
         Aisle::Produce,
         Aisle::Butcher,
         Aisle::Fish,
@@ -292,6 +295,7 @@ mod tests {
         Aisle::Frozen,
         Aisle::Beverages,
         Aisle::Household,
+        Aisle::Items,
         Aisle::Other,
     ];
 

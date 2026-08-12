@@ -51,7 +51,11 @@ through the relay, sealed end to end. The phones then answered for themselves.
 (list, reader and editor), the ingredient library and settings, driven end to
 end by `ui-test` in headless chromium. **Every command is reachable from the
 UI**, the app is **installable**, **it opens with the network off**, and the
-soft keyboard no longer covers what is being typed into. `ui-serve` serves the
+soft keyboard no longer covers what is being typed into. Since 0.3.0 the
+library form opens **where an ingredient is wanted** — the list's picker and
+each recipe line's, through `components/IngredientForm.svelte` (DECISIONS
+0056) — and there is an `Items` aisle for what is bought whole and never
+cooked (0057). `ui-serve` serves the
 built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
@@ -300,7 +304,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `IngredientForm.svelte` is the library form, used by three screens (0056) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -416,6 +420,13 @@ Key domain shapes, all settled in DECISIONS:
 - **A Loro map returns its keys in hash order**, which differs between
   replicas. Every keyed read in `store` sorts by id — drop that and two
   devices show the same library in different orders.
+- **Adding an `Aisle` is cheap; adding a `Unit` is not.** `store::codec`
+  decodes an unknown aisle as `Other` and *refuses* an unknown unit, because an
+  aisle only decides sort order while a unit decides an amount (DECISIONS 0029,
+  0057). So a new aisle needs no `SCHEMA_VERSION` bump — an older phone puts
+  the line at the end of the cart — but it does need widening the two
+  hand-written arrays that list every variant, one in `store::codec` and one in
+  `app::tags`, plus the total `Record` in `labels.ts`.
 - **`LoroValue` has no exact numeric type**, only `I64` and `Double`. Every
   rational is encoded as a `"numer/denom"` string; the guard that keeps it
   that way is `no_float_ever_reaches_the_document` in `document.rs`.
@@ -512,6 +523,18 @@ Key domain shapes, all settled in DECISIONS:
   `svelte-check`, and `noUnusedParameters` then wants the unused one prefixed
   with `_`. The parameter is how an action re-runs when a value changes from
   script rather than from typing.
+- **`IngredientForm.svelte` is not a `<form>`, and must not become one.** It
+  renders inside the list's add form and inside the one big form the recipe
+  editor is, and a nested `<form>` is dropped by the parser. Three rules follow
+  and anything added to it inherits them: every button says `type="button"`, no
+  field is `required`, and Enter is handled on each control rather than left to
+  submit the form around it (DECISIONS 0056).
+- **A picker whose last option is a door must not be bound.** Choosing
+  « + Nouvel ingrédient » has to leave the line's value alone *and* put the
+  control back where it was — and a `$state` assigned the value it already held
+  does not re-render, so the select would keep showing the door. `value=` plus
+  an `onchange` that writes `event.currentTarget.value` back is the shape that
+  works, in both `List.svelte` and `RecipeEditor.svelte`.
 - **A UI test that sets a `<select>` needs the native setter and a dispatched
   event** — assigning `.value` moves the pixel and tells Svelte nothing. Note
   also that `form select:nth-of-type(1)` matches *every* first-select-child in

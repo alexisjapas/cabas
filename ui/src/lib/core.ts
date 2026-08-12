@@ -101,6 +101,20 @@ export function mintUsageId(): string {
 }
 
 /**
+ * The id of an ingredient a picker is about to create.
+ *
+ * The same shape as `mintUsageId`, for the same reason one layer up. An
+ * ingredient created from the list or from a recipe has to be *selected* in
+ * the picker it was created from, and `SaveIngredient` returns the whole new
+ * state rather than the id it minted — so the form that will need the id mints
+ * it, sends it, and selects it (DECISIONS 0056). Inferring it by diffing the
+ * library before and after would be a guess where this is a fact.
+ */
+export function mintIngredientId(): string {
+  return CabasApp.mintIngredientId();
+}
+
+/**
  * Which build is running, from the core — the workspace version, which is
  * also the add-on's (Rule 15).
  *

@@ -63,6 +63,10 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0051](#0051--the-relay-pings-because-the-proxy-closes-a-silent-socket) | The relay pings, because the proxy closes a silent socket | Sync |
 | [0052](#0052--the-edge-must-not-re-ttl-the-service-worker) | The edge must not re-TTL the service worker | Deployment |
 | [0053](#0053--a-cursor-must-point-inside-the-log-not-merely-at-its-epoch) | A cursor must point inside the log, not merely at its epoch | Sync |
+| [0054](#0054--a-reset-cursor-voids-the-shadow-and-the-answer-is-a-whole-replica) | A reset cursor voids the shadow, and the answer is a whole replica | Sync |
+| [0055](#0055--the-running-build-says-its-own-name-in-settings) | The running build says its own name, in Settings | Tooling |
+| [0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab) | An ingredient is created where it is needed, not in another tab | Product |
+| [0057](#0057--items-an-aisle-for-what-is-bought-whole-and-never-cooked) | Items: an aisle for what is bought whole and never cooked | Domain |
 
 ---
 
@@ -2191,3 +2195,108 @@ the one conversation it is for, which is with the Supervisor's version list.
 **Showing the relay's version too** — the phone would have to ask for it over
 the wire, and it already knows: whatever served the bundle is what the bundle
 says it is.
+
+## 0056 — An ingredient is created where it is needed, not in another tab
+
+**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+[0039](#0039--the-editor-names-a-recipe-line-before-the-line-exists),
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items)
+
+**Context.** An ingredient is the aggregation key of the cart (Rule 3), so
+nothing reaches the list or a recipe until the library holds one. The library
+had exactly one door: its own tab. Wanting something the library had never
+heard of therefore meant leaving the screen, creating it, coming back, and
+starting the line again.
+
+That is an annoyance in the list, where a half-typed quantity is lost. In the
+recipe editor it is worse than an annoyance: the draft lives in
+`Recipes.svelte` and `App.svelte` renders one screen at a time, so switching
+to Ingredients **destroys the recipe being written**. The rule was: know every
+ingredient before you start writing, or lose what you wrote.
+
+**Decision.** Both ingredient pickers — the list's and each of the editor's
+lines — end with an option that is not a value: **« + Nouvel ingrédient »**,
+which opens the library's form in place. What it creates is selected in the
+picker it was created from, and the line carries on.
+
+It is the **whole** form, in one component (`components/IngredientForm.svelte`)
+used by all three screens, rather than a short "name and aisle" version. A
+reduced form is a second place to add a field to, and the coefficients are
+exactly what a new ingredient wants while a quantity is being typed: a density
+is what lets 20 cl of the oil just invented merge with the 300 g asked for
+elsewhere (Rule 5).
+
+Two mechanical consequences follow from where it now renders:
+
+- **The panel is not a `<form>`.** It sits inside the list's form and inside
+  the one big form the editor is, and a nested `<form>` is not parsed — the
+  browser drops it. So every button says `type="button"`, no field is
+  `required`, and Enter is caught on each control rather than left to submit
+  whatever form happens to be around it.
+- **The picker is no longer bound.** Its last option is a door rather than a
+  value, so choosing it must leave the line alone *and* put the control back
+  where it was — which a binding that never changed would not do.
+
+The id is **minted by the host**, through `mintIngredientId`, exactly as a
+recipe line's is (0039). `SaveIngredient` returns a whole new state and not the
+id it minted, and the picker has to select what it just created.
+
+**Consequences.** `SaveIngredient` is now sent from three screens. It stands
+alone: an ingredient is a library entry, not part of the recipe draft, so
+abandoning the recipe afterwards keeps the ingredient. That is the same
+ingredient the Ingredients tab would have produced, and deleting it there is
+one tap.
+
+Nothing about the scope cut moved (0018, Rule 14): there is still no ad-hoc
+cart item, no free text on the list, no second kind of thing that can be
+bought. Creating an ingredient from here creates a library ingredient.
+
+`ui-test` drives both paths, and asserts the thing the shape is for — that the
+recipe being written is still on screen and still named after the command.
+
+**Rejected.** **A short quick-create form** — two forms to keep in step, and
+the fields it drops are the ones a new ingredient most needs. **Inferring the
+new id by comparing the library before and after** — three lines, no new API,
+and a guess where 0039 already established the fact. **Sending the user to the
+Ingredients tab and back** — the status quo, which costs a recipe draft.
+
+## 0057 — Items: an aisle for what is bought whole and never cooked
+
+**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+[0029](#0029--how-the-document-encodes-domain-values),
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items)
+
+**Context.** Toilet paper and soap go on the same trip, belong on the same
+list, and are not food. They have one thing in common that no food has: they
+are bought whole and alone, and no recipe ever calls for one. `Household`
+covers the cleaning shelf and reads as such — bleach, sponges, washing powder
+— which is a place in the shop rather than that property.
+
+**Decision.** One more `Aisle`: **`Items`**, between `Household` and `Other`
+in the declaration order, which *is* the walking order the cart sorts by. The
+French for it is "Items", in `labels.ts` with the other ten.
+
+An aisle and nothing more. Nothing stops an ingredient classified this way
+from being used in a recipe: the classification is the shopper's word about
+where a thing is found and what it is for, not a rule the machine enforces.
+
+**Consequences.** It sits just before `Other`, so the end of the walk — what
+is not food, then what has no aisle at all — stays together.
+
+Adding one is **not** a breaking change, and that is a property of the encoding
+rather than luck: `store` decodes an unknown aisle as `Other` and refuses an
+unknown *unit* (0029), because an aisle only decides sort order while a unit
+decides an amount. A phone three weeks out of date reads `"items"` as `Other`
+and shows the line at the end of the cart. No schema version bump.
+
+The two hand-written arrays that list every aisle — one in `store::codec`, one
+in `app::tags` — are what keep a new variant from reaching a screen untagged;
+both had to be widened, which is the point of writing them out.
+
+**Rejected.** **A separate kind of library entry**, an `item` flag invisible to
+recipes — it turns "never in a recipe" into a rule the machine enforces, buys
+nothing the shopper cannot say by choosing an aisle, and doubles the library
+screen and every picker. **Reusing `Household`** — that is the cleaning shelf;
+this is about what is bought whole. **Hiding these from the recipe pickers** —
+the same enforcement in a cheaper disguise, and a recipe that legitimately
+calls for one would have no way to say so.

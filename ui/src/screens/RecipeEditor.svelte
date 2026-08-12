@@ -1,8 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
+  import IngredientForm, {
+    NEW_INGREDIENT,
+    blankDraft,
+    type IngredientDraft,
+  } from '../components/IngredientForm.svelte';
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
+  import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
   import type { SegmentInput } from '../lib/bindings/SegmentInput';
   import type { StepInput } from '../lib/bindings/StepInput';
@@ -59,6 +65,52 @@
     });
   }
 
+  /**
+   * The library form, opened from a line's picker (DECISIONS 0056).
+   *
+   * Held by the *index* of the line it belongs to, and closed by
+   * `removeComponent` — removal is the only thing that shifts an index, since
+   * new lines are pushed onto the end.
+   */
+  let creating = $state<number | null>(null);
+  let draft = $state<IngredientDraft>(blankDraft());
+
+  /**
+   * The picker is not bound: its last option is a door rather than a value, so
+   * choosing it must leave the line alone — and put the control back where it
+   * was, which a binding that never changed would not do.
+   */
+  function pickIngredient(index: number, event: Event & { currentTarget: HTMLSelectElement }): void {
+    const component = recipe.components[index];
+    if (component === undefined || component.kind !== 'ingredient') return;
+    const picked = event.currentTarget.value;
+    if (picked !== NEW_INGREDIENT) {
+      component.ingredient = picked;
+      return;
+    }
+    event.currentTarget.value = component.ingredient;
+    draft = blankDraft();
+    creating = index;
+  }
+
+  /**
+   * Created, then chosen. This is the one command the editor sends before the
+   * recipe is saved, and it stands alone: an ingredient is a library entry,
+   * not part of the draft, so leaving the recipe afterwards keeps it.
+   */
+  function createIngredient(ingredient: IngredientInput): boolean {
+    const index = creating;
+    if (index === null) return false;
+    const component = recipe.components[index];
+    if (component === undefined || component.kind !== 'ingredient') return false;
+    const accepted = session.run({ command: 'save_ingredient', ingredient });
+    if (accepted) {
+      component.ingredient = draft.id;
+      creating = null;
+    }
+    return accepted;
+  }
+
   function addSubRecipe(): void {
     recipe.components.push({
       kind: 'sub_recipe',
@@ -77,6 +129,8 @@
    * purpose, in a form the person is looking at.
    */
   function removeComponent(index: number): void {
+    // Every line below this one moves up, and `creating` names one by index.
+    creating = null;
     const [gone] = recipe.components.splice(index, 1);
     if (gone === undefined || gone.id === null) return;
     for (const step of recipe.steps) {
@@ -362,21 +416,21 @@
 
     <h2>Ingrédients</h2>
 
-    {#if ingredients.length === 0}
-      <p class="hint">
-        Aucun ingrédient dans la bibliothèque. Créez-en un dans l'onglet Ingrédients.
-      </p>
-    {/if}
-
     {#each recipe.components as component, index (component.id)}
       <div class="line">
         <div class="linehead">
           {#if component.kind === 'ingredient'}
-            <select bind:value={component.ingredient} required aria-label="Ingrédient">
+            <select
+              value={component.ingredient}
+              onchange={(event) => pickIngredient(index, event)}
+              required
+              aria-label="Ingrédient"
+            >
               <option value="" disabled>Choisir…</option>
               {#each ingredients as ingredient (ingredient.id)}
                 <option value={ingredient.id}>{ingredient.name}</option>
               {/each}
+              <option value={NEW_INGREDIENT}>+ Nouvel ingrédient</option>
             </select>
           {:else}
             <select bind:value={component.recipe} required aria-label="Sous-recette">
@@ -396,6 +450,15 @@
 
         {#if component.kind === 'ingredient'}
           {@const quantity = component.quantity}
+          {#if creating === index}
+            <IngredientForm
+              bind:draft
+              heading="Nouvel ingrédient"
+              submitLabel="Créer"
+              onsave={createIngredient}
+              oncancel={() => (creating = null)}
+            />
+          {/if}
           <QuantityField bind:amount={quantity.amount} bind:unit={quantity.unit} label="Quantité" required />
         {:else}
           {@const amount = component.amount}
@@ -437,9 +500,7 @@
     {/each}
 
     <div class="adders">
-      <button type="button" onclick={addIngredient} disabled={ingredients.length === 0}
-        >+ Ingrédient</button
-      >
+      <button type="button" onclick={addIngredient}>+ Ingrédient</button>
       <button type="button" onclick={addSubRecipe} disabled={subRecipes.length === 0}
         >+ Sous-recette</button
       >

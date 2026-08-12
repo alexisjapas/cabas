@@ -73,6 +73,7 @@ export const AISLE_LABEL: Record<AisleTag, string> = {
   frozen: 'Surgelés',
   beverages: 'Boissons',
   household: 'Entretien',
+  items: 'Items',
   other: 'Autres',
 };
 
@@ -143,6 +144,7 @@ export const AISLES: readonly AisleTag[] = [
   'frozen',
   'beverages',
   'household',
+  'items',
   'other',
 ];
 

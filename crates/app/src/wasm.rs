@@ -93,6 +93,16 @@ impl CabasApp {
         Ok(crate::mint_usage_id(&SystemPlatform)?)
     }
 
+    /// Mints the id of an ingredient a picker is about to create.
+    ///
+    /// Synchronous and free of the replica, like the usage id above: it is
+    /// called by a form that has to select the ingredient it just created,
+    /// in a picker, before anything has been saved (DECISIONS 0056).
+    #[wasm_bindgen(js_name = mintIngredientId)]
+    pub fn mint_ingredient_id() -> Result<String, JsError> {
+        Ok(crate::mint_ingredient_id(&SystemPlatform)?)
+    }
+
     /// Opens the replica stored in IndexedDB, or starts a new one.
     pub async fn open(identity: JsValue) -> Result<CabasApp, JsError> {
         let identity: Identity = serde_wasm_bindgen::from_value(identity)?;
