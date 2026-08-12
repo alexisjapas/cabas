@@ -106,10 +106,18 @@ directly.
 **Next action: the two phones onto the new origin**, which starts a new family
 rather than migrating the old one — see the item below for why that is a choice
 and not an accident. Then the leftover test family gets forgotten, and then the
-restore drill, which is the last thing between here and M6's exit criterion:
-wipe a device, re-pair, verify the library comes back. That drill is also the
-first evidence that Home Assistant's backups really do carry `/data` — a claim
-this repository can make about the relay's behaviour and not about HA's.
+restore drill, which is the last thing between here and M6's exit criterion.
+**Its procedure is now written** — README, "The restore drill" — in two halves
+that prove different things: that a wiped device gets its library from the log
+alone, and that Home Assistant's backups really do carry `/data`, which is a
+claim this repository can make about the relay's behaviour and not about HA's.
+
+Writing it down was worth doing before running it: the drill's second half,
+read against `server.rs`, could not have worked. A restored log stops where the
+backup did while the phones hold cursors from further along, and the epoch —
+the one guard against exactly this — is *inside* the backup, so it came back
+identical. The relay replayed nothing to either phone and neither noticed.
+Fixed in 0.1.1 and staged in `convergence.rs` (DECISIONS 0053).
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -615,7 +623,27 @@ closed could not reach a relay at all.
       new twelve words, written down somewhere that is not a phone — and the
       old install is deleted along with the `cabas local CA` profile that let
       it load. The README's phone section carries both procedures
-- [ ] Restore drill: wipe a device, re-pair, verify the data comes back
+- [x] **A cursor is checked against the log's length, not just its epoch**
+      (DECISIONS 0053). Found by writing the drill below rather than by running
+      it: a backup carries `meta`, so restoring one brings the epoch back
+      *identical* while the log stops where the backup was taken. Every device
+      still holds a cursor from further along, the relay honoured it, and
+      "everything after frame 412" out of a log ending at 300 is nothing —
+      silently, on both sides, for as many pushes as the restore rolled back.
+      The relay now replays from zero when a cursor points past the end of the
+      log, which is the same trade 0045 made: one bounded replay against a
+      family that never converges again. `convergence.rs` stages the restore
+- [ ] **Restore drill**, in two halves that answer different questions — README,
+      "The restore drill", carries the procedure. **One**: delete the app on one
+      phone with the *other one closed*, reinstall from the tunnel, type the
+      twelve words, and check the library and the other phone's journal
+      entries come back — that is the log, and nothing else, doing it.
+      **Two**: back up, add an ingredient named `TÉMOIN`, restore, and check it
+      is **gone** — a restore that did nothing looks identical to one that
+      worked, so the planted marker is the only real evidence. Then change
+      something on one phone and confirm it reaches the other, which is the
+      case 0053 fixed. This half is the first and only evidence that Home
+      Assistant's backups really do carry `/data`
 
 **Exit**: reachable from 4G; a backup restore is tested end to end.
 

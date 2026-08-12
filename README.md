@@ -390,6 +390,77 @@ number of days
 Deliberately not an HTTP endpoint: a family id is the only access control the
 relay has, and its port faces the tunnel.
 
+### The restore drill
+
+M6's exit criterion asks two questions, and they are not the same question:
+
+1. Does a device get its library back **from the relay alone**?
+2. Does Home Assistant's backup **actually carry `/data`**?
+
+The first is about the log this repository wrote. The second is a claim about
+Home Assistant that nothing here can test, which is exactly why it has to be
+run rather than assumed.
+
+Before either half: **write the twelve words down somewhere that is not a
+phone.** A restored `/data` without them is a directory of ciphertext nobody
+can open. The drill is the right moment to discover they were never written
+down; the day the phones are gone is not.
+
+**Half one — a device comes back.** The other phone stays **closed**
+throughout. If it is open it will push, and then what got tested is peer sync,
+not the log.
+
+1. Write down what you expect back: how many recipes, one ingredient carrying
+   a density, the list with its servings, both names on the roster.
+2. Delete the app on the phone under test — deleting it takes that origin's
+   storage with it.
+3. Reinstall from `https://cabas.cladelabs.com` and open it.
+4. **It must open on the pairing screen.** Anything else means the storage
+   survived and the drill has not started.
+5. Type the twelve words.
+
+What proves it: the library is back, *and* the journal behind Settings still
+shows what the **other** phone did. That entry could only have come from the
+log.
+
+The failure with a name, if it appears here: a device that is paired, online,
+and empty. The cursor lives in `localStorage` and the replica in IndexedDB —
+two files with two lifetimes — and a cursor that outlives its replica tells the
+relay "I have everything already", which the relay honestly believes. The app
+guards it with `opened_fresh`
+([0045](docs/DECISIONS.md#0045--a-cursor-is-not-resumed-on-a-replica-that-never-had-it)),
+and an empty screen with no error is what a regression in that guard looks
+like.
+
+**Half two — the relay comes back.** The trap here is that **a restore which
+does nothing at all looks exactly like one that worked.** So plant something
+the restore is expected to destroy, and make that the thing you check.
+
+1. Take a Home Assistant backup that includes this add-on.
+2. On a phone, add an ingredient named something you will recognise —
+   `TÉMOIN` — and let it sync; Settings says `online` when it has.
+3. Restore the backup.
+4. Open the app on **both** phones.
+
+What proves it: `TÉMOIN` is **gone** and everything older is present. Its
+absence is the whole proof — it is the only observation that tells a real
+restore apart from a no-op.
+
+Then the step that is easy to skip and is the entire reason
+[0053](docs/DECISIONS.md#0053--a-cursor-must-point-inside-the-log-not-merely-at-its-epoch)
+exists: **change something on one phone and confirm it reaches the other.** A
+restored log stops where the backup did, while both phones still hold cursors
+from further along — and before 0.1.1 the relay honoured those cursors,
+replayed nothing and let the family stop converging silently, for as many
+pushes as the restore rolled back. A change that does not cross after a restore
+is that bug, returned.
+
+From a shell on the machine (the SSH add-on, then `docker exec` into this one),
+`cabas-relay families` shows what survived — the family id, its frame count and
+how long since it last received anything. A family that is **not** listed after
+a restore is a backup that did not carry `/data`: that is question two,
+answered the way nobody wants.
+
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never
 touches ([DECISIONS 0013](docs/DECISIONS.md#0013--nix-flake-with-a-separate-android-shell)):

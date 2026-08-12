@@ -24,7 +24,10 @@ installed from. Verified end to end from outside: TLS, the bundle, no `Vary`,
 the service worker registering, and a silent socket held open by the relay's
 keepalive (0051). One cache rule keeps the edge from re-TTLing `/sw.js`
 (0052). **Next is the restore drill**, which is all that stands between here
-and M6's exit criterion. `ui-serve` and its hand-rolled certificate authority
+and M6's exit criterion; its procedure is written (README, "The restore
+drill") and writing it found a real bug — a restored log left every device
+stranded behind a cursor the epoch could not invalidate, fixed in 0.1.1
+(0053). `ui-serve` and its hand-rolled certificate authority
 are development-only from now on.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
@@ -199,7 +202,9 @@ family's persisted sealed log — append, replay, snapshot-truncate, torn-tail
 recovery, the minted `epoch` — and `server.rs` is the axum WebSocket side:
 replay under the same lock as the subscription, then live forwarding, plus a
 30-second ping so the tunnel does not close a socket for having nothing to say
-(DECISIONS 0051). It depends on `cabas-sync` for the protocol types and never
+(DECISIONS 0051). A device's cursor is honoured only when it names the log's
+epoch **and** points inside it — the second half is what a restored backup
+needs (0053). It depends on `cabas-sync` for the protocol types and never
 for a key.
 `assets.rs` is the static half — the PWA, served from the same origin as
 `/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
@@ -571,6 +576,16 @@ Key domain shapes, all settled in DECISIONS:
   it — so `syncStatus` threw on the *first* real connection while every test
   against a hand-made epoch of 0 passed. Identities cross as **text**, counts
   stay numbers (DECISIONS 0046).
+- **A restored backup brings the epoch back with it.** The epoch is the guard
+  that tells a device its cursor points into a log that no longer exists — and
+  it lives in `meta`, inside `/data`, inside the backup. So a restore returns it
+  *identical* alongside a log that stops where the backup was taken, every
+  device keeps a cursor from further along, and "replay everything after frame
+  412" out of a log ending at 300 is nothing at all. No error on either side,
+  and it lasts until the log grows back. The relay therefore checks
+  `hello_since < log.next_seq()` as well as the epoch (DECISIONS 0053). Anything
+  that rolls `/data` back — a filesystem snapshot, a half-restored volume —
+  lands in the same place.
 - **A sync cursor must never outlive the replica it belongs to.** They are two
   different files — `localStorage` and IndexedDB — and a cursor that survives
   alone leaves the device with an empty library and no error, for good.

@@ -93,6 +93,37 @@ phrase — the library comes back from the log.
 The phrase is not in the backup, and cannot be. Write it down somewhere else.
 A restored `/data` without it is a directory of ciphertext nobody can open.
 
+## Restoring one, and checking that you can
+
+A restore that does nothing at all looks exactly like a restore that worked —
+the app still opens, the library is still there. So the only way to learn
+anything is to plant something the restore is expected to destroy:
+
+1. Take the backup.
+2. On a phone, add an ingredient with a name you will recognise — `TÉMOIN` —
+   and wait until Settings reports `online`, which means it reached here.
+3. Restore.
+4. Open the app on **every** phone.
+
+`TÉMOIN` being **gone** is the proof. Everything older being present is the
+other half.
+
+Then change something on one phone and check that it arrives on the other.
+This matters more than it looks: a restored log stops where the backup was
+taken, while the phones hold cursors from further along. The relay replays
+everything *after* a device's cursor, so those cursors have to be recognised as
+pointing past the end of a log that was rolled back — they are, since 0.1.1,
+and before that a restore left the family silently non-converging until the log
+grew back to where it had been. If a change stops crossing between phones right
+after a restore, that is what you are looking at.
+
+```sh
+cabas-relay families
+```
+
+is how you check the machine's side: a family that is not listed after a
+restore means the backup did not carry `/data` at all.
+
 ## After changing the family phrase
 
 Changing the phrase is how a lost phone is revoked: every phone moves to a new
