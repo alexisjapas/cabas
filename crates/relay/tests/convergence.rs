@@ -465,3 +465,95 @@ async fn the_log_outlives_the_relay_process() {
         "Beurre"
     );
 }
+
+/// Copies a directory tree — the data directory as a backup would carry it.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).expect("mkdir");
+    for entry in std::fs::read_dir(from).expect("read_dir") {
+        let entry = entry.expect("entry");
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("file type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("copy");
+        }
+    }
+}
+
+/// M6's recovery point, exercised: `/data` goes back to a backup while both
+/// devices keep replicas and cursors from further along than the restored log
+/// ever reached.
+///
+/// The epoch cannot catch this on its own — it is inside the backup, so it
+/// comes back identical, and the relay honestly replays "everything after
+/// frame N" from a log whose highest frame is far below N. That is nothing, on
+/// both sides, with no error anywhere, until the log grows back past N
+/// (DECISIONS 0053).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restored_backup_does_not_strand_devices_holding_newer_cursors() {
+    let dir = TempDir::new("restore");
+    let vault = TempDir::new("restore-backup");
+    let phrase = FamilyKey::generate()
+        .expect("generate")
+        .phrase()
+        .to_string();
+
+    let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_a").await;
+    let mut bob = Device::join(&phrase, 5000, "usr_bob", "Bob", "dev_b").await;
+
+    let relay = spawn_relay(dir.0.clone()).await;
+
+    alice
+        .app
+        .dispatch(save_ingredient("Beurre"))
+        .await
+        .expect("save");
+    sync_once(&mut alice, relay, true).await;
+    sync_once(&mut bob, relay, false).await;
+
+    // The backup: the data directory exactly as it stands.
+    copy_tree(&dir.0, &vault.0);
+
+    // The family carries on, so both cursors move well past the backup.
+    for name in ["Farine", "Sucre", "Sel", "Poivre"] {
+        alice
+            .app
+            .dispatch(save_ingredient(name))
+            .await
+            .expect("save");
+        sync_once(&mut alice, relay, true).await;
+        sync_once(&mut bob, relay, false).await;
+    }
+    // Both are now well past the single frame the backup holds.
+    assert!(alice.since > 1, "alice's cursor moved: {}", alice.since);
+    assert!(bob.since > 1, "bob's cursor moved: {}", bob.since);
+
+    // The restore: the process stops, /data goes back to what was backed up.
+    std::fs::remove_dir_all(&dir.0).expect("clear");
+    copy_tree(&vault.0, &dir.0);
+    let restored = spawn_relay(dir.0.clone()).await;
+
+    // Alice, whose replica was never touched, adds something and pushes it.
+    alice
+        .app
+        .dispatch(save_ingredient("Levure"))
+        .await
+        .expect("save");
+    sync_once(&mut alice, restored, true).await;
+
+    // Bob connects to the restored relay.
+    sync_once(&mut bob, restored, false).await;
+
+    let names: Vec<String> = bob
+        .app
+        .state()
+        .expect("state")
+        .ingredients
+        .iter()
+        .map(|i| i.name.clone())
+        .collect();
+    assert!(
+        names.contains(&"Levure".to_string()),
+        "bob never received alice's post-restore push: {names:?}"
+    );
+}

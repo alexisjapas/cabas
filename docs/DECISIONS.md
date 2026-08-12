@@ -62,6 +62,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all) | An abandoned family log is forgotten by hand, or not at all | Sync |
 | [0051](#0051--the-relay-pings-because-the-proxy-closes-a-silent-socket) | The relay pings, because the proxy closes a silent socket | Sync |
 | [0052](#0052--the-edge-must-not-re-ttl-the-service-worker) | The edge must not re-TTL the service worker | Deployment |
+| [0053](#0053--a-cursor-must-point-inside-the-log-not-merely-at-its-epoch) | A cursor must point inside the log, not merely at its epoch | Sync |
 
 ---
 
@@ -2027,3 +2028,59 @@ the relay's own headers, and the next proxy will have different ones; the
 origin already states its intent correctly. **Turning off the zone's browser
 TTL globally** — it would fix `/sw.js` by making every other file worse.
 **Relying on `updateViaCache`** — see above.
+
+---
+
+## 0053 — A cursor must point inside the log, not merely at its epoch
+
+**Date** 2026-08-12 · **Status** Accepted · **Implements**
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) · **Relates to**
+[0045](#0045--a-cursor-is-not-resumed-on-a-replica-that-never-had-it),
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee)
+
+**Context.** 0042 gave the log an epoch so a device can tell that the history
+its cursor points into still exists. The relay honoured a cursor whenever the
+epoch matched and replayed from zero when it did not — which covers a log that
+was deleted and remade, because that mints a new epoch.
+
+It does not cover the case M6 is built around. `/data` is the recovery point
+precisely because Home Assistant backs it up, and a backup carries `meta` —
+so restoring one brings the epoch back *identical*, alongside a log that stops
+wherever the backup was taken. Every device still holds a cursor from further
+along. The epoch matches, the relay believes the cursor, and "every frame after
+412" from a log whose highest frame is 300 is nothing at all.
+
+Nothing reports this. Both devices are online, the relay is not wrong, and the
+one thing that would resolve it — a new epoch — is exactly what the restore
+undid. New pushes are numbered from 301 again, so they stay below what the
+devices claim to have seen, and the family silently stops converging for as
+many pushes as the restore rolled back. On two people's shopping that is weeks.
+
+**Decision.** The cursor is honoured only when it names this log's epoch **and**
+points inside it — `hello_since < log.next_seq()`. Otherwise it describes
+frames that were never handed out, and the connection replays from zero.
+
+**Consequences.** The failure mode after a restore becomes one full replay per
+device, which is bounded by design and lands on a replica where merges are
+idempotent — the same trade 0045 made for the same reason, and in the same
+direction: the cost of being wrong here is a replay, the cost of being wrong
+there is a family that never converges again.
+
+It also covers a case nobody would have staged: a `/data` rolled back by a
+filesystem snapshot, a half-restored volume, or an add-on reinstalled over an
+older backup than the one the phones knew. None of those change the epoch
+either.
+
+Found by writing the restore drill rather than by running it — the drill's
+central scenario, read against `server.rs`, could not work. `crates/relay/
+tests/convergence.rs` now stages it: two devices, a backup, four more pushes, a
+restore, and a fifth push that the second device has to receive.
+
+**Rejected.** **Minting a new epoch when the log looks restored** — the relay
+cannot tell a restore from a cold start, and guessing wrong rewrites the
+identity of a healthy log, costing every device a full replay for nothing.
+**Having the operator bump the epoch by hand after a restore** — it makes
+correctness depend on remembering a step during the one procedure that is only
+ever run under stress. **Recomputing `next_seq` from the frames alone** — it is
+already the maximum of the two (`log.rs`), and it is the *device's* cursor that
+is ahead here, not the log's own bookkeeping.

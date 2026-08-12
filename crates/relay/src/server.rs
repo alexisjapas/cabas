@@ -157,7 +157,13 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
     // is either in `replay` or already in `rx`, never lost between them.
     let (epoch, replay, mut rx) = {
         let log = family.log.lock().await;
-        let since = if hello_epoch == log.epoch() {
+        // A cursor is honoured only if it names this log's epoch *and* points
+        // inside it. The epoch alone is not enough: a log restored from a
+        // backup brings its epoch back with it, while every device holds a
+        // cursor from further along than the restored log ever reached
+        // (DECISIONS 0053). Replaying from there is replaying nothing, for as
+        // many pushes as the restore rolled back — silently, on both sides.
+        let since = if hello_epoch == log.epoch() && hello_since < log.next_seq() {
             hello_since
         } else {
             // The cursor points into a log that no longer exists — replay

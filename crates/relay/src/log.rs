@@ -83,6 +83,17 @@ impl FamilyLog {
         self.epoch
     }
 
+    /// The sequence the next frame will be given — one past the highest this
+    /// log has ever assigned.
+    ///
+    /// A cursor at or above it names frames that were never handed out, which
+    /// on a log restored from a backup is exactly what every device holds
+    /// (DECISIONS 0053). `server.rs` reads it to decide whether a cursor can
+    /// be honoured at all.
+    pub fn next_seq(&self) -> u64 {
+        self.next_seq
+    }
+
     /// Every frame after `since`, in sequence order — the replay a
     /// reconnecting device asked for.
     pub fn replay(&self, since: u64) -> Vec<StoredFrame> {
