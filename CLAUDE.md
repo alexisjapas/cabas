@@ -341,8 +341,21 @@ Key domain shapes, all settled in DECISIONS:
 ## Conventions
 
 - Conventional Commits (`feat:`, `fix:`, `chore:`, …), in English — Rule 15.
-  Version is semver of the shipped artifact; a release is an annotated
-  `vX.Y.Z` tag whose message **is** the changelog.
+- **Bump `[workspace.package].version` by ordinary semver, every time** —
+  `fix:` → patch, `feat:` → minor, a break in the sync protocol or the
+  persisted schema → major, tooling- and docs-only changes bump nothing. It
+  is the semver of the *shipped artifact* (the relay image and the bundle it
+  serves), not a commit counter. `cabas-relay/config.yaml` carries the same
+  string and `check-addon` fails when the two disagree.
+- **A release is an annotated `vX.Y.Z` tag whose message *is* the
+  changelog**, and it is the only thing that ships. `main` publishes a
+  `-dev` version and nothing else; a version with no `-dev` on `main`
+  publishes nothing at all and says so in the job log. **A change that does
+  not move the version never reaches the Pi**: the Supervisor decides an
+  add-on has an update by comparing this string to the installed one, so
+  republishing a tag an appliance already pulled is a no-op there — which is
+  how a fix can be green in CI, present in the registry, and absent from the
+  only machine that runs it.
 - Doc-comments explain the *why* and cite the rule or decision ("Rule 3",
   "DECISIONS 0019") — the reasoning is the part that rots.
 - `docs/DECISIONS.md` is **append-only**: a reversed choice gets a new

@@ -308,9 +308,13 @@ build-relay aarch64            # → cabas-relay/cabas-relay.bin, static, 4 MB
 check-addon                    # the manifest against the workspace version
 ```
 
-A pull request publishes nothing, `main` publishes the `-dev` version — so the
-add-on is installable from this repository today — and a release is an
-annotated `vX.Y.Z` tag whose name must match `cabas-relay/config.yaml`.
+A pull request publishes nothing. `main` publishes only while the version
+carries `-dev`; on a released version it builds both images and pushes
+neither, saying so in the job log. **A release is an annotated `vX.Y.Z` tag**
+whose name must match `cabas-relay/config.yaml`, and it is what an appliance
+installs and updates from — the Supervisor compares that version string to
+the installed one, so a change that does not move it never arrives on the Pi
+(Rule 15).
 
 The same binary answers two questions from a shell on the machine:
 

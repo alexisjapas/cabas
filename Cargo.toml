@@ -9,9 +9,13 @@ members = [
 ]
 
 [workspace.package]
-# Semver of the shipped artifact (CONSTITUTION Rule 12). The `-dev` suffix
-# marks a line that never shipped; it drops at the first release.
-version = "0.1.0-dev"
+# Semver of the shipped artifact (CONSTITUTION Rule 15): `fix:` → patch,
+# `feat:` → minor, a break in the sync protocol or the persisted schema →
+# major, tooling-only changes bump nothing. It is not a commit counter, and
+# it is not decoration either: the Supervisor decides an add-on has an update
+# by comparing this string to the installed one, so anything that must reach
+# the Pi has to move it.
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/alexisjapas/cabas"

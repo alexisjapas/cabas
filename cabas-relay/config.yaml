@@ -2,10 +2,15 @@
 #
 # `version` is the tag the Supervisor pulls, so it *is* the release: it must
 # equal the workspace version in `Cargo.toml`, and CI fails if it does not
-# (CONSTITUTION Rule 12). A `-dev` version is published from `main` on every
+# (CONSTITUTION Rule 15). A `-dev` version is published from `main` on every
 # push; a released one may only come from an annotated `vX.Y.Z` tag.
+#
+# It is also the only thing that makes an installed add-on update. The
+# Supervisor compares this string to what is installed, so republishing a
+# tag that already exists changes nothing on an appliance that already
+# pulled it — a fix that does not move this number never reaches the Pi.
 name: cabas
-version: "0.1.0-dev"
+version: "0.1.0"
 slug: cabas_relay
 description: >-
   Sync relay and host for the cabas shopping list — serves the app and brokers

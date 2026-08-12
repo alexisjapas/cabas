@@ -299,5 +299,12 @@ still converge with the relay. Keeping the version keyed to the artifact's
 observable behaviour is what makes "can this old client still talk to that
 relay?" answerable.
 
-**Anchored in.** `Cargo.toml` (`[workspace.package].version`); CI release
-workflow — M6.
+And the version is not only a label: it is the delivery mechanism. The
+Supervisor decides an add-on has an update by comparing this string to the
+one installed, so **a change that does not move it never reaches the
+appliance** — it can be green in CI, present in the registry, and absent from
+the only machine that runs it. Bumping is therefore part of shipping, not
+bookkeeping done afterwards.
+
+**Anchored in.** `Cargo.toml` (`[workspace.package].version`);
+`cabas-relay/config.yaml`, gated by `check-addon`; CI release workflow — M6.
