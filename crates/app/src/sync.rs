@@ -33,6 +33,13 @@
 //! Acked               → shadow = version taken *before* the push
 //! anything moved      → persist status().cursor
 //! ```
+//!
+//! One wrinkle the host has to know about: when `status().reset` is set, the
+//! relay is serving a log that does not contain what this device's cursor
+//! claimed — a restored backup, most often — and the push at `CaughtUp` is
+//! owed **even if nothing changed locally**, because the shadow is a claim
+//! about a log that no longer exists (DECISIONS 0054). What goes out in that
+//! case is a whole replica; [`SyncSession::push`] decides that on its own.
 
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +108,12 @@ pub struct SyncStatus {
     /// company: someone holding the family id, which the relay stores in the
     /// clear, but not the phrase.
     pub dropped: u64,
+    /// The relay served a log that does not hold what the cursor claimed —
+    /// restored from a backup, or reset. The host reads this to know that its
+    /// shadow is void and that it owes the family a push even if nothing
+    /// changed locally (DECISIONS 0054); [`SyncSession::push`] acts on it by
+    /// itself, so nothing has to be recomputed from it.
+    pub reset: bool,
 }
 
 /// One server message, after the replica has been brought up to date with it.
@@ -192,7 +205,28 @@ impl SyncSession {
     /// a command applied while the push is in flight then stays unpushed
     /// rather than being counted as sent. `pending_snapshot` guards the save
     /// path with the same reasoning.
+    ///
+    /// # After a reset, `shadow` is ignored
+    ///
+    /// A shadow means "the relay already holds everything up to here", and a
+    /// restored backup makes that false without changing anything the shadow
+    /// can see: the epoch is inside `/data`, so it comes back identical
+    /// (DECISIONS 0053). A delta measured from such a shadow is *causally*
+    /// dangling — it names operations the log no longer carries — so a device
+    /// that missed that window accepts the frame, advances its cursor, and
+    /// applies nothing, for good and with no error anywhere. Meanwhile the
+    /// device holding those operations never offers them again, because as
+    /// far as its shadow knows they were delivered.
+    ///
+    /// So a session that saw a reset pushes the **whole replica** instead. It
+    /// is self-contained by construction, which is what lets the relay
+    /// truncate to it, and it puts the rolled-back window back into the log —
+    /// the recovery point that is supposed to survive every device
+    /// (DECISIONS 0054).
     pub fn push<S: Storage, P: Platform>(&self, app: &App<S, P>, shadow: &[u8]) -> Result<Vec<u8>> {
+        if self.inner.reset() {
+            return self.snapshot(app);
+        }
         Ok(self.inner.delta(&app.changes_since(shadow)?)?)
     }
 
@@ -214,6 +248,7 @@ impl SyncSession {
             cursor: SyncCursor { epoch, since },
             replayed: self.inner.replayed(),
             dropped: self.inner.dropped(),
+            reset: self.inner.reset(),
         }
     }
 }

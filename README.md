@@ -437,29 +437,44 @@ does nothing at all looks exactly like one that worked.** So plant something
 the restore is expected to destroy, and make that the thing you check.
 
 1. Take a Home Assistant backup that includes this add-on.
-2. On a phone, add an ingredient named something you will recognise —
-   `TÉMOIN` — and let it sync; Settings says `online` when it has.
-3. Restore the backup.
-4. Open the app on **both** phones.
+2. From a shell on the machine (the SSH add-on, then `docker exec` into this
+   one), run `cabas-relay families` and **write down the frame count**. That
+   number is the marker, and unlike anything on a phone it cannot be supplied
+   from somewhere else.
+3. On a phone, add an ingredient named something you will recognise —
+   `TÉMOIN` — and let it sync; Settings says `online` when it has. Run
+   `cabas-relay families` again: the count has grown.
+4. Restore the backup.
+5. Run `cabas-relay families` once more, **before opening either phone.**
 
-What proves it: `TÉMOIN` is **gone** and everything older is present. Its
-absence is the whole proof — it is the only observation that tells a real
-restore apart from a no-op.
+What proves it, and the only thing that does: the frame count is back to what
+step 2 recorded. A family that is **not** listed at all is a backup that did
+not carry `/data` — question two, answered the way nobody wants.
 
-Then the step that is easy to skip and is the entire reason
+**Do not read the answer off a phone.** `TÉMOIN` lives in the replica of every
+phone that saw it, and a restore does not reach into those; a phone that was
+open when it was created still shows it afterwards, and that says nothing about
+whether the restore worked. The relay is the only party whose state the backup
+actually rolls back, so the relay is where the marker is read. What the phones
+are for is the next step.
+
+Then the step that is easy to skip, and the reason
 [0053](docs/DECISIONS.md#0053--a-cursor-must-point-inside-the-log-not-merely-at-its-epoch)
-exists: **change something on one phone and confirm it reaches the other.** A
-restored log stops where the backup did, while both phones still hold cursors
-from further along — and before 0.1.1 the relay honoured those cursors,
-replayed nothing and let the family stop converging silently, for as many
-pushes as the restore rolled back. A change that does not cross after a restore
-is that bug, returned.
+and
+[0054](docs/DECISIONS.md#0054--a-reset-cursor-voids-the-shadow-and-the-answer-is-a-whole-replica)
+both exist: **open both phones, change something on one, and confirm it reaches
+the other.** A restored log stops where the backup did while both phones hold
+cursors from further along — and a restore is only survived if both directions
+handle that. Before 0.1.1 the relay replayed nothing to them; before 0.1.2 the
+phone that had shopped through the rolled-back window never offered it again,
+so a phone that had been closed took frame after frame and applied none of
+them, for good. A change that does not cross after a restore is one of those
+two, returned.
 
-From a shell on the machine (the SSH add-on, then `docker exec` into this one),
-`cabas-relay families` shows what survived — the family id, its frame count and
-how long since it last received anything. A family that is **not** listed after
-a restore is a backup that did not carry `/data`: that is question two,
-answered the way nobody wants.
+The sharpest version of that check needs one phone **closed** from step 1 to
+step 5, because that is the case the log alone has to answer. Open it last, and
+what should arrive is everything — including whatever was added while it was
+away.
 
 Two things need more than the everyday shell, so they get their own — a
 browser and an Android SDK are both large downloads that most work never

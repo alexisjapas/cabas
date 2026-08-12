@@ -22,7 +22,7 @@ buys a false belief instead of no belief.
 | **M3** | App surface: commands, view-models, wasm + native bindings | Both targets build in CI; a scripted shopping scenario runs headless | ✅ |
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
-| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`; phones, cleanup and restore drill left |
+| **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
@@ -93,9 +93,10 @@ it (DECISIONS 0050).
 
 **The app is on the internet, at its permanent address.**
 `https://cabas.cladelabs.com` reaches the relay on the Pi through a Cloudflare
-Tunnel. Eight of this milestone's eleven items are closed; the three that are
-left need a phone in a hand or a shell on the Pi, not a change to this
-repository.
+Tunnel, and **both phones are installed from it** — a new family, twelve new
+words, the old install and its `cabas local CA` profile gone. Eleven of this
+milestone's thirteen items are closed; the two that are left need a shell on
+the Pi and a backup taken on it, not a change to this repository.
 
 That address is now **the** address (DECISIONS 0012). Both phones install from
 it and never from anything else, and the local certificate authority `ui-serve`
@@ -103,21 +104,38 @@ mints retires with it — it existed only because a LAN address could not be a
 secure context, which is exactly what stopped a phone installing from the Pi
 directly.
 
-**Next action: the two phones onto the new origin**, which starts a new family
-rather than migrating the old one — see the item below for why that is a choice
-and not an accident. Then the leftover test family gets forgotten, and then the
-restore drill, which is the last thing between here and M6's exit criterion.
-**Its procedure is now written** — README, "The restore drill" — in two halves
-that prove different things: that a wiped device gets its library from the log
-alone, and that Home Assistant's backups really do carry `/data`, which is a
-claim this repository can make about the relay's behaviour and not about HA's.
+**Next action: the restore drill**, which is the last thing between here and
+M6's exit criterion, plus the leftover test family forgotten on the way past —
+that command has never been run against real data, and the drill is the moment
+it should be. The procedure is in the README, "The restore drill", in two
+halves that prove different things: that a wiped device gets its library from
+the log alone, and that Home Assistant's backups really do carry `/data`, which
+is a claim this repository can make about the relay's behaviour and not about
+HA's.
 
-Writing it down was worth doing before running it: the drill's second half,
-read against `server.rs`, could not have worked. A restored log stops where the
-backup did while the phones hold cursors from further along, and the epoch —
-the one guard against exactly this — is *inside* the backup, so it came back
-identical. The relay replayed nothing to either phone and neither noticed.
-Fixed in 0.1.1 and staged in `convergence.rs` (DECISIONS 0053).
+**Read the marker off the relay, not off a phone.** `cabas-relay families`
+before and after is what says whether the restore happened; the planted
+ingredient survives in the replica of every phone that saw it, and a restore
+does not reach into those. The README carries the corrected procedure.
+
+Writing the drill down, and then reading it against the code a second time,
+found two bugs that a run would have hit and neither phone would have reported:
+
+- A restored log stops where the backup did while the phones hold cursors from
+  further along, and the epoch — the one guard against exactly this — is
+  *inside* the backup, so it comes back identical. The relay replayed nothing
+  to either phone and neither noticed. Fixed in 0.1.1 (DECISIONS 0053).
+- The same restore falsifies the *shadow*, which is the claim "the relay
+  already holds everything up to here" — and nothing about a restore changes
+  what the shadow can see. The phone that shopped through the rolled-back
+  window then measures its next delta from a version the log no longer holds,
+  which is causally dangling for any phone that missed that window: frames
+  accepted, cursor climbing, nothing merged, for good. Measured, then fixed in
+  0.1.2 — a session that finds a log it does not recognise pushes a whole
+  replica (DECISIONS 0054).
+
+Both are staged in `crates/relay/tests/convergence.rs`, one test each, and both
+fail without their fix.
 
 M5 is closed, on two phones: an iPhone and a Pixel 8 pair with twelve words,
 converge while both are open and while neither ever meets the other, and read
@@ -618,10 +636,10 @@ closed could not reach a relay at all.
       it is here because nothing on that machine can work out on its own that
       this family is fictional, which is the entire premise of 0050 — and
       because it doubles as the first real run of that procedure
-- [ ] **Both phones onto the new origin.** Deliberately *not* a migration: the
-      family moving with them was never on this relay, so it starts fresh —
+- [x] **Both phones onto the new origin.** Deliberately *not* a migration: the
+      family moving with them was never on this relay, so it started fresh —
       new twelve words, written down somewhere that is not a phone — and the
-      old install is deleted along with the `cabas local CA` profile that let
+      old install was deleted along with the `cabas local CA` profile that let
       it load. The README's phone section carries both procedures
 - [x] **A cursor is checked against the log's length, not just its epoch**
       (DECISIONS 0053). Found by writing the drill below rather than by running
@@ -633,16 +651,32 @@ closed could not reach a relay at all.
       The relay now replays from zero when a cursor points past the end of the
       log, which is the same trade 0045 made: one bounded replay against a
       family that never converges again. `convergence.rs` stages the restore
+- [x] **A device whose cursor was reset pushes a whole replica, not a delta**
+      (DECISIONS 0054). The other half of the same restore, and the half 0053
+      does not reach: the *shadow* is the claim "the relay already holds
+      everything up to version V", a restore makes it false, and nothing the
+      shadow can observe changes. The next delta is then measured from
+      operations the log no longer carries, so any device that missed the
+      rolled-back window cannot root it — it accepts every frame, advances its
+      cursor, merges nothing, and stays there, because the one device holding
+      those operations believes it already sent them. Measured before it was
+      fixed: one ingredient, six pushes, no error at either end. A session that
+      finds a log it does not recognise ignores its shadow and pushes the whole
+      replica; the ack discharges it. Entirely client-side, so the wire format
+      is untouched and a phone on the old bundle still talks to a new relay
 - [ ] **Restore drill**, in two halves that answer different questions — README,
       "The restore drill", carries the procedure. **One**: delete the app on one
       phone with the *other one closed*, reinstall from the tunnel, type the
       twelve words, and check the library and the other phone's journal
       entries come back — that is the log, and nothing else, doing it.
-      **Two**: back up, add an ingredient named `TÉMOIN`, restore, and check it
-      is **gone** — a restore that did nothing looks identical to one that
-      worked, so the planted marker is the only real evidence. Then change
-      something on one phone and confirm it reaches the other, which is the
-      case 0053 fixed. This half is the first and only evidence that Home
+      **Two**: `cabas-relay families` for the frame count, back up, add an
+      ingredient named `TÉMOIN`, restore, and read the count again **before
+      opening a phone** — a restore that did nothing looks identical to one
+      that worked, and the relay is the only party a restore rolls back, so
+      the count is the evidence and the phones are not. Then change something
+      on one phone and confirm it reaches the other, with one phone kept
+      closed across the whole window: that is the case 0053 and 0054 fixed,
+      one direction each. This half is the first and only evidence that Home
       Assistant's backups really do carry `/data`
 
 **Exit**: reachable from 4G; a backup restore is tested end to end.

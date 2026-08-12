@@ -2084,3 +2084,67 @@ correctness depend on remembering a step during the one procedure that is only
 ever run under stress. **Recomputing `next_seq` from the frames alone** — it is
 already the maximum of the two (`log.rs`), and it is the *device's* cursor that
 is ahead here, not the log's own bookkeeping.
+
+## 0054 — A reset cursor voids the shadow, and the answer is a whole replica
+
+**Date** 2026-08-12 · **Status** Accepted · **Implements**
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read) · **Completes**
+[0053](#0053--a-cursor-must-point-inside-the-log-not-merely-at-its-epoch)
+
+**Context.** 0053 made the relay replay from zero when a device's cursor points
+past the end of the log, which is what a restored backup produces. That fixes
+the direction the relay controls — what it sends. It leaves the other one
+untouched.
+
+A device keeps a *shadow*: the version its last acked push reached, meaning
+"the relay holds everything up to here". A restore falsifies it, and nothing
+the shadow can observe has changed — the epoch is inside `/data`, so it comes
+back identical, and 0053's own remedy is invisible to the sender because the
+relay never says it refused the cursor. So the device measures its next delta
+from a version the log no longer contains.
+
+That delta is causally dangling. A device that missed the rolled-back window
+cannot apply it — its dependencies name operations nobody will send again,
+since the only device holding them believes they were delivered. The frame is
+accepted, the cursor advances, nothing merges, and every later delta is rooted
+in the same missing operations. Measured on a real relay: a second device sat
+at one ingredient through six pushes, cursor climbing, no error on either side,
+converging never again. The rolled-back window is also gone from the log, which
+is the recovery point that is supposed to outlive every device.
+
+**Decision.** A session tracks whether the log it is being served holds what
+its cursor claimed. Two things say it does not: an epoch that differs, and — the
+restored case — a frame whose sequence number is at or below the `since` the
+hello asked for, since the relay only ever replays *after* that number. Either
+sets `Session::reset`.
+
+A reset session pushes the **whole replica** rather than a delta, ignoring the
+shadow, and it owes that push even when nothing changed locally. `SyncSession::
+push` decides this in `crates/app`, so both hosts inherit it — the PWA today,
+Tauri at M7 — and the frame is the snapshot kind, which the relay is already
+allowed to truncate to (0042). The ack discharges the flag: the log holds the
+replica whole again, so the shadow describes it truthfully.
+
+**Consequences.** One full document upload per device per restore, against a
+family that otherwise stops converging silently and permanently. It is the same
+trade as 0045 and 0053, in the third direction: replay is bounded, divergence
+is not.
+
+The relay stays unable to detect any of this — it holds ciphertext and cannot
+know a delta is dangling — which is why the fix is entirely client-side and
+needs no protocol change. Detection by inference rather than by a new field in
+`Welcome` keeps the wire format frozen: a phone still running the old bundle
+talks to a new relay, and the reverse, exactly as before.
+
+One residue, accepted: a backup taken before the log's very first frame gives a
+restore with nothing to replay, and a device with no frame to notice. Its next
+push is then a delta the log cannot root. It needs a restore to a point older
+than any frame the family ever pushed, which is a window of minutes on the day
+the relay is installed.
+
+**Rejected.** **Announcing the replay position in `Welcome`** — the honest
+version, and a wire break for a case inference already covers; frozen formats
+are worth more than tidy ones here (0042). **Resetting the shadow in each host**
+— two hosts, one rule, and the second one arrives at M7 with nobody to notice it
+was forgotten. **Always pushing a snapshot** — it turns every connection into a
+document upload to spare one per restore.

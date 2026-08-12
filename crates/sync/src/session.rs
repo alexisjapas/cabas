@@ -57,6 +57,12 @@ pub struct Session {
     key: FamilyKey,
     epoch: u64,
     since: u64,
+    /// The `since` the hello carried. Kept because the relay does not
+    /// announce that it ignored a cursor — it simply replays from the
+    /// beginning — and a frame at or below this number is that fact
+    /// arriving (DECISIONS 0054).
+    asked_since: u64,
+    reset: bool,
     replayed: u64,
     dropped: u64,
 }
@@ -69,6 +75,8 @@ impl Session {
             key,
             epoch,
             since,
+            asked_since: since,
+            reset: false,
             replayed: 0,
             dropped: 0,
         }
@@ -116,10 +124,22 @@ impl Session {
                     // being idempotent makes the full replay only verbose.
                     self.since = 0;
                     self.epoch = epoch;
+                    self.reset = true;
                 }
                 Ok(Event::Connected)
             }
             ServerMessage::Frame { seq, payload, .. } => {
+                // A restored backup keeps the epoch — it lives in `/data`,
+                // inside the backup — so the branch above cannot see it. What
+                // it cannot hide is replaying frames this cursor already
+                // counted: the relay only ever sends what comes *after* the
+                // `since` it was given, so a frame at or below it means the
+                // cursor was refused and the log is not the one this device
+                // was reading (DECISIONS 0053, 0054).
+                if !self.reset && seq <= self.asked_since {
+                    self.reset = true;
+                    self.since = 0;
+                }
                 self.replayed += 1;
                 self.since = self.since.max(seq);
                 match seal::open(&self.key, &payload) {
@@ -132,7 +152,14 @@ impl Session {
                 }
             }
             ServerMessage::CaughtUp => Ok(Event::CaughtUp),
-            ServerMessage::Ack { seq } => Ok(Event::Acked { seq }),
+            ServerMessage::Ack { seq } => {
+                // The push this acknowledges was a whole replica — that is
+                // what a reset session sends (0054) — so the log holds
+                // everything again and the caller's shadow, which the ack
+                // advances, describes it truthfully.
+                self.reset = false;
+                Ok(Event::Acked { seq })
+            }
             ServerMessage::Refused { reason } => Ok(Event::Refused { reason }),
         }
     }
@@ -155,6 +182,20 @@ impl Session {
     /// diagnostics screen: a nonzero count is either corruption or company.
     pub fn dropped(&self) -> u64 {
         self.dropped
+    }
+
+    /// Whether this connection found a log that does not contain what the
+    /// cursor claimed — a new epoch, or a replay that started underneath it.
+    ///
+    /// It matters on the way **out**, not on the way in: the caller's shadow
+    /// version says "the relay already has everything up to here", and after
+    /// a restore that is false. A delta measured from it names operations the
+    /// log no longer carries, which any device that missed them cannot apply
+    /// — and never will, because the device holding them believes they were
+    /// sent. So a caller that sees this pushes a whole replica instead
+    /// (DECISIONS 0054).
+    pub fn reset(&self) -> bool {
+        self.reset
     }
 }
 
@@ -215,6 +256,66 @@ mod tests {
             (6, 0),
             "old sequence numbers point into a log that is gone"
         );
+        assert!(s.reset(), "a new epoch is the loudest form of a reset");
+    }
+
+    /// The restored-backup shape: the epoch comes back with the backup, so it
+    /// matches, and the only evidence is the relay replaying frames this
+    /// cursor had already counted (DECISIONS 0054).
+    #[test]
+    fn a_replay_starting_underneath_the_cursor_is_a_reset() {
+        let key = FamilyKey::from_phrase(
+            "abandon abandon abandon abandon abandon abandon \
+             abandon abandon abandon abandon abandon about",
+        )
+        .unwrap();
+        let sealed = seal::seal(&key, b"an old frame, replayed").unwrap();
+        let mut s = Session::new(key, 5, 17);
+
+        s.handle(&wire(&ServerMessage::Welcome { epoch: 5 }))
+            .unwrap();
+        assert!(!s.reset(), "a matching epoch alone says nothing");
+
+        s.handle(&wire(&ServerMessage::Frame {
+            seq: 1,
+            kind: FrameKind::Delta,
+            payload: sealed,
+        }))
+        .unwrap();
+
+        assert!(
+            s.reset(),
+            "frame 1 cannot follow frame 17: this log is not the one the \
+             cursor was reading"
+        );
+        assert_eq!(
+            s.cursor(),
+            (5, 1),
+            "the cursor restarts in the log actually being served"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_frame_after_the_cursor_is_not_a_reset() {
+        let key = FamilyKey::from_phrase(
+            "abandon abandon abandon abandon abandon abandon \
+             abandon abandon abandon abandon abandon about",
+        )
+        .unwrap();
+        let sealed = seal::seal(&key, b"the next frame").unwrap();
+        let mut s = Session::new(key, 5, 17);
+
+        s.handle(&wire(&ServerMessage::Welcome { epoch: 5 }))
+            .unwrap();
+        s.handle(&wire(&ServerMessage::Frame {
+            seq: 18,
+            kind: FrameKind::Delta,
+            payload: sealed,
+        }))
+        .unwrap();
+
+        assert!(!s.reset(), "18 follows 17: this is an ordinary replay");
+        assert_eq!(s.cursor(), (5, 18));
     }
 
     #[test]

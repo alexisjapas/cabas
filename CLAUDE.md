@@ -23,12 +23,15 @@ therefore **the permanent origin** (0012) and the only address a phone may be
 installed from. Verified end to end from outside: TLS, the bundle, no `Vary`,
 the service worker registering, and a silent socket held open by the relay's
 keepalive (0051). One cache rule keeps the edge from re-TTLing `/sw.js`
-(0052). **Next is the restore drill**, which is all that stands between here
-and M6's exit criterion; its procedure is written (README, "The restore
-drill") and writing it found a real bug — a restored log left every device
-stranded behind a cursor the epoch could not invalidate, fixed in 0.1.1
-(0053). `ui-serve` and its hand-rolled certificate authority
-are development-only from now on.
+(0052), and **both phones are installed from that origin**. **Next is the
+restore drill**, which is all that stands between here and M6's exit
+criterion; its procedure is written (README, "The restore drill") and writing
+it found two real bugs, one per direction of the same restore — a restored log
+left every device stranded behind a cursor the epoch could not invalidate
+(0.1.1, 0053), and the shadow on the other side left the rolled-back window
+unpushable, stranding any device that had missed it (0.1.2, 0054).
+`ui-serve` and its hand-rolled certificate authority are development-only from
+now on.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -38,7 +41,7 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 180 native tests plus 10 in
+its own binary**. 184 native tests plus 10 in
 a real browser — 5 over IndexedDB, 5 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
@@ -586,6 +589,22 @@ Key domain shapes, all settled in DECISIONS:
   `hello_since < log.next_seq()` as well as the epoch (DECISIONS 0053). Anything
   that rolls `/data` back — a filesystem snapshot, a half-restored volume —
   lands in the same place.
+- **A restore falsifies the shadow too, and that half is worse.** The shadow
+  says "the relay holds everything up to version V"; a restore makes it false
+  while changing nothing the shadow can see. A delta measured from it names
+  operations the log no longer carries, so a device that missed the rolled-back
+  window can never root it — it accepts frame after frame, advances its cursor,
+  merges none of them, permanently, while both ends look healthy. A session
+  that finds a log it does not recognise therefore ignores its shadow and
+  pushes the **whole replica** (`SyncSession::push`, DECISIONS 0054). The relay
+  never says it refused a cursor, so the client infers it: a frame at or below
+  the `since` the hello asked for cannot belong to the log that cursor was
+  reading. Both halves are staged in `convergence.rs`, one test each.
+- **The restore drill's marker is read off the relay, not off a phone.** The
+  planted ingredient lives in the replica of every phone that saw it, and a
+  restore reaches none of them — so a phone showing it afterwards says nothing
+  at all. `cabas-relay families` before and after is the evidence, because the
+  relay is the only party whose state a backup rolls back.
 - **A sync cursor must never outlive the replica it belongs to.** They are two
   different files — `localStorage` and IndexedDB — and a cursor that survives
   alone leaves the device with an empty library and no error, for good.

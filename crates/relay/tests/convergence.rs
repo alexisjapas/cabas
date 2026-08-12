@@ -177,15 +177,26 @@ async fn sync_once(device: &mut Device, addr: SocketAddr, dirty: bool) {
         }
     }
 
-    if dirty {
-        let delta = device
-            .app
-            .changes_since(&device.shadow)
-            .expect("export the delta");
+    // `dirty` is the ordinary reason to push. A reset session is the other
+    // one, and it owes a push whether or not anything changed here: its
+    // shadow describes a log the relay no longer has (DECISIONS 0054). What
+    // goes out then is the whole replica, which is what `SyncSession::push`
+    // decides for both real hosts — mirrored here rather than shared, because
+    // this file drives the protocol a layer below it.
+    if dirty || session.reset() {
         let version_after = device.app.version();
-        ws.send(Message::Binary(session.delta(&delta).expect("seal")))
-            .await
-            .expect("send push");
+        let push = if session.reset() {
+            let replica = device.app.changes_since(&[]).expect("export the replica");
+            session.snapshot(&replica)
+        } else {
+            let delta = device
+                .app
+                .changes_since(&device.shadow)
+                .expect("export the delta");
+            session.delta(&delta)
+        }
+        .expect("seal");
+        ws.send(Message::Binary(push)).await.expect("send push");
         loop {
             match session
                 .handle(&recv(&mut ws).await)
@@ -556,4 +567,84 @@ async fn a_restored_backup_does_not_strand_devices_holding_newer_cursors() {
         names.contains(&"Levure".to_string()),
         "bob never received alice's post-restore push: {names:?}"
     );
+}
+
+/// The other side of the same restore, and the one 0053 alone does not
+/// survive: a device that was **closed** for the window the backup rolls
+/// back, so its replica never held that window either.
+///
+/// The log loses it, Bob never had it, and Alice — who has it — never offers
+/// it again, because her shadow says the relay took it. Worse than a gap:
+/// every later delta of hers is causally rooted in those operations, so Bob
+/// accepts frame after frame, advances his cursor, and applies none of them.
+/// Online, no error, and never converging again (DECISIONS 0054).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restored_backup_does_not_strand_a_device_that_missed_the_window() {
+    let dir = TempDir::new("restore-gap");
+    let vault = TempDir::new("restore-gap-backup");
+    let phrase = FamilyKey::generate()
+        .expect("generate")
+        .phrase()
+        .to_string();
+
+    let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_a").await;
+    let mut bob = Device::join(&phrase, 5000, "usr_bob", "Bob", "dev_b").await;
+
+    let relay = spawn_relay(dir.0.clone()).await;
+
+    alice
+        .app
+        .dispatch(save_ingredient("Beurre"))
+        .await
+        .expect("save");
+    sync_once(&mut alice, relay, true).await;
+    sync_once(&mut bob, relay, false).await;
+
+    // The backup: the data directory exactly as it stands.
+    copy_tree(&dir.0, &vault.0);
+
+    // Alice shops on for a week. Bob's phone is closed the whole time (0011),
+    // so this window lives in Alice's replica and in the relay's log, nowhere
+    // else.
+    for name in ["Farine", "Sucre", "Sel", "Poivre"] {
+        alice
+            .app
+            .dispatch(save_ingredient(name))
+            .await
+            .expect("save");
+        sync_once(&mut alice, relay, true).await;
+    }
+
+    // The restore.
+    std::fs::remove_dir_all(&dir.0).expect("clear");
+    copy_tree(&vault.0, &dir.0);
+    let restored = spawn_relay(dir.0.clone()).await;
+
+    // Alice reconnects and adds one more thing — the drill's last step.
+    alice
+        .app
+        .dispatch(save_ingredient("Levure"))
+        .await
+        .expect("save");
+    sync_once(&mut alice, restored, true).await;
+
+    // Bob opens his phone for the first time since before the backup.
+    sync_once(&mut bob, restored, false).await;
+
+    let names: Vec<String> = bob
+        .app
+        .state()
+        .expect("state")
+        .ingredients
+        .iter()
+        .map(|i| i.name.clone())
+        .collect();
+
+    for expected in ["Beurre", "Farine", "Sucre", "Sel", "Poivre", "Levure"] {
+        assert!(
+            names.contains(&expected.to_string()),
+            "bob is missing {expected}: alice holds it and the restored log \
+             does not, so only a whole replica puts it back — {names:?}"
+        );
+    }
 }

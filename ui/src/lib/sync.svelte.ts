@@ -187,6 +187,13 @@ export class Sync {
   /** The version a push in flight would advance the shadow to, held until the
    *  relay says the frame is durable. `null` when nothing is in flight. */
   #inFlight: Uint8Array | null = null;
+  /** The relay is serving a log that does not hold what the cursor claimed —
+   *  a restored backup, most often. It makes the shadow a claim about the
+   *  wrong history, so a push is owed even with nothing changed locally, and
+   *  the core answers it with the whole replica (0054). Discharged by the ack
+   *  that makes that replica durable. Per connection, so it is not
+   *  persisted. */
+  #reset = false;
 
   /** For a settings or diagnostics screen. Not business state: it describes
    *  the socket. */
@@ -363,6 +370,9 @@ export class Sync {
         if (this.#inFlight !== null) {
           this.#shadow = this.#inFlight;
           this.#inFlight = null;
+          // Durable means the log now holds this replica whole, so the shadow
+          // describes it again and the next push can be an ordinary delta.
+          this.#reset = false;
           this.#rememberProgress(true);
           // Anything applied while that push was in flight is still local.
           this.#push();
@@ -390,7 +400,12 @@ export class Sync {
     // Byte equality on an opaque version. If two encodings of one version ever
     // differ, this sends a delta that turns out to be empty — a wasted frame,
     // never a lost edit, which is the right way round for a guess.
-    if (sameBytes(version, this.#shadow)) return;
+    //
+    // Unless the relay reset us: then the shadow describes a log that no
+    // longer holds those frames, "nothing changed since" is a claim about the
+    // wrong history, and this device owes the family the whole replica —
+    // which is what the core sends in that state (0054).
+    if (!this.#reset && sameBytes(version, this.#shadow)) return;
 
     try {
       socket.send(this.#core.syncPush(this.#shadow));
@@ -446,6 +461,7 @@ export class Sync {
     this.#cursor = status.cursor;
     this.replayed = status.replayed;
     this.dropped = status.dropped;
+    this.#reset = status.reset;
     this.#rememberProgress();
   }
 
