@@ -451,6 +451,13 @@ What proves it, and the only thing that does: the frame count is back to what
 step 2 recorded. A family that is **not** listed at all is a backup that did
 not carry `/data` — question two, answered the way nobody wants.
 
+**Before opening either phone** is not tidiness, it is the only chance. The
+first phone to reconnect finds a log it does not recognise and pushes its whole
+replica as a snapshot, which the relay is entitled to truncate to
+([0054](docs/DECISIONS.md#0054--a-reset-cursor-voids-the-shadow-and-the-answer-is-a-whole-replica)) —
+so the count collapses to a handful of frames and never resembles either
+recorded number again. That is the fix working. Read the evidence first.
+
 **Do not read the answer off a phone.** `TÉMOIN` lives in the replica of every
 phone that saw it, and a restore does not reach into those; a phone that was
 open when it was created still shows it afterwards, and that says nothing about
