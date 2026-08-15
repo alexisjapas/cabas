@@ -5,6 +5,7 @@
   import Screen from '../components/Screen.svelte';
   import type { AisleTag } from '../lib/bindings/AisleTag';
   import type { CartLineView } from '../lib/bindings/CartLineView';
+  import { byName } from '../lib/format';
   import { AISLE_LABEL, CHECK_STATE_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -30,6 +31,11 @@
   /**
    * Aisle headings. The order is the core's — it sorted the lines into the
    * order you walk the shop in — so this only has to notice where it changes.
+   *
+   * Within an aisle the names are put back in *French* order: the core sorts
+   * by code point, where "Œufs" and "Épinards" land after "Z". Which of the
+   * two orders you want depends on whether the reader is a person
+   * (`format.byName`), and here they are.
    */
   let groups = $derived.by(() => {
     const built: Group[] = [];
@@ -41,8 +47,12 @@
         built.push({ aisle: line.aisle, lines: [line] });
       }
     }
+    for (const group of built) group.lines.sort(byName);
     return built;
   });
+
+  let bought = $derived([...cart.bought].sort(byName));
+  let atHome = $derived([...cart.at_home].sort(byName));
 
   function toggle(ingredient: string): void {
     session.run({ command: 'toggle_cart_item', ingredient });
@@ -98,7 +108,7 @@
     <details>
       <summary>{CHECK_STATE_LABEL.checked} ({cart.bought.length})</summary>
       <ul>
-        {#each cart.bought as line (line.ingredient)}
+        {#each bought as line (line.ingredient)}
           <li><CartLine {line} ontoggle={() => toggle(line.ingredient)} /></li>
         {/each}
       </ul>
@@ -112,7 +122,7 @@
         Des ingrédients de base, décochés d'un geste s'il en manque un.
       </p>
       <ul>
-        {#each cart.at_home as line (line.ingredient)}
+        {#each atHome as line (line.ingredient)}
           <li><CartLine {line} ontoggle={() => toggle(line.ingredient)} /></li>
         {/each}
       </ul>

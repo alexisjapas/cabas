@@ -15,7 +15,7 @@ members = [
 # it is not decoration either: the Supervisor decides an add-on has an update
 # by comparing this string to the installed one, so anything that must reach
 # the Pi has to move it.
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/alexisjapas/cabas"

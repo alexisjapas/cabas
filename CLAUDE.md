@@ -54,9 +54,16 @@ UI**, the app is **installable**, **it opens with the network off**, and the
 soft keyboard no longer covers what is being typed into. Since 0.3.0 the
 library form opens **where an ingredient is wanted** — the list's picker and
 each recipe line's, through `components/IngredientPicker.svelte`, which owns
-the select, its door and the form behind it as one mechanism (DECISIONS 0056)
+the field, its door and the form behind it as one mechanism (DECISIONS 0056)
 — and there is an `Items` aisle for what is bought whole and never
-cooked (0057). `ui-serve` serves the
+cooked (0057). Since 0.4.0 **anything chosen out of a library is searched
+for**: `components/SearchPicker.svelte` replaces every `<select>` over a
+library with a field that filters and the matches under it,
+`components/SearchField.svelte` does the same over the two shelf screens, and
+every list of names on screen is alphabetical in French (0058). The list
+screen took the cart's shape in the same breath — a settled entry folds away
+below what is still missing, and a recipe reaches the list *from* the list
+(0059). `ui-serve` serves the
 built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
@@ -303,9 +310,9 @@ file:
 | `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
-| `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
+| `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a select's last option, used wherever an ingredient is chosen (0056) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -533,26 +540,43 @@ Key domain shapes, all settled in DECISIONS:
   checkbox: Enter on a checkbox submits the surrounding form like any other
   field, so the one that is missing the guard is the one that destroys the
   recipe being written.
-- **A picker whose last option is a door must not be bound.** Choosing
-  « + Nouvel ingrédient » has to leave the line's value alone *and* put the
-  control back where it was — and a `$state` assigned the value it already held
-  does not re-render, so the select would keep showing the door. `value=` plus
-  an `onchange` that writes `event.currentTarget.value` back is the shape that
-  works, and it lives in `IngredientPicker.svelte` alone. **The panel's open
-  state belongs to the picker and dies with it**, which is what makes closing
-  the list's add form forget a half-typed ingredient, and removing a recipe
-  line take its own and leave every other line's — the two screens each held a
-  copy of this and both leaked the same three ways.
+- **A `SearchPicker`'s field is not bound, and the reason is `required`.** It
+  displays the chosen option's name when closed and the query when open, so a
+  binding would put a half-typed query where the form's value should be. Three
+  behaviours hold that together and each fails silently on its own (DECISIONS
+  0058): the outside-pointer listener is in the **capture** phase, so pressing
+  "save" closes the panel *before* the click and the field is back to a real
+  name — empty when nothing was chosen, which is what makes `required` refuse;
+  a row prevents `mousedown`, or the pointer blurs the field, closes the panel
+  and the click lands on nothing; and Enter always `preventDefault`s, because
+  the panel opens inside a form that would otherwise save.
+  **The panel's state belongs to the picker and dies with it**, which is what
+  makes closing the list's add form forget a half-typed ingredient, and
+  removing a recipe line take its own and leave every other line's.
 - **`.picker` in the same document is the recipe editor's "@" mention list.**
   Svelte scopes styles per component but `ui-test` queries the DOM globally, so
   a second component naming its root `.picker` silently changes what
   `__count('.picker button')` counts. `IngredientPicker.svelte` is
-  `.ingredient-picker` for that reason.
+  `.ingredient-picker` and `SearchPicker.svelte` is `.search-picker` for that
+  reason.
 - **A UI test that sets a `<select>` needs the native setter and a dispatched
   event** — assigning `.value` moves the pixel and tells Svelte nothing. Note
   also that `form select:nth-of-type(1)` matches *every* first-select-child in
   the form, not the first select in it; `querySelectorAll(...)[n]` is what you
   meant. Both traps are already handled in `ui/tests/smoke.mjs`.
+- **A picker cannot be driven by `focus()` from a headless page**, because the
+  page is not the focused window and the focus handler never runs — which looks
+  exactly like a panel that failed to render. `__open` in `smoke.mjs` clicks the
+  field, which is the event the component listens for anyway; `__choose`,
+  `__offered` and `__door` all go through it.
+- **A `<fieldset>` is `min-inline-size: min-content` in every browser's own
+  stylesheet.** It therefore refuses to be narrower than its widest child,
+  which is how one long `<option>` label pushed the unit dropdown past the
+  right edge of a recipe line on a phone. `QuantityField` sets `min-width: 0`
+  on the fieldset and lets the select shrink (`flex: 0 1 auto`, capped); a flex
+  child's floor is its content everywhere else too, so anything new on a line
+  inherits the same trap. `ui-test` asserts at 390 px that nothing overflows
+  sideways and that a line's rows share one right edge.
 - **`Vary` makes the precache miss its own entries.** A server answering
   `Vary: Origin` (Vite's preview does; the relay deliberately does not) makes
   the Cache API match on the

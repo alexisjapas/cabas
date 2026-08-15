@@ -5,10 +5,11 @@
     type IngredientDraft,
   } from '../components/IngredientForm.svelte';
   import Screen from '../components/Screen.svelte';
+  import SearchField from '../components/SearchField.svelte';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { IngredientView } from '../lib/bindings/IngredientView';
   import { mintIngredientId } from '../lib/core';
-  import { byName } from '../lib/format';
+  import { byName, matches } from '../lib/format';
   import { AISLE_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -28,6 +29,17 @@
   let { session }: { session: Session } = $props();
 
   let ingredients = $derived([...session.state.ingredients].sort(byName));
+
+  /**
+   * The filter, and what survives it. Aliases count: a library is searched for
+   * the word somebody has in mind, which is exactly what an alias records.
+   */
+  let query = $state('');
+  let shown = $derived(
+    ingredients.filter((ingredient) =>
+      matches([ingredient.name, ...ingredient.aliases].join(' '), query),
+    ),
+  );
 
   /**
    * The draft is always a whole one and `writing` says whether it is on
@@ -99,10 +111,15 @@
 
   {#if ingredients.length === 0 && !writing}
     <p class="empty">Aucun ingrédient. Créez le premier avec « Nouveau ».</p>
+  {:else if ingredients.length > 0}
+    <SearchField bind:value={query} placeholder="Chercher un ingrédient…" />
+    {#if shown.length === 0}
+      <p class="empty">Aucun ingrédient ne correspond.</p>
+    {/if}
   {/if}
 
   <ul>
-    {#each ingredients as ingredient (ingredient.id)}
+    {#each shown as ingredient (ingredient.id)}
       <li>
         <button type="button" onclick={() => open(ingredient)}>
           <span class="text">

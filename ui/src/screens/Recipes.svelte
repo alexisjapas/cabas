@@ -1,7 +1,8 @@
 <script lang="ts">
   import Screen from '../components/Screen.svelte';
+  import SearchField from '../components/SearchField.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
-  import { byName, formatQuantity } from '../lib/format';
+  import { byName, formatQuantity, matches } from '../lib/format';
   import type { Session } from '../lib/session.svelte';
   import RecipeEditor from './RecipeEditor.svelte';
   import RecipeReader from './RecipeReader.svelte';
@@ -20,6 +21,10 @@
   /** Sorted for a reader; the core sorts by id, which is stable, not legible. */
   let recipes = $derived([...session.state.recipes].sort(byName));
   let focus = $derived(session.state.focus);
+
+  /** The shelf narrows the same way every other list of names does (0058). */
+  let query = $state('');
+  let shown = $derived(recipes.filter((recipe) => matches(recipe.name, query)));
 
   function blank(): RecipeInput {
     return { id: null, name: '', servings: 4, yields: null, components: [], steps: [] };
@@ -93,10 +98,15 @@
 
     {#if recipes.length === 0}
       <p class="empty">Aucune recette. Écrivez la première avec « Nouvelle ».</p>
+    {:else}
+      <SearchField bind:value={query} placeholder="Chercher une recette…" />
+      {#if shown.length === 0}
+        <p class="empty">Aucune recette ne correspond.</p>
+      {/if}
     {/if}
 
     <ul>
-      {#each recipes as recipe (recipe.id)}
+      {#each shown as recipe (recipe.id)}
         <li>
           <button
             type="button"

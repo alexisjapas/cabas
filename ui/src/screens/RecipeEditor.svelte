@@ -4,11 +4,12 @@
   import IngredientPicker from '../components/IngredientPicker.svelte';
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
+  import SearchPicker, { type PickerOption } from '../components/SearchPicker.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
   import type { SegmentInput } from '../lib/bindings/SegmentInput';
   import type { StepInput } from '../lib/bindings/StepInput';
   import { mintUsageId } from '../lib/core';
-  import { byName } from '../lib/format';
+  import { byName, matches } from '../lib/format';
   import { keyboard, reveal } from '../lib/keyboard.svelte';
   import { REF_DISPLAY_LABEL, REF_DISPLAYS } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
@@ -46,6 +47,15 @@
   /** Every recipe but this one: a recipe containing itself is a cycle. */
   let subRecipes = $derived(
     [...session.state.recipes].filter((summary) => summary.id !== recipe.id).sort(byName),
+  );
+
+  /** Searched like everything else that is chosen out of a library (0058). */
+  let subRecipeOptions = $derived<PickerOption[]>(
+    subRecipes.map((summary) => ({
+      id: summary.id,
+      name: summary.name,
+      hint: `${summary.servings} pers.`,
+    })),
   );
 
   // --- the ingredient lines --------------------------------------------------
@@ -134,14 +144,6 @@
   let mention = $state<Mention | null>(null);
   let form = $state<HTMLFormElement | null>(null);
 
-  /** Accent- and case-insensitive, because nobody types "é" to find "épinard". */
-  function fold(text: string): string {
-    return text
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase();
-  }
-
   /** Only ingredient lines: a step can reference nothing else (`Recipe::usage`). */
   let mentionable = $derived(
     recipe.components.flatMap((component) =>
@@ -161,8 +163,8 @@
 
   let candidates = $derived.by(() => {
     if (mention === null) return [];
-    const query = fold(mention.query);
-    return mentionable.filter((candidate) => fold(candidate.name).includes(query));
+    const query = mention.query;
+    return mentionable.filter((candidate) => matches(candidate.name, query));
   });
 
   /**
@@ -381,15 +383,15 @@
           <QuantityField bind:amount={quantity.amount} bind:unit={quantity.unit} label="Quantité" required />
         {:else}
           {@const amount = component.amount}
-          <div class="linehead">
-            <select bind:value={component.recipe} required aria-label="Sous-recette">
-              <option value="" disabled>Choisir…</option>
-              {#each subRecipes as summary (summary.id)}
-                <option value={summary.id}>{summary.name}</option>
-              {/each}
-            </select>
-            {@render removeLine()}
-          </div>
+          <SearchPicker
+            options={subRecipeOptions}
+            bind:value={component.recipe}
+            required
+            name="Sous-recette"
+            placeholder="Chercher une recette…"
+            empty="Aucune recette ne correspond."
+            trailing={removeLine}
+          />
           <div class="modes">
             <button
               type="button"
@@ -543,8 +545,10 @@
     font-weight: var(--weight-medium);
   }
 
-  input,
-  select {
+  /* The selects that were here are pickers of their own now (DECISIONS 0058),
+     and the unit one belongs to `QuantityField`. What is left is the name and
+     the multiple. */
+  input {
     padding: var(--space-3);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-md);
@@ -622,25 +626,19 @@
     flex-direction: column;
   }
 
+  /* `min-width: 0` on the line and on everything in it: a flex child's floor is
+     its content, so one long unit label or one long ingredient name used to
+     push the whole line past the right edge of the phone rather than shrinking
+     inside it. */
   .line {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    min-width: 0;
     padding: var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface-raised);
-  }
-
-  .linehead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .linehead select {
-    flex: 1;
-    min-width: 0;
   }
 
   .remove {

@@ -51,9 +51,14 @@
 </fieldset>
 
 <style>
+  /* A `<fieldset>` is `min-inline-size: min-content` in every browser's own
+     stylesheet, which means it refuses to be narrower than its widest option —
+     and that is what pushed the unit dropdown past the right edge of a recipe
+     line. Nothing else on the page needed telling; this element did. */
   fieldset {
     margin: 0;
     padding: 0;
+    min-width: 0;
     border: 0;
   }
 
@@ -63,9 +68,13 @@
     font-weight: var(--weight-medium);
   }
 
+  /* An amount and a unit, sharing one line and never leaving it. The amount
+     takes what is left; the unit takes what it needs and no more. */
   div {
     display: flex;
+    align-items: stretch;
     gap: var(--space-2);
+    min-width: 0;
   }
 
   input {
@@ -77,11 +86,20 @@
     background: var(--surface-raised);
   }
 
+  /* `flex: none` is what made this overflow the line it sits on: a select that
+     cannot shrink is as wide as its widest option, and "c. à s. US" inside a
+     recipe line on a phone is wider than the room left for it. It shrinks now,
+     down to a floor that still shows a unit, and the label ellipsises rather
+     than pushing the amount off the screen. */
   select {
-    flex: none;
+    flex: 0 1 auto;
+    width: auto;
+    min-width: var(--space-7);
+    max-width: 45%;
     padding: var(--space-3);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-md);
     background: var(--surface-raised);
+    text-overflow: ellipsis;
   }
 </style>
