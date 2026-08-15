@@ -38,21 +38,24 @@
    */
   let draft = $state<IngredientDraft>(blankDraft(''));
   let writing = $state(false);
-  /** Only an ingredient the library already holds can be deleted. */
-  let editing = $state(false);
   let confirmingDelete = $state(false);
+
+  /**
+   * Only an ingredient the library already holds can be deleted — derived
+   * rather than decided when the panel opened, because the library is synced.
+   * The other device deleting this one mid-edit takes the button away instead
+   * of leaving one that reports "not found" when it is pressed.
+   */
+  let editing = $derived(session.state.ingredients.some((held) => held.id === draft.id));
 
   function open(ingredient: IngredientView | null): void {
     draft = ingredient === null ? blankDraft(mintIngredientId()) : draftOf(ingredient);
     writing = true;
-    editing = ingredient !== null;
     confirmingDelete = false;
   }
 
-  function save(ingredient: IngredientInput): boolean {
-    const accepted = session.run({ command: 'save_ingredient', ingredient });
-    if (accepted) writing = false;
-    return accepted;
+  function save(ingredient: IngredientInput): void {
+    if (session.run({ command: 'save_ingredient', ingredient })) writing = false;
   }
 
   function remove(): void {

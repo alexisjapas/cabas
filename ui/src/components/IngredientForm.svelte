@@ -118,8 +118,14 @@
     /** Titles the panel where it is not obvious what it is — in a picker. */
     heading?: string | undefined;
     submitLabel?: string;
-    /** Returns whether it was accepted; a refusal keeps the panel open. */
-    onsave: (ingredient: IngredientInput) => boolean;
+    /**
+     * The panel is the caller's to show and the caller's to close, so a
+     * refusal needs nothing from here: whoever opened it closes it on success
+     * and leaves it standing otherwise. This used to be typed as returning
+     * whether it was accepted, which no caller could rely on — nothing here
+     * read it.
+     */
+    onsave: (ingredient: IngredientInput) => void;
     oncancel: () => void;
     /** The library's delete button. Nothing else has one. */
     extra?: Snippet | undefined;

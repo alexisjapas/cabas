@@ -84,15 +84,17 @@
   }
 
   /** Created, then chosen: whatever was being written carries on where it was. */
-  function create(ingredient: IngredientInput): boolean {
-    const accepted = session.run({ command: 'save_ingredient', ingredient });
-    if (accepted) {
-      // The draft is this component's own and nothing re-seeds it between the
-      // panel's save and here, so its id is the one the command was given.
-      value = draft.id;
+  function create(ingredient: IngredientInput): void {
+    // The id the command carries, not a re-read of the form behind it: this is
+    // the value the document received. `null` would mean an ingredient the
+    // core names itself, which is precisely the one this picker could not then
+    // select — so there is nothing to select and nothing to save.
+    const created = ingredient.id;
+    if (created === null) return;
+    if (session.run({ command: 'save_ingredient', ingredient })) {
+      value = created;
       creating = false;
     }
-    return accepted;
   }
 </script>
 

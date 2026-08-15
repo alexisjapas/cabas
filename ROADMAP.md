@@ -134,13 +134,22 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.3.0** — creating an ingredient from the
-list and from a recipe, and the `Items` aisle (DECISIONS 0056, 0057). The
+**The workspace has since moved to 0.3.2** — creating an ingredient from the
+list and from a recipe, the `Items` aisle, and the picker that owns all of it
+(DECISIONS 0056, 0057). The
 precondition is *agreement*, not a particular number: whatever is on the Pi is
 what both phones must be showing in Settings before the drill starts. Releasing
-0.3.0 means updating the add-on and opening each phone twice; leaving the
-appliance on 0.2.0 is equally valid, since neither change touches sync, the
-persisted schema or either restore fix.
+0.3.2 means updating the add-on and opening each phone twice; leaving the
+appliance on 0.2.0 is equally valid, since nothing here touches sync or either
+restore fix.
+
+The `Items` aisle is the one thing that does reach the persisted document, and
+it is forward-compatible rather than untouched: an ingredient filed there by a
+0.3.x phone decodes as `Aisle::Other` on 0.2.0 and lands at the *end* of that
+phone's cart (`store::codec`, DECISIONS 0057). No `SCHEMA_VERSION` bump is
+owed for it — but two phones on either side of that line show the same cart in
+a different order, which is worth knowing before running a drill across mixed
+versions.
 
 What is left, in order, with the detail of each in the README:
 

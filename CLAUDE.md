@@ -41,8 +41,8 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 184 native tests plus 10 in
-a real browser — 5 over IndexedDB, 5 through the app — and all of them run
+its own binary**. 186 native tests plus 11 in
+a real browser — 5 over IndexedDB, 6 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end. The phones then answered for themselves.
