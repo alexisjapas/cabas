@@ -41,8 +41,8 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 184 native tests plus 10 in
-a real browser — 5 over IndexedDB, 5 through the app — and all of them run
+its own binary**. 186 native tests plus 11 in
+a real browser — 5 over IndexedDB, 6 through the app — and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end. The phones then answered for themselves.
@@ -53,8 +53,9 @@ end by `ui-test` in headless chromium. **Every command is reachable from the
 UI**, the app is **installable**, **it opens with the network off**, and the
 soft keyboard no longer covers what is being typed into. Since 0.3.0 the
 library form opens **where an ingredient is wanted** — the list's picker and
-each recipe line's, through `components/IngredientForm.svelte` (DECISIONS
-0056) — and there is an `Items` aisle for what is bought whole and never
+each recipe line's, through `components/IngredientPicker.svelte`, which owns
+the select, its door and the form behind it as one mechanism (DECISIONS 0056)
+— and there is an `Items` aisle for what is bought whole and never
 cooked (0057). `ui-serve` serves the
 built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
@@ -304,7 +305,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `IngredientForm.svelte` is the library form, used by three screens (0056) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a select's last option, used wherever an ingredient is chosen (0056) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -528,13 +529,25 @@ Key domain shapes, all settled in DECISIONS:
   editor is, and a nested `<form>` is dropped by the parser. Three rules follow
   and anything added to it inherits them: every button says `type="button"`, no
   field is `required`, and Enter is handled on each control rather than left to
-  submit the form around it (DECISIONS 0056).
+  submit the form around it (DECISIONS 0056). **Each** control, including the
+  checkbox: Enter on a checkbox submits the surrounding form like any other
+  field, so the one that is missing the guard is the one that destroys the
+  recipe being written.
 - **A picker whose last option is a door must not be bound.** Choosing
   « + Nouvel ingrédient » has to leave the line's value alone *and* put the
   control back where it was — and a `$state` assigned the value it already held
   does not re-render, so the select would keep showing the door. `value=` plus
   an `onchange` that writes `event.currentTarget.value` back is the shape that
-  works, in both `List.svelte` and `RecipeEditor.svelte`.
+  works, and it lives in `IngredientPicker.svelte` alone. **The panel's open
+  state belongs to the picker and dies with it**, which is what makes closing
+  the list's add form forget a half-typed ingredient, and removing a recipe
+  line take its own and leave every other line's — the two screens each held a
+  copy of this and both leaked the same three ways.
+- **`.picker` in the same document is the recipe editor's "@" mention list.**
+  Svelte scopes styles per component but `ui-test` queries the DOM globally, so
+  a second component naming its root `.picker` silently changes what
+  `__count('.picker button')` counts. `IngredientPicker.svelte` is
+  `.ingredient-picker` for that reason.
 - **A UI test that sets a `<select>` needs the native setter and a dispatched
   event** — assigning `.value` moves the pixel and tells Svelte nothing. Note
   also that `form select:nth-of-type(1)` matches *every* first-select-child in

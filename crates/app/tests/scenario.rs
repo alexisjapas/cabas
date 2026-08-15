@@ -18,7 +18,7 @@
 use cabas_app::command::{
     ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput, StepInput,
 };
-use cabas_app::tags::{AisleTag, CheckStateTag, RefDisplayTag, UnitTag};
+use cabas_app::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
 use cabas_app::view::{
     CartLineView, ComponentView, ListItemView, ProblemKind, SegmentView, StateView,
 };
@@ -520,6 +520,60 @@ async fn written_in_one_save() {
     assert_eq!(state.problems, Vec::new());
 }
 
+/// An ingredient the picker named before the document had heard of it.
+///
+/// The frontend mints the id so it can select what it creates the moment it
+/// is created, and `SaveIngredient` cannot tell which side minted it
+/// (DECISIONS 0056). Two halves of that contract are easy to break by
+/// hardening the obvious way — refusing a supplied id that names nothing
+/// looks like a sensible guard and would make every picker's first save fail:
+///
+/// - a supplied id that does not exist yet **creates**, under exactly that
+///   id, and records no `Edited` — nothing was edited;
+/// - the same id sent again **edits** that ingredient rather than adding a
+///   second one, and does record it.
+async fn created_under_a_host_minted_id() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    // The host's own source, exactly as the PWA calls
+    // `CabasApp.mintIngredientId` while the picker's panel is open.
+    let host = TestPlatform::default();
+    let chosen = cabas_app::mint_ingredient_id(&host).expect("the host mints an ingredient id");
+
+    let mut input = new_ingredient("Tomato", AisleTag::Produce);
+    input.id = Some(chosen.clone());
+    let state = app
+        .dispatch(Command::SaveIngredient {
+            ingredient: input.clone(),
+        })
+        .await
+        .expect("a supplied id that names nothing creates it");
+
+    assert_eq!(id_of_ingredient(&state, "Tomato"), chosen);
+    // Nothing was edited, so the journal says nothing. An entry here would
+    // put "Alice modified Tomato" above the creation that never happened.
+    assert_eq!(state.events, Vec::new());
+
+    // The same id again is the edit path, not a second ingredient.
+    input.name = "Tomatoes".into();
+    input.staple = true;
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: input })
+        .await
+        .expect("the same id edits");
+
+    assert_eq!(state.ingredients.len(), 1);
+    let ingredient = &state.ingredients[0];
+    assert_eq!(ingredient.id, chosen);
+    assert_eq!(ingredient.name, "Tomatoes");
+    assert!(ingredient.staple);
+
+    let event = state.events.first().expect("the edit is in the journal");
+    assert_eq!(event.action, ActionTag::Edited);
+    assert_eq!(event.subject, SubjectTag::Ingredient);
+    assert_eq!(event.label, "Tomatoes");
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod native {
     use super::*;
@@ -554,6 +608,11 @@ mod native {
     fn a_recipe_is_writable_in_a_single_save() {
         block_on(written_in_one_save());
     }
+
+    #[test]
+    fn an_ingredient_is_creatable_under_an_id_the_host_minted() {
+        block_on(created_under_a_host_minted_id());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -576,6 +635,11 @@ mod browser {
     #[wasm_bindgen_test]
     async fn a_recipe_is_writable_in_a_single_save() {
         written_in_one_save().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn an_ingredient_is_creatable_under_an_id_the_host_minted() {
+        created_under_a_host_minted_id().await;
     }
 
     /// The PWA's actual path: a command built as a JS object, through the

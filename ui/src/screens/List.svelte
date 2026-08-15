@@ -1,14 +1,9 @@
 <script lang="ts">
-  import IngredientForm, {
-    NEW_INGREDIENT,
-    blankDraft,
-    type IngredientDraft,
-  } from '../components/IngredientForm.svelte';
+  import IngredientPicker from '../components/IngredientPicker.svelte';
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
-  import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { UnitTag } from '../lib/bindings/UnitTag';
-  import { byName, formatQuantity, relativeTime } from '../lib/format';
+  import { formatQuantity, relativeTime } from '../lib/format';
   import { PROBLEM_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -24,47 +19,10 @@
   let entries = $derived(session.state.list);
   let problems = $derived(session.state.problems);
 
-  /** Sorted for a reader; the core sorts by id, which is stable, not legible. */
-  let ingredients = $derived([...session.state.ingredients].sort(byName));
-
   let adding = $state(false);
   let chosen = $state('');
   let amount = $state('');
   let unit = $state<UnitTag>('g');
-
-  /**
-   * The library form, opened from the picker (DECISIONS 0056). Wanting
-   * something the library has never heard of is the ordinary case in a shop,
-   * and sending someone to another tab to say so loses what they were typing.
-   */
-  let draft = $state<IngredientDraft>(blankDraft());
-  let creating = $state(false);
-
-  /**
-   * The picker is not bound: its last option is a door rather than a value, so
-   * choosing it must leave `chosen` alone — and put the control back where it
-   * was, which a binding that never changed would not do.
-   */
-  function pick(event: Event & { currentTarget: HTMLSelectElement }): void {
-    const picked = event.currentTarget.value;
-    if (picked !== NEW_INGREDIENT) {
-      chosen = picked;
-      return;
-    }
-    event.currentTarget.value = chosen;
-    draft = blankDraft();
-    creating = true;
-  }
-
-  /** Created, then chosen: the line being written carries on where it was. */
-  function create(ingredient: IngredientInput): boolean {
-    const accepted = session.run({ command: 'save_ingredient', ingredient });
-    if (accepted) {
-      chosen = draft.id;
-      creating = false;
-    }
-    return accepted;
-  }
 
   function add(event: SubmitEvent): void {
     event.preventDefault();
@@ -76,7 +34,6 @@
     });
     if (accepted) {
       adding = false;
-      creating = false;
       chosen = '';
       amount = '';
     }
@@ -97,26 +54,9 @@
 
   {#if adding}
     <form onsubmit={add}>
-      <label>
-        Ingrédient
-        <select value={chosen} onchange={pick} required>
-          <option value="" disabled>Choisir…</option>
-          {#each ingredients as ingredient (ingredient.id)}
-            <option value={ingredient.id}>{ingredient.name}</option>
-          {/each}
-          <option value={NEW_INGREDIENT}>+ Nouvel ingrédient</option>
-        </select>
-      </label>
-
-      {#if creating}
-        <IngredientForm
-          bind:draft
-          heading="Nouvel ingrédient"
-          submitLabel="Créer"
-          onsave={create}
-          oncancel={() => (creating = false)}
-        />
-      {/if}
+      <!-- The picker lives and dies with this form, so closing it forgets a
+           half-typed ingredient rather than keeping it for the next opening. -->
+      <IngredientPicker {session} bind:value={chosen} label="Ingrédient" required />
 
       <QuantityField bind:amount bind:unit />
 
@@ -203,22 +143,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--surface-raised);
-  }
-
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-  }
-
-  select {
-    padding: var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-    font-weight: var(--weight-normal);
   }
 
   .submit {

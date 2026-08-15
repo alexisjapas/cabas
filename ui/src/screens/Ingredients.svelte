@@ -7,6 +7,7 @@
   import Screen from '../components/Screen.svelte';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { IngredientView } from '../lib/bindings/IngredientView';
+  import { mintIngredientId } from '../lib/core';
   import { byName } from '../lib/format';
   import { AISLE_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
@@ -32,25 +33,29 @@
    * The draft is always a whole one and `writing` says whether it is on
    * screen — the shape `Recipes.svelte` uses, and for the same reason: the
    * form binds to it, and a binding to something that may be `null` is a
-   * different type on each side.
+   * different type on each side. The seed carries no id because it is never
+   * rendered; `open` is what mints one.
    */
-  let draft = $state<IngredientDraft>(blankDraft());
+  let draft = $state<IngredientDraft>(blankDraft(''));
   let writing = $state(false);
-  /** Only an ingredient the library already holds can be deleted. */
-  let editing = $state(false);
   let confirmingDelete = $state(false);
 
+  /**
+   * Only an ingredient the library already holds can be deleted — derived
+   * rather than decided when the panel opened, because the library is synced.
+   * The other device deleting this one mid-edit takes the button away instead
+   * of leaving one that reports "not found" when it is pressed.
+   */
+  let editing = $derived(session.state.ingredients.some((held) => held.id === draft.id));
+
   function open(ingredient: IngredientView | null): void {
-    draft = ingredient === null ? blankDraft() : draftOf(ingredient);
+    draft = ingredient === null ? blankDraft(mintIngredientId()) : draftOf(ingredient);
     writing = true;
-    editing = ingredient !== null;
     confirmingDelete = false;
   }
 
-  function save(ingredient: IngredientInput): boolean {
-    const accepted = session.run({ command: 'save_ingredient', ingredient });
-    if (accepted) writing = false;
-    return accepted;
+  function save(ingredient: IngredientInput): void {
+    if (session.run({ command: 'save_ingredient', ingredient })) writing = false;
   }
 
   function remove(): void {
