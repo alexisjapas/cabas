@@ -67,6 +67,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0055](#0055--the-running-build-says-its-own-name-in-settings) | The running build says its own name, in Settings | Tooling |
 | [0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab) | An ingredient is created where it is needed, not in another tab | Product |
 | [0057](#0057--items-an-aisle-for-what-is-bought-whole-and-never-cooked) | Items: an aisle for what is bought whole and never cooked | Domain |
+| [0058](#0058--anything-chosen-out-of-a-library-is-searched-for) | Anything chosen out of a library is searched for | Product |
+| [0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there) | The list shows what is missing, and a recipe joins it from there | Product |
 
 ---
 
@@ -2300,3 +2302,137 @@ screen and every picker. **Reusing `Household`** — that is the cleaning shelf;
 this is about what is bought whole. **Hiding these from the recipe pickers** —
 the same enforcement in a cheaper disguise, and a recipe that legitimately
 calls for one would have no way to say so.
+
+## 0058 — Anything chosen out of a library is searched for
+
+**Date** 2026-08-15 · **Status** Accepted · **Relates to**
+[0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab),
+[0040](#0040--the-keyboard-is-a-length-not-a-mode),
+[0035](#0035--the-app-owns-every-number-the-frontend-owns-every-word)
+
+**Context.** Every ingredient and every sub-recipe was chosen from a native
+`<select>`. That works for ten of anything and for nothing else: the options
+come in the order they were given and there is no way to narrow them, so
+picking the oil out of a family's real library is a scroll through a hundred
+names on a phone.
+
+The control was also drawing itself. A `<select>` is as wide as its widest
+option — including the `<optgroup>` labels, which are wider than any unit —
+and it cannot shrink below that inside a flex row, so the unit dropdown hung
+off the right edge of a recipe line. The arrow beside it is the browser's, and
+so is its padding. Neither is ours to fix while the control is native.
+
+**Decision.** One component, `components/SearchPicker.svelte`: a text field
+that filters, and the matches underneath it. It is what `IngredientPicker`
+chooses an ingredient with, what the recipe editor chooses a sub-recipe with,
+and what the list chooses a recipe with (0059). The two library screens get
+the same search over what they are already showing, through
+`components/SearchField.svelte`.
+
+Four things follow from the shape and each of them is load-bearing:
+
+- **The field is a real `<input>`**, so `required` still means required. It
+  shows the chosen option's name when closed and the query when open, which is
+  why it is not `bind:value`: the value the form validates has to be the name
+  of a real option, never a half-typed query.
+- **Anywhere else is a way out**, and the listener is in the capture phase.
+  Pressing "save" with a half-typed query closes the panel *first*, the field
+  goes back to showing the chosen name — empty when nothing was chosen — and
+  the browser refuses the submit that follows.
+- **A row is held rather than clicked**: `mousedown` is prevented so the
+  pointer does not blur the field, close the panel and leave the click landing
+  on nothing.
+- **Enter chooses and never submits.** The panel opens inside the list's form
+  and inside the one big form the recipe editor is, so an Enter that reached
+  the form would save a recipe halfway through naming a line — the same trap
+  0056 documents for `IngredientForm`, reached through a different control.
+
+Matching is word by word, accent- and case-insensitively, over the name *and*
+an ingredient's aliases: "tom cer" finds "Tomates cerises", and somebody
+looking for "farine de blé" finds "Farine T55". It lives in `lib/format.ts`
+beside `byName`, because searching is presentation for exactly the reason
+sorting is (0035) — it answers a question a person is asking about words on a
+screen, and the core deals in ids.
+
+Ordering is settled in the same breath: every list of names on screen is
+alphabetical in *French*, which is `format.byName` and not the core's sort.
+The core sorts by lowercased id-tied name so that two replicas agree; "Œufs"
+and "Épinards" land after "Z" there. Stable and legible are different things,
+and which one you want depends on whether the reader is a person. So the cart
+sorts its lines within each aisle here, and the list sorts its entries here.
+
+**Consequences.** The panel is in flow rather than floating: a phone has no
+room for an overlay that can be scrolled out from under, and what is below
+simply moves down while the list is open. Like the "@" mention picker it opens
+*because* of what was typed, so it inherits 0040's problem — the keyboard is
+already up and the list is drawn into the keys — and its answer, `reveal`.
+
+The arrow is ours now, and so is its padding.
+
+`ui-test` drives every picker through the search rather than around it, and
+asserts the two failures that are invisible in a unit test: that typing "tom"
+narrows the offer to one row, and that a recipe line at 390 px fits the phone
+with its parts sharing one right edge.
+
+**Rejected.** **`<datalist>`** — one attribute, and it neither restricts the
+value to the list nor renders the same way twice across browsers.
+**Keeping the `<select>` and adding a search field above it** — two controls
+for one choice, and the overflow stays. **A floating overlay** — it is the
+thing that has to be scrolled out from under a keyboard, which is precisely
+what cannot be done on iOS (0040).
+
+## 0059 — The list shows what is missing, and a recipe joins it from there
+
+**Date** 2026-08-15 · **Status** Accepted · **Relates to**
+[0020](#0020--list-entries-vanish-on-completion-purge-is-deferred),
+[0023](#0023--the-staple-flag-and-its-derived-auto-check),
+[0058](#0058--anything-chosen-out-of-a-library-is-searched-for)
+
+**Context.** Two things the list screen was making harder than the cart does.
+
+A list entry stays put until every ingredient it contributed is settled, and
+then it stays put some more: the purge is deferred to "terminer les courses"
+so the trip can be undone (0020). That is right, and it means the screen fills
+up with entries that have nothing left to say while the one thing still
+missing is somewhere among them.
+
+And a recipe could only reach the list through its own reader. Adding one
+therefore meant a detour through Recettes, opening it, and coming back —
+which is the wrong way round when the answer to "what are we cooking" is
+already known.
+
+**Decision.** Both halves take the shape the cart already has.
+
+A completed entry folds into a `<details>` below the list, under "Terminées",
+exactly as a bought line folds under "Acheté" (0023). It is folded and not
+gone, because what removes it is "terminer les courses" and that is the step
+0020 made undoable.
+
+And the add panel gains a second mode: **Recette**, beside Ingrédient. It
+searches the recipes by name (0058), offers the serving count the recipe is
+written for, and lets it be changed before the entry is added rather than
+after. It sends `AddRecipeToList` — the command the reader already sent, from
+the screen the entry lands on.
+
+**Consequences.** The serving count is derived from the chosen recipe with an
+override on top, rather than seeded from it: a `$state` seeded from a view
+captures the value once and would keep the previous recipe's count when
+another is picked. The override carries the recipe it belongs to, so choosing
+a different one drops it.
+
+Nothing moved in the core. `AddRecipeToList` is unchanged, `ProgressView`
+already carried `complete`, and both halves of this are the frontend
+arranging what it was already being handed (Rule 9).
+
+Adding a recipe purges no overlay entry — only adding a bare ingredient does
+(Rule 3) — so a staple ticked off earlier in the trip stays ticked when a
+recipe that uses it lands on the list. That is the existing rule and this
+changes none of it.
+
+**Rejected.** **Hiding completed entries outright** — the trip is undoable
+until it is finished, and an entry that vanished would leave no way to see
+what has already been covered. **A separate "add a recipe" screen** — a second
+place to add something to one list, and the search is the same search.
+**Sorting completed entries to the bottom of the same list** — it reads as an
+ordering accident rather than as a statement, and the cart had already chosen
+the folded section for the same question.

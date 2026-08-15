@@ -25,6 +25,38 @@ export function byName(a: { name: string }, b: { name: string }): number {
   return a.name.localeCompare(b.name, 'fr');
 }
 
+/**
+ * Accent- and case-insensitive, because nobody types "é" to find "épinard".
+ *
+ * Searching is presentation for the same reason sorting is: it answers a
+ * question a person is asking about words on a screen, and the core deals in
+ * ids. Both live here so that every field that filters something filters it
+ * the same way (DECISIONS 0058).
+ */
+export function fold(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
+/**
+ * Whether `haystack` answers `query`: every word of the query appears in it,
+ * in any order and anywhere inside a word.
+ *
+ * Word by word rather than as one run, so "tom cer" finds "Tomates cerises"
+ * and "sucre van" finds "Sucre vanillé" — which is how somebody types when
+ * they half-remember a name. An empty query matches everything, which is what
+ * makes a picker open on the whole library.
+ */
+export function matches(haystack: string, query: string): boolean {
+  const folded = fold(haystack);
+  return fold(query)
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .every((word) => folded.includes(word));
+}
+
 /** "28.35" → "28,35". The core renders with a point; French reads a comma. */
 export function decimal(amount: string): string {
   return amount.replace('.', ',');

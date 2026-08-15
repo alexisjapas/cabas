@@ -159,6 +159,74 @@ const HELPERS = `
     __setNode(el, option.value);
   };
   /**
+   * A \`SearchPicker\`, driven the way a thumb drives it (DECISIONS 0058):
+   * open the field, type enough of the name to narrow the list, press the row
+   * that comes back. There is no \`.value\` to assign — the list is the control.
+   *
+   * The pause is Svelte's: the panel is rendered from state that settles a
+   * microtask after the event, and clicking a row that has not been drawn yet
+   * would be clicking the row that was there before the query.
+   */
+  window.__picker = (selector, n) => {
+    const input = document.querySelectorAll(selector)[n];
+    if (!input) throw new Error('missing ' + selector + ' #' + n);
+    const root = input.closest('.search-picker');
+    if (!root) throw new Error(selector + ' #' + n + ' is not inside a picker');
+    return { input, root };
+  };
+  window.__settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+  /**
+   * Opens a picker's panel the way a tap does.
+   *
+   * \`focus()\` is not enough: a headless page is not the focused window, so
+   * the focus handler never runs and the panel stays shut — which looked
+   * exactly like a door that had not been rendered. The click is the event the
+   * component actually listens for, and the focus is what the keyboard would
+   * have moved anyway.
+   */
+  window.__open = (input) => {
+    input.focus();
+    input.click();
+  };
+  /** The names a picker offers for a query — the search itself, asserted. */
+  window.__offered = async (selector, n, query = '') => {
+    const { input, root } = __picker(selector, n);
+    __open(input);
+    __setNode(input, query);
+    await __settle();
+    return [...root.querySelectorAll('.options .option-name')].map((name) =>
+      name.textContent.trim(),
+    );
+  };
+  window.__choose = async (selector, n, query, option = query) => {
+    const { input, root } = __picker(selector, n);
+    __open(input);
+    __setNode(input, query);
+    await __settle();
+    const rows = [...root.querySelectorAll('.options button')];
+    const row = rows.find(
+      (button) => button.querySelector('.option-name')?.textContent.trim() === option,
+    );
+    if (!row) {
+      const offered = JSON.stringify(rows.map((button) => button.textContent.trim()));
+      throw new Error(option + ' is not offered by ' + selector + ' #' + n + ': ' + offered);
+    }
+    row.click();
+    await __settle();
+    return true;
+  };
+  /** The last row of a picker's list, when it is a door rather than a value. */
+  window.__door = async (selector, n) => {
+    const { input, root } = __picker(selector, n);
+    __open(input);
+    await __settle();
+    const door = root.querySelector('.options .door');
+    if (!door) throw new Error('no door in ' + selector + ' #' + n);
+    door.click();
+    await __settle();
+    return true;
+  };
+  /**
    * A soft keyboard, in the shape iOS makes: the layout viewport keeps every
    * pixel of its height and the visual viewport loses \`px\` off the bottom.
    *
@@ -404,25 +472,20 @@ await shot('02-library');
 await evaluate(`__clickText('nav button', 'Liste')`);
 await waitFor(`__text('h1') === 'Liste'`, 'list screen');
 await evaluate(`__clickText('button', 'Ajouter')`);
-await waitFor('document.querySelector("form select")', 'add form');
+await waitFor('document.querySelector("form .search-picker input")', 'add form');
 
-await evaluate(`
-  (() => {
-    const select = document.querySelector('form select');
-    const option = [...select.options].find((o) => o.textContent.trim() === 'Tomates');
-    if (!option) throw new Error('Tomates missing from the picker');
-    __set('form select', option.value);
-  })()
-`);
+// Typed, not scrolled to: two ingredients is not a library, but the filtering
+// is the same code path a hundred of them go through, and an offer that came
+// back unfiltered would pass every other assertion in this file.
+const narrowed = await evaluate(`__offered('input[aria-label="Ingrédient"]', 0, 'tom')`);
+if (narrowed.length !== 1 || narrowed[0] !== 'Tomates') {
+  throw failed(`typing "tom" offered ${JSON.stringify(narrowed)}`);
+}
+ok('the ingredient picker narrows to what is typed into it');
+
+await evaluate(`__choose('input[aria-label="Ingrédient"]', 0, 'tom', 'Tomates')`);
 await evaluate(`__set('form input[inputmode="decimal"]', '3')`);
-await evaluate(`
-  (() => {
-    const unit = document.querySelectorAll('form select')[1];
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(unit, 'piece');
-    unit.dispatchEvent(new Event('input', { bubbles: true }));
-    unit.dispatchEvent(new Event('change', { bubbles: true }));
-  })()
-`);
+await evaluate(`__set('select[aria-label="Unité"]', 'piece')`);
 await evaluate(`__clickText('button', 'Ajouter à la liste')`);
 
 const refusal = await evaluate(`__text('[role="alert"]')`);
@@ -441,14 +504,14 @@ await shot('03-list');
 // It is an item rather than a food, which is what the aisle is for: toilet
 // paper is bought whole, alone, and never cooked (DECISIONS 0057).
 await evaluate(`__clickText('button', 'Ajouter')`);
-await waitFor('document.querySelector("form select")', 'the add form again');
-await evaluate(`__pick('form select', 0, '+ Nouvel ingrédient')`);
+await waitFor('document.querySelector("form .search-picker input")', 'the add form again');
+await evaluate(`__door('input[aria-label="Ingrédient"]', 0)`);
 await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the list');
 await evaluate(`__set('[data-field="name"]', 'Papier toilette')`);
 await evaluate(`__set('[data-field="aisle"]', 'items')`);
 await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
 await waitFor(
-  `document.querySelector('form select')?.selectedOptions[0]?.textContent.trim() === 'Papier toilette'`,
+  `document.querySelector('input[aria-label="Ingrédient"]')?.value === 'Papier toilette'`,
   'the new ingredient, chosen in the picker it was created from',
 );
 ok('an ingredient is created from the list, and the line carries on');
@@ -482,6 +545,32 @@ await waitFor(`__text('details summary')?.startsWith('Acheté')`, 'the bought se
 ok('ticking a line moves it to "Acheté"');
 await shot('05-ticked');
 
+// --- and the list stops showing it -----------------------------------------
+//
+// An entry whose every ingredient is settled has nothing left to say on a
+// screen that exists to show what is still missing, so it folds away below
+// the ones that are still going — the cart's own shape, applied to the
+// sources it derives from (DECISIONS 0059). It is folded rather than gone
+// because "terminer les courses" is what removes it, and that is undoable
+// until it happens (DECISIONS 0020).
+
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__text('h1') === 'Liste'`, 'the list, after the trip started');
+await waitFor(`__text('.done summary')?.startsWith('Terminées')`, 'the finished section');
+const going = await evaluate(`__all('.pending > li .name')`);
+const settled = await evaluate(`__all('.done li .name')`);
+if (going.includes('Tomates') || !settled.includes('Tomates')) {
+  throw failed(`the settled entry is still in the way: ${JSON.stringify({ going, settled })}`);
+}
+if (!going.includes('Papier toilette')) {
+  throw failed(`an unsettled entry was folded away too: ${JSON.stringify({ going, settled })}`);
+}
+ok(`a fully settled entry moves below the list (${JSON.stringify(settled)})`);
+await shot('05b-list-settled');
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart again');
+
 // --- and none of it was only in memory -------------------------------------
 
 // Long enough for the debounced flush to have written (Session.FLUSH_DELAY_MS).
@@ -508,14 +597,14 @@ await waitFor(`__text('h1') === 'Nouvelle recette'`, 'the recipe editor');
 await evaluate(`__set('input[placeholder="Tarte aux tomates"]', 'Salade de tomates')`);
 
 await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
-await waitFor(`__count('select[aria-label="Ingrédient"]') === 1`, 'the first line');
-await evaluate(`__pick('select[aria-label="Ingrédient"]', 0, 'Tomates')`);
+await waitFor(`__count('input[aria-label="Ingrédient"]') === 1`, 'the first line');
+await evaluate(`__choose('input[aria-label="Ingrédient"]', 0, 'Tomates')`);
 await evaluate(`__setNth('input[aria-label="Quantité"]', 0, '2')`);
 await evaluate(`__setNth('select[aria-label="Unité"]', 0, 'piece')`);
 
 await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
-await waitFor(`__count('select[aria-label="Ingrédient"]') === 2`, 'the second line');
-await evaluate(`__pick('select[aria-label="Ingrédient"]', 1, 'Sel')`);
+await waitFor(`__count('input[aria-label="Ingrédient"]') === 2`, 'the second line');
+await evaluate(`__choose('input[aria-label="Ingrédient"]', 1, 'Sel')`);
 await evaluate(`__setNth('input[aria-label="Quantité"]', 1, '5')`);
 await evaluate(`__setNth('select[aria-label="Unité"]', 1, 'g')`);
 ok('two ingredient lines, each named before the recipe exists');
@@ -525,14 +614,14 @@ ok('two ingredient lines, each named before the recipe exists');
 // is not a `<form>` itself (DECISIONS 0056). The recipe around it is a draft
 // and stays one: what this sends is a `SaveIngredient` and nothing else.
 await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
-await waitFor(`__count('select[aria-label="Ingrédient"]') === 3`, 'the third line');
-await evaluate(`__pick('select[aria-label="Ingrédient"]', 2, '+ Nouvel ingrédient')`);
+await waitFor(`__count('input[aria-label="Ingrédient"]') === 3`, 'the third line');
+await evaluate(`__door('input[aria-label="Ingrédient"]', 2)`);
 await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the editor');
 await evaluate(`__set('[data-field="name"]', "Huile d'olive")`);
 await evaluate(`__set('[data-field="density"]', '0,91')`);
 await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
 await waitFor(
-  `document.querySelectorAll('select[aria-label="Ingrédient"]')[2]?.selectedOptions[0]?.textContent.trim() === "Huile d'olive"`,
+  `document.querySelectorAll('input[aria-label="Ingrédient"]')[2]?.value === "Huile d'olive"`,
   'the new ingredient, chosen in the line it was created from',
 );
 const stillWriting = await evaluate(
@@ -594,6 +683,39 @@ if (!entry.includes('8 pers.')) {
 }
 ok('the recipe goes onto the list at the servings it was read at');
 
+// --- and again, without leaving the list ------------------------------------
+//
+// The other way round, and the ordinary one: you already know what you are
+// cooking, and opening the recipe to read it first is a detour (DECISIONS
+// 0059). The same command, from the screen the entry lands on — searched for
+// by name and scaled before it is added rather than after.
+
+await evaluate(`__clickText('button', 'Ajouter')`);
+await waitFor('document.querySelector("form .modes")', 'the two ways to add something');
+await evaluate(`__clickText('.modes button', 'Recette')`);
+await waitFor('document.querySelector(\'input[aria-label="Recette"]\')', 'the recipe picker');
+await evaluate(`__choose('input[aria-label="Recette"]', 0, 'salade', 'Salade de tomates')`);
+await waitFor(`__text('.pour span') === '4 pers.'`, "the recipe's own serving count");
+await evaluate(`__click('.pour button[aria-label="Moins"]')`);
+await evaluate(`__click('.pour button[aria-label="Moins"]')`);
+await waitFor(`__text('.pour span') === '2 pers.'`, 'the entry, scaled before it is added');
+await evaluate(`__clickText('button', 'Ajouter à la liste')`);
+await waitFor(
+  `__all('.pending > li .servings span').includes('2 pers.')`,
+  'the second entry, at two',
+);
+ok('a recipe goes onto the list from the list, at the servings chosen there');
+
+// Alphabetical, because the core hands them back in the order they were added
+// — which is the order of a log, and nobody looks for anything that way.
+const order = await evaluate(`__all('.pending > li .name')`);
+const alphabetical = [...order].sort((a, b) => a.localeCompare(b, 'fr'));
+if (JSON.stringify(order) !== JSON.stringify(alphabetical)) {
+  throw failed(`the list is not in French order: ${JSON.stringify(order)}`);
+}
+ok(`the list reads alphabetically (${JSON.stringify(order)})`);
+await shot('08b-list-with-recipes');
+
 // --- and the recipe survived too -------------------------------------------
 
 await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -654,6 +776,43 @@ await send('Emulation.setDeviceMetricsOverride', {
 
 await evaluate(`__clickText('button', 'Modifier')`);
 await waitFor(`__text('h1') === 'Modifier'`, 'the editor, with a keyboard coming');
+
+// --- and it fits the phone it is being written on ---------------------------
+//
+// A recipe line is the busiest row in the app — a picker, a remove button, an
+// amount and a unit — and it is the one that used to hang off the right edge
+// of a 390 px screen. The cause was not the widths but the floors: a flex
+// child refuses to go below its content, and a `<fieldset>` refuses to go
+// below `min-content` in every browser's own stylesheet, so the widest unit
+// label in the list decided how wide the line was.
+//
+// Two assertions, because they fail apart. Nothing may overflow sideways, and
+// what stacks inside a line has to end on the same vertical.
+
+const sideways = await evaluate(
+  `document.documentElement.scrollWidth - document.documentElement.clientWidth`,
+);
+if (sideways > 0) {
+  throw failed(`the editor is ${sideways}px wider than the phone it is drawn on`);
+}
+ok('the editor fits a 390px screen with nothing hanging off the side');
+
+const edges = await evaluate(`
+  (() => {
+    const line = document.querySelector('.line');
+    return {
+      rows: [...line.children].map((el) => Math.round(el.getBoundingClientRect().right)),
+      overflow: line.scrollWidth - line.clientWidth,
+    };
+  })()
+`);
+if (edges.overflow > 0) {
+  throw failed(`a recipe line overflows itself by ${edges.overflow}px`);
+}
+if (new Set(edges.rows).size !== 1) {
+  throw failed(`the parts of a recipe line do not line up: ${JSON.stringify(edges.rows)}`);
+}
+ok(`the picker, the amount and the unit share one right edge (${edges.rows[0]}px)`);
 
 const inset = `getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim()`;
 await evaluate(`__keyboard(${KEYBOARD})`);

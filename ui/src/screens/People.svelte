@@ -70,8 +70,11 @@
         {#if person.devices.length === 0}
           <p class="empty">Aucun appareil.</p>
         {:else}
+          <!-- Sorted here like the people above them: the core hands devices
+               back in id order, which is stable across replicas and means
+               nothing to a reader (DECISIONS 0058). -->
           <ul class="devices">
-            {#each person.devices as device (device.id)}
+            {#each [...person.devices].sort(byName) as device (device.id)}
               <li>
                 <span class="device-name">{device.name}</span>
                 {#if device.is_this_one}<span class="tag">cet appareil</span>{/if}
