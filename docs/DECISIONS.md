@@ -70,6 +70,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0058](#0058--anything-chosen-out-of-a-library-is-searched-for) | Anything chosen out of a library is searched for | Product |
 | [0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there) | The list shows what is missing, and a recipe joins it from there | Product |
 | [0060](#0060--what-was-searched-for-is-what-gets-created) | What was searched for is what gets created | Product |
+| [0061](#0061--purchases-are-recorded-statistics-are-derived-from-them) | Purchases are recorded; statistics are derived from them | Product |
 
 ---
 
@@ -2496,3 +2497,97 @@ header button that changes its own label as you type reads as a glitch. **A
 the empty state is where the failure is announced and where its answer
 belongs.
 
+## 0061 — Purchases are recorded; statistics are derived from them
+
+**Date** 2026-08-25 · **Status** Accepted, scheduled for M9 · **Relates to**
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items),
+[0019](#0019--the-cart-is-derived-the-overlay-stores-only-explicit-actions),
+[0020](#0020--list-entries-vanish-on-completion-purge-is-deferred),
+[0023](#0023--the-staple-flag-and-its-derived-auto-check),
+[0024](#0024--attribution-is-declarative-not-cryptographic)
+
+**Context.** This reopens a piece of the closed scope on purpose, which is
+what Rule 14 asks for: an entry before any code.
+
+What is wanted is a memory of what actually happens. When did we last buy
+this, how many times have we, how often per month — or per year, the same
+number seen at a different cadence. And the same for recipes, where "we made
+it" is defined as **having bought all of its ingredients**.
+
+Nothing in the app records any of it, and the reason is sharper than an
+omission. `FinishShopping` is the **only** moment the app knows something was
+bought — and it is the same moment the evidence is destroyed: completed
+entries leave the list and the overlay is pruned (0020, 0028). One statement
+later there is nothing left to read.
+
+The event log is not the place either. It is capped at 200 entries and it is a
+courtesy for deletions and edits, not an audit trail (0024) — a history stored
+there would be eaten by its own cap within months.
+
+**Decision.** A **purchase is a source**, persisted, synced and sealed like
+every other. Five parts:
+
+1. **One record per finished trip and ingredient**, carrying the ingredient,
+   the quantities as exact rationals (Rule 4), the moment, the person, and the
+   ingredient's name *as it was* — the same reason 0024 copies a label rather
+   than resolving it, because the point of a history is to survive the deletion
+   of its subject.
+2. **One record per recipe completed in the same trip.** Decided at the moment
+   of finishing and never re-derived afterwards: a recipe's lines change, the
+   list is purged, and an ingredient bought for something else must not make a
+   recipe look cooked.
+3. **Written by `FinishShopping`, and by nothing else.** There is exactly one
+   instant in the app when the real world is known to have happened.
+4. **Identifiers are deterministic**, derived from the list entry and the
+   ingredient rather than minted. Both people standing in the shop with the app
+   open is the normal case, not a corner: two devices ending the same trip must
+   write the same key, so the merge collapses them into one record. Random ids
+   would union into a permanent double count that nothing could later tell from
+   two real trips.
+5. **Nothing expires.** The history *is* the feature, and a cap would quietly
+   make last year's comparison wrong. Its cost is made visible instead: a
+   Settings line reporting what cabas occupies on this device —
+   `navigator.storage.estimate()` for the browser's own view of it, and the
+   replica's snapshot size from the core.
+
+Statistics themselves are **derived**, as pure functions in `domain` over
+those records: last purchase, count, and a rate over a **named** window. The
+window is named on screen — "14 fois depuis mars 2026" — rather than
+extrapolated into a yearly rate, because there is no retroactive history and
+an annual figure says nothing at all until a year has passed.
+
+**Open, deliberately.** Whether an **auto-checked staple counts as a
+purchase** is not decided here (0023). It rides along on a trip without having
+been bought — the auto-check means "we already have it" — so counting it would
+inflate the salt and the flour past any use. It must be settled **before the
+first record is written**, because the records are the history and a history
+cannot be rewritten. The recipe half is not in question: a recipe whose salt
+came from the cupboard was still made.
+
+**Consequences.** Rule 3 is untouched. The cart stays derived and unsynced;
+what is persisted here is a source, the trace of an act, exactly like a list
+entry.
+
+The relay learns nothing — it is a document container like the rest, sealed
+before it leaves (Rule 7).
+
+It is a new top-level container, so an older device **ignores it and records
+nothing**: the history has holes until both phones run the same build, with no
+error anywhere. That is a reason to update both at once, not a schema break.
+
+It is also the first thing in the document that grows without bound. The order
+of magnitude is roughly 1 500 records a year against a library of 154 kB for
+200 recipes; `crates/store/tests/document_size.rs` is where that gets measured
+before the shape is fixed, not after.
+
+**Rejected.** **Putting purchases in the `EventLog`** — capped by design, and
+the cap would eat exactly the entries the feature is about. **Monthly counters
+per ingredient** — compact and enough for a rate, but two offline devices
+incrementing one counter need counter semantics to avoid losing an increment,
+and it throws away the dates that answer "when did we last buy this".
+**Deriving "recipe made" after the fact from ingredient purchases** — an
+ingredient bought for something else would count, and the answer would change
+retroactively every time a recipe is edited. **A pantry or stock model** —
+still cut (0018); this records what left the shop, never what is in the
+cupboard. **Trimming by age**, at any horizon: chosen against, in favour of
+showing the footprint.
