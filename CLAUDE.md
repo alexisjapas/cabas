@@ -15,8 +15,8 @@ way**: the Svelte bundle is compiled into `cabas-relay` by its build script, so
 one binary serves the app and `/sync` on one origin (DECISIONS 0048), and that
 binary is cross-compiled to static musl and published by CI as a Home Assistant
 add-on image — `repository.yaml` and `cabas-relay/` make this repo an add-on
-repository (DECISIONS 0049). The abandoned family log is settled too: forgotten
-by hand or not at all, through `cabas-relay families` / `forget` (DECISIONS
+repository (DECISIONS 0049). The abandoned group log is settled too: forgotten
+by hand or not at all, through `cabas-relay groups` / `forget` (DECISIONS
 0050). **That add-on runs on the Raspberry Pi and the app is on the internet**,
 at `https://cabas.cladelabs.com` through a Cloudflare Tunnel — which is
 therefore **the permanent origin** (0012) and the only address a phone may be
@@ -39,14 +39,31 @@ rule is bent): one photo per recipe and per ingredient, **beside the document
 and never inside it**, because every save rewrites the whole document and a
 photo library in it turns a tick in a shop into a multi-megabyte write
 (DECISIONS 0062, which carries the measurement). Half one is in **0.5.0** —
-taken, stored, displayed on one device; the transfer to the second phone is
-half two and does not exist yet. **M9 — history and statistics — is scheduled
+taken, stored, displayed on one device; **0.6.0 adds importing one from the
+device** as well as taking it (0065); the transfer to the second phone is
+half two and does not exist yet.
+
+**0.6.0 also changed four things about the app's own shape**, none of them on
+a milestone. **A family is a group** (0063) — in the code, in the relay's
+`groups` subcommand and on screen; the phrase derivation, the relay's `/data`
+and this file's DECISIONS history are untouched, so nothing was unpaired and
+no log was rewritten, and every entry before 0063 says "family" and means
+group. **The tabs run left to right in the order the app is used** —
+`Réglages · Ingrédients · Recettes · Liste · Courses` (0064). **An ingredient
+carries the quantity one usually buys** (0066), which exists because **a shelf
+row goes on the list by being dragged across it** (0067) and a gesture has
+nowhere to put an amount. And **a device joins a group and only then says who
+is carrying it** (0068) — the one that fixed a defect rather than adding
+anything: joining used to mint a *new* user, so two phones belonging to one
+person put two of that person in the roster, for good.
+
+**M9 — history and statistics — is scheduled
 before M7**: what the
-family buys and how often, recorded at `FinishShopping` and derived from
+group buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.
 
-`crates/domain` holds the product logic as pure functions (69 tests);
+`crates/domain` holds the product logic as pure functions (72 tests);
 `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB — **plus `PhotoStore`, a second trait over one record per photo**,
@@ -57,9 +74,9 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 `CabasApp`) **and the photo library** (`app::photos`, and `putPhoto` / `photo`
 on `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
-axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 201 native tests plus 16 in
-a real browser — 9 over IndexedDB and the photo store, 7 through the app — and
+axum broker persisting sealed frames per group **and serving the PWA out of
+its own binary**. 209 native tests plus 18 in
+a real browser — 9 over IndexedDB and the photo store, 9 through the app — and
 all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
@@ -84,6 +101,12 @@ below what is still missing, and a recipe reaches the list *from* the list
 (0059). Since 0.4.1 **what was searched for is what gets created**: the
 picker's door carries the query into the form and says so on its label, and
 both shelves offer the same thing under a search that found nothing (0060).
+Since 0.6.0 **a shelf row goes on the list by being dragged across it** —
+`components/SwipeToAdd.svelte` wraps one row, and "Annuler" stays uncovered on
+its left for as long as the *list* holds the entry, which is where the state
+is read from (0067) — and **the first launch asks who you are only once the
+roster has arrived**, in `screens/Identify.svelte`, which is also what
+Settings' "Changer d'utilisateur" opens (0068).
 `ui-serve` serves the built bundle over TLS from a local CA, which is what
 makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
@@ -91,7 +114,7 @@ in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
 the device. **The sync engine and pairing are in too**: `lib/sync.svelte.ts`
 holds the socket, the foreground rule, backoff and the cursor; `screens/
-Pairing.svelte` starts or joins a family and `screens/Settings.svelte` shows
+Pairing.svelte` starts or joins a group and `screens/Settings.svelte` shows
 the phrase for a second phone. `ui-test` runs the lot against a real relay and
 proves the milestone at browser level — a device pushes its library, loses its
 replica, gets everything back from the relay alone, another joins by typing the
@@ -227,14 +250,14 @@ Every crate holds code since M5's first half. `crates/sync` — read
 
 | Module | Holds |
 |---|---|
-| `key` | `FamilyKey`, `FamilyId` — both derived from the 12-word phrase's BIP39 seed |
+| `key` | `GroupKey`, `GroupId` — both derived from the 12-word phrase's BIP39 seed |
 | `seal` | XChaCha20-Poly1305 `seal`/`open`, the only cipher anywhere (Rule 7) |
 | `protocol` | `ClientMessage`/`ServerMessage`, `FrameKind`, the postcard codec |
 | `session` | `Session` — the sans-IO client: cursor, epoch reset, seal/push, one `Event` per wire message |
 | `error` | `SyncError` — no vendor type crosses the boundary |
 
 `crates/relay` (binary + lib, never in `wasm-check`): `log.rs` is one
-family's persisted sealed log — append, replay, snapshot-truncate, torn-tail
+group's persisted sealed log — append, replay, snapshot-truncate, torn-tail
 recovery, the minted `epoch` — and `server.rs` is the axum WebSocket side:
 replay under the same lock as the subscription, then live forwarding, plus a
 30-second ping so the tunnel does not close a socket for having nothing to say
@@ -246,10 +269,10 @@ for a key.
 `/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
 0048). It shares nothing with the sync side but the port. `admin.rs` is the
 data directory as seen from a shell: `survey` and `forget`, behind
-`cabas-relay families` / `cabas-relay forget <id>`, because an abandoned family
+`cabas-relay groups` / `cabas-relay forget <id>`, because an abandoned group
 log can only be identified by a person — the relay cannot tell one from a
-quiet family, and the log is the recovery point if every device is lost
-(DECISIONS 0050). Deliberately **not** an HTTP endpoint: a family id is the
+quiet group, and the log is the recovery point if every device is lost
+(DECISIONS 0050). Deliberately **not** an HTTP endpoint: a group id is the
 only access control the relay has and the port faces the tunnel. **A missing
 `ui/dist` embeds nothing and is not an error**, which is what keeps `cargo
 clippy --workspace` working in a fresh checkout; the release image sets
@@ -261,7 +284,7 @@ clippy --workspace` working in a fresh checkout; the release image sets
 |---|---|
 | `units` | `Dimension`, `Unit`, exact conversion factors, `convert` |
 | `quantity` | `Quantity`, scaling, addition, `ceil_to_whole`, `humanized` |
-| `ingredient` | `Ingredient`, `Aisle`, cross-dimension conversion, `resolve` |
+| `ingredient` | `Ingredient`, `Aisle`, cross-dimension conversion, `resolve`, `shopping_quantity` (0066) |
 | `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs` |
 | `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
@@ -299,7 +322,7 @@ one file and a compatibility surface (DECISIONS 0029):
 | `library` | The whole document, read into plain domain values |
 | `number` | Text ⇄ exact rational, and the two renderings (pretty, lossless) |
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
-| `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` |
+| `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` — whose user half is `None` until somebody is chosen (0068) |
 | `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
 | `photos` | `Photos` — the bytes the document only names: mint an id, store, read, and the two diffs a prefetch and a sweep need (0062) |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
@@ -328,7 +351,7 @@ file:
 | `lib/bindings/` | Generated from Rust, committed, diffed by CI (0036) |
 | `lib/wasm/` | Generated by `build-wasm`, gitignored |
 | `lib/core.ts` | The typed edge — the only place a cast meets the wasm `any`, plus the identity in `localStorage` (0031) |
-| `lib/session.svelte.ts` | The one `$state.raw`, `run(command)`, the debounced flush, the persisted screen and its scroll offset |
+| `lib/session.svelte.ts` | The one `$state.raw`, `run(command)`, `identify(command)` for the three that move the identity (0068), the debounced flush, the persisted screen and its scroll offset |
 | `lib/sync.svelte.ts` | The socket and its policy: connect on foreground, backoff, push on change, the cursor and shadow in `localStorage` (0043) |
 | `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
 | `lib/photo.ts` | A picked file into the JPEG the core takes: EXIF orientation, downscale, encode until it fits under `maxPhotoBytes()` (0062) |
@@ -336,7 +359,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one and `PhotoField.svelte` takes one (0062) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row and puts it on the list (0067); `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -344,8 +367,9 @@ file:
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
 
-`screens/Settings.svelte` is three views behind one tab — itself, the roster
-and the log — and it is also where the running build names itself (0055), and
+`screens/Settings.svelte` is four views behind one tab — itself, the roster,
+the log and the user switch — and it is also where the running build names
+itself (0055), and
 `screens/Recipes.svelte` is three behind another — the shelf, the one being
 read, and the one being written — and the shape is worth knowing before
 touching it. Which recipe is *open* is core state (`OpenRecipe`, never
@@ -690,7 +714,7 @@ Key domain shapes, all settled in DECISIONS:
 - **The restore drill's marker is read off the relay, not off a phone.** The
   planted ingredient lives in the replica of every phone that saw it, and a
   restore reaches none of them — so a phone showing it afterwards says nothing
-  at all. `cabas-relay families` before and after is the evidence, because the
+  at all. `cabas-relay groups` before and after is the evidence, because the
   relay is the only party whose state a backup rolls back.
 - **A sync cursor must never outlive the replica it belongs to.** They are two
   different files — `localStorage` and IndexedDB — and a cursor that survives
@@ -811,16 +835,16 @@ Key domain shapes, all settled in DECISIONS:
   the relay's own period down to milliseconds instead of trying to stage a
   tunnel. Anything added here that holds a socket open and quiet inherits the
   same problem.
-- **Surveying the data directory must never open a log.** `FamilyLog::open`
-  mints an epoch for a family that has none and rewrites `meta`, so a
-  "read-only" listing built on it would cost every device of every family a
+- **Surveying the data directory must never open a log.** `GroupLog::open`
+  mints an epoch for a group that has none and rewrites `meta`, so a
+  "read-only" listing built on it would cost every device of every group a
   full replay. `admin::survey` reads `meta` and stats the files instead — and
   it takes the timestamp off the *log* file, not `meta`, because `meta` is
   rewritten on open and would report when the relay last restarted.
-- **`forget` is irreversible and takes a whole family id.** No prefix, no age,
+- **`forget` is irreversible and takes a whole group id.** No prefix, no age,
   no pattern — the premise of DECISIONS 0050 is that the machine cannot judge
-  which family is finished, so it does not get to guess at one either. It is
-  safe to run while the relay serves, because an abandoned family is by
+  which group is finished, so it does not get to guess at one either. It is
+  safe to run while the relay serves, because an abandoned group is by
   definition one nothing connects to; forgetting a *live* one leaves its
   sockets answering "storage failed" until the process restarts.
 - **Every save writes the whole document, so nothing binary may live in it.**
@@ -851,3 +875,51 @@ Key domain shapes, all settled in DECISIONS:
   by assignment. `__photograph` in `smoke.mjs` builds a real JPEG on a canvas
   and fills a `DataTransfer` — which is also why the photo path is tested
   end to end without any camera or any file on disk.
+- **`capture` on a file input is not a hint.** On a phone it opens the camera
+  and *only* the camera — the photo already in the roll is unreachable through
+  it. That is why `PhotoField` has two hidden inputs and two buttons (0065),
+  and why the attribute is not flipped on one input between clicks: it is read
+  when the picker opens, so an input whose meaning depends on which button was
+  pressed last is a race nobody will reproduce.
+- **A bulk rename of "family" hits `target_family` and `font-family`.** Both
+  matched when 0063 was done, and both break everything: the first is a Rust
+  `cfg` (`cargo build` fails with "unexpected cfg condition name"), the second
+  silently unstyles the app. Anything similar needs the same second pass.
+  Note also that `docs/DECISIONS.md` is deliberately **excluded** from that
+  rename — it is append-only (Rule 14), so every entry before 0063 says
+  "family" and means group.
+- **`StateView.me` is `null` between joining a group and choosing a member**
+  (0068), and that is a normal state with a real replica behind it — not a
+  loading state. Anything new that reads `me` has to say what it does then;
+  `App.svelte` renders `Identify` over the app instead of the tab bar.
+- **A command that moves the identity must go through `Session.identify`,
+  never `run`.** `choose_user`, `create_user` and `name_device` change what the
+  core thinks this device is, and `localStorage` holds the only durable copy
+  (0031). Through `run` alone everything works perfectly until the next
+  launch, which is the worst shape a bug can have.
+- **`enrol` writes nothing when there is no user, and that is load-bearing.**
+  A device record needs an owner; writing one before somebody is chosen means
+  inventing the owner, which is the duplicate person 0068 exists to prevent.
+  For the same reason `name_device` is sent *before* the choice — afterwards
+  it would write the record twice, once with an empty name that the other
+  phone would see.
+- **A synthesised `PointerEvent` is not an active pointer**, so
+  `setPointerCapture` throws `NotFoundError` on one — which is how the swipe
+  first failed in `ui-test` while working by hand. The component ignores that
+  failure, because capture is what keeps a drag alive when the finger leaves
+  the row rather than what makes the drag work.
+- **A swipe is anchored where its axis is decided, not where the finger went
+  down.** `SwipeToAdd` commits to the horizontal after `SLOP` pixels and
+  measures from there, so the row does not jump to meet the finger — and a
+  test that drives it has to measure from the same place. `__swipe` takes the
+  distance travelled *after* the anchor for exactly that reason; measuring
+  from the start silently tests the slop instead of the threshold.
+- **`.swipe .front` must stay opaque.** It slides over the row underneath it,
+  so a transparent background shows the "Ajouter à la liste" strip through the
+  row that is not moving.
+- **`isIdentity` in `core.ts` must accept a `null` user.** That is the state a
+  device is in between the twelve words and the roster (0068), and it is on
+  disk for exactly as long as the "Qui êtes-vous ?" screen is up. A reader
+  that insists on strings sends a phone closed on that screen back to pairing
+  — new device id, dead peer in the replica's history, twelve words typed
+  again. `ui-test` reloads on that screen for this reason.

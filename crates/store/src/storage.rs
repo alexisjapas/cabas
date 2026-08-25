@@ -1,6 +1,6 @@
 //! Where the snapshot actually lives.
 //!
-//! One trait, one blob. There is a single family document (DECISIONS 0018),
+//! One trait, one blob. There is a single group document (DECISIONS 0018),
 //! so a storage backend does not need keys, queries or a schema — it needs to
 //! hand back the bytes it was given, and to not lose them when the process
 //! dies halfway through a write.
@@ -119,7 +119,7 @@ mod file {
         /// `rename` within a directory is atomic, so a reader sees either the
         /// old snapshot or the new one — never the half of the new one that
         /// had been flushed when the process died. Writing in place would
-        /// make every save a window in which the family library can be lost,
+        /// make every save a window in which the group library can be lost,
         /// and the saves happen on a phone that gets killed without warning.
         ///
         /// The blocking calls are deliberate: the document is a few hundred
@@ -178,7 +178,7 @@ mod indexed_db {
     const KEY: &str = "snapshot";
     const PHOTOS: &str = "photos";
 
-    /// The family document in IndexedDB.
+    /// The group document in IndexedDB.
     #[derive(Debug, Clone)]
     pub struct IndexedDbStorage {
         database: String,

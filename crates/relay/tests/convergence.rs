@@ -16,7 +16,7 @@ use cabas_app::{App, Command, Identity, Platform};
 use cabas_domain::Timestamp;
 use cabas_store::MemoryStorage;
 use cabas_sync::protocol::{ClientMessage, FrameKind, encode_client};
-use cabas_sync::{Event, FamilyKey, Session};
+use cabas_sync::{Event, GroupKey, Session};
 
 use futures::{SinkExt, StreamExt};
 use std::net::SocketAddr;
@@ -89,8 +89,8 @@ struct Device {
 impl Device {
     async fn join(phrase: &str, base: u64, user: &str, name: &str, device: &str) -> Self {
         let identity = Identity {
-            user: user.into(),
-            user_name: name.into(),
+            user: Some(user.into()),
+            user_name: Some(name.into()),
             device: device.into(),
             device_name: format!("{name}'s device"),
         };
@@ -107,8 +107,8 @@ impl Device {
         }
     }
 
-    fn key(&self) -> FamilyKey {
-        FamilyKey::from_phrase(&self.phrase).expect("the phrase derives")
+    fn key(&self) -> GroupKey {
+        GroupKey::from_phrase(&self.phrase).expect("the phrase derives")
     }
 }
 
@@ -238,6 +238,7 @@ fn save_ingredient(name: &str) -> Command {
             staple: false,
             density: None,
             unit_weight: None,
+            default_quantity: None,
             photo: None,
         },
     }
@@ -259,10 +260,7 @@ fn ingredient_id(view: &StateView, name: &str) -> String {
 async fn never_simultaneous_devices_converge() {
     let dir = TempDir::new("sequential");
     let addr = spawn_relay(dir.0.clone()).await;
-    let phrase = FamilyKey::generate()
-        .expect("generate")
-        .phrase()
-        .to_string();
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
 
     // Alice, at home: five tomatoes on the list. Online alone, then gone.
     let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_phone").await;
@@ -276,16 +274,16 @@ async fn never_simultaneous_devices_converge() {
         .app
         .dispatch(Command::AddIngredientToList {
             ingredient: tomatoes.clone(),
-            quantity: QuantityInput {
+            quantity: Some(QuantityInput {
                 amount: "5".into(),
                 unit: UnitTag::Piece,
-            },
+            }),
         })
         .await
         .expect("add to list");
     sync_once(&mut alice, addr, true).await;
 
-    // A stranger who found the family id but not the phrase appends noise.
+    // A stranger who found the group id but not the phrase appends noise.
     // Nobody merges it: it does not open (DECISIONS 0042).
     {
         let mut ws = connect(addr).await;
@@ -353,10 +351,7 @@ async fn never_simultaneous_devices_converge() {
 async fn simultaneous_devices_see_each_other_live() {
     let dir = TempDir::new("live");
     let addr = spawn_relay(dir.0.clone()).await;
-    let phrase = FamilyKey::generate()
-        .expect("generate")
-        .phrase()
-        .to_string();
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
 
     let mut carol = Device::join(&phrase, 0, "usr_carol", "Carol", "dev_a").await;
     let mut dan = Device::join(&phrase, 5000, "usr_dan", "Dan", "dev_b").await;
@@ -408,10 +403,10 @@ async fn simultaneous_devices_see_each_other_live() {
         .app
         .dispatch(Command::AddIngredientToList {
             ingredient: milk,
-            quantity: QuantityInput {
+            quantity: Some(QuantityInput {
                 amount: "1".into(),
                 unit: UnitTag::L,
-            },
+            }),
         })
         .await
         .expect("add");
@@ -447,10 +442,7 @@ async fn simultaneous_devices_see_each_other_live() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_log_outlives_the_relay_process() {
     let dir = TempDir::new("restart");
-    let phrase = FamilyKey::generate()
-        .expect("generate")
-        .phrase()
-        .to_string();
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
 
     let mut eve = Device::join(&phrase, 0, "usr_eve", "Eve", "dev_a").await;
     eve.app
@@ -505,10 +497,7 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
 async fn a_restored_backup_does_not_strand_devices_holding_newer_cursors() {
     let dir = TempDir::new("restore");
     let vault = TempDir::new("restore-backup");
-    let phrase = FamilyKey::generate()
-        .expect("generate")
-        .phrase()
-        .to_string();
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
 
     let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_a").await;
     let mut bob = Device::join(&phrase, 5000, "usr_bob", "Bob", "dev_b").await;
@@ -526,7 +515,7 @@ async fn a_restored_backup_does_not_strand_devices_holding_newer_cursors() {
     // The backup: the data directory exactly as it stands.
     copy_tree(&dir.0, &vault.0);
 
-    // The family carries on, so both cursors move well past the backup.
+    // The group carries on, so both cursors move well past the backup.
     for name in ["Farine", "Sucre", "Sel", "Poivre"] {
         alice
             .app
@@ -583,10 +572,7 @@ async fn a_restored_backup_does_not_strand_devices_holding_newer_cursors() {
 async fn a_restored_backup_does_not_strand_a_device_that_missed_the_window() {
     let dir = TempDir::new("restore-gap");
     let vault = TempDir::new("restore-gap-backup");
-    let phrase = FamilyKey::generate()
-        .expect("generate")
-        .phrase()
-        .to_string();
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
 
     let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_a").await;
     let mut bob = Device::join(&phrase, 5000, "usr_bob", "Bob", "dev_b").await;

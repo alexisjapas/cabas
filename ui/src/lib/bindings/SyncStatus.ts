@@ -18,15 +18,15 @@ cursor: SyncCursor,
  */
 replayed: number, 
 /**
- * Frames the family key refused to open. Nonzero is either corruption or
- * company: someone holding the family id, which the relay stores in the
+ * Frames the group key refused to open. Nonzero is either corruption or
+ * company: someone holding the group id, which the relay stores in the
  * clear, but not the phrase.
  */
 dropped: number, 
 /**
  * The relay served a log that does not hold what the cursor claimed —
  * restored from a backup, or reset. The host reads this to know that its
- * shadow is void and that it owes the family a push even if nothing
+ * shadow is void and that it owes the group a push even if nothing
  * changed locally (DECISIONS 0054); [`SyncSession::push`] acts on it by
  * itself, so nothing has to be recomputed from it.
  */

@@ -74,6 +74,14 @@ pub mod ingredient {
     pub const STAPLE: &str = "staple";
     pub const DENSITY: &str = "density";
     pub const UNIT_WEIGHT: &str = "unit_weight";
+    /// How much of this one buys when nobody says how much, as a `quantity`
+    /// map, or absent (DECISIONS 0066).
+    ///
+    /// Additive like `PHOTO` below, and for the same reason: an older build
+    /// does not read this key and does not rewrite it on save, so
+    /// `SCHEMA_VERSION` does not move and a phone left in a pocket keeps
+    /// converging — it simply adds one piece where a newer one adds a kilo.
+    pub const DEFAULT_QUANTITY: &str = "default_quantity";
     /// The id of this ingredient's photo, or absent. Never the bytes: they
     /// live one record per photo in a store of their own, because this
     /// document is rewritten whole on every save (DECISIONS 0062).

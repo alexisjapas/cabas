@@ -1,7 +1,7 @@
 //! The WebSocket side: replay, then forward, and never understand.
 //!
 //! One connection speaks for one device. Its whole life is: a `Hello`
-//! naming a family and a cursor, a `Welcome` carrying the log's epoch, the
+//! naming a group and a cursor, a `Welcome` carrying the log's epoch, the
 //! replay, a `CaughtUp`, and then a steady state of pushes going in and
 //! frames coming out (DECISIONS 0042).
 //!
@@ -33,25 +33,25 @@ use axum::response::Response;
 use axum::routing::{any, get};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
-use cabas_sync::FamilyId;
+use cabas_sync::GroupId;
 use cabas_sync::protocol::{self, ClientMessage, PROTOCOL, ServerMessage};
 
-use crate::log::FamilyLog;
+use crate::log::GroupLog;
 
 /// Everything the process holds: where the logs live, and which are open.
-/// Families load lazily on their first `Hello` and stay open — a family is
+/// Groups load lazily on their first `Hello` and stay open — a group is
 /// two people, and the map is as big as the number of households served.
 pub struct Relay {
     root: PathBuf,
-    families: RwLock<HashMap<FamilyId, Arc<Family>>>,
+    groups: RwLock<HashMap<GroupId, Arc<Group>>>,
     /// How often a connection is pinged. A field rather than a bare constant
     /// so the test below can watch one arrive without sitting out
     /// `PING_EVERY`; nothing outside this module can set it.
     ping_every: Duration,
 }
 
-struct Family {
-    log: Mutex<FamilyLog>,
+struct Group {
+    log: Mutex<GroupLog>,
     /// Pre-encoded `ServerMessage::Frame`s, fanned out to every connection.
     /// `Bytes` so a frame is encoded once and cloned by reference count.
     forward: broadcast::Sender<Bytes>,
@@ -85,30 +85,30 @@ impl Relay {
         std::fs::create_dir_all(&root)?;
         Ok(Arc::new(Relay {
             root,
-            families: RwLock::new(HashMap::new()),
+            groups: RwLock::new(HashMap::new()),
             ping_every,
         }))
     }
 
-    async fn family(&self, id: FamilyId) -> std::io::Result<Arc<Family>> {
-        if let Some(family) = self.families.read().await.get(&id) {
-            return Ok(family.clone());
+    async fn group(&self, id: GroupId) -> std::io::Result<Arc<Group>> {
+        if let Some(group) = self.groups.read().await.get(&id) {
+            return Ok(group.clone());
         }
-        let mut families = self.families.write().await;
-        // Two devices of one family saying hello at once race to this
+        let mut groups = self.groups.write().await;
+        // Two devices of one group saying hello at once race to this
         // write lock; the loser must find the winner's log, not a second
         // one over the same directory.
-        if let Some(family) = families.get(&id) {
-            return Ok(family.clone());
+        if let Some(group) = groups.get(&id) {
+            return Ok(group.clone());
         }
-        let log = FamilyLog::open(self.root.join(id.to_hex()))?;
+        let log = GroupLog::open(self.root.join(id.to_hex()))?;
         let (forward, _) = broadcast::channel(FORWARD_BUFFER);
-        let family = Arc::new(Family {
+        let group = Arc::new(Group {
             log: Mutex::new(log),
             forward,
         });
-        families.insert(id, family.clone());
-        Ok(family)
+        groups.insert(id, group.clone());
+        Ok(group)
     }
 }
 
@@ -140,14 +140,14 @@ async fn ws_handler(ws: WebSocketUpgrade, State(relay): State<Arc<Relay>>) -> Re
 /// reason before the socket drops, because a silent close reads as a
 /// network blip and invites a pointless retry.
 async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
-    let (family, hello_epoch, hello_since) = match expect_hello(&mut socket).await {
+    let (group, hello_epoch, hello_since) = match expect_hello(&mut socket).await {
         Some(hello) => hello,
         None => return,
     };
-    let family = match relay.family(family).await {
-        Ok(family) => family,
+    let group = match relay.group(group).await {
+        Ok(group) => group,
         Err(e) => {
-            tracing::error!(error = %e, "family log failed to open");
+            tracing::error!(error = %e, "group log failed to open");
             refuse(&mut socket, "storage failed").await;
             return;
         }
@@ -156,7 +156,7 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
     // Subscribe and snapshot the replay under one lock: a push landing now
     // is either in `replay` or already in `rx`, never lost between them.
     let (epoch, replay, mut rx) = {
-        let log = family.log.lock().await;
+        let log = group.log.lock().await;
         // A cursor is honoured only if it names this log's epoch *and* points
         // inside it. The epoch alone is not enough: a log restored from a
         // backup brings its epoch back with it, while every device holds a
@@ -170,7 +170,7 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
             // everything and let `Welcome` tell the device why.
             0
         };
-        (log.epoch(), log.replay(since), family.forward.subscribe())
+        (log.epoch(), log.replay(since), group.forward.subscribe())
     };
 
     if send(&mut socket, &ServerMessage::Welcome { epoch })
@@ -216,7 +216,7 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
                 match protocol::decode_client(&bytes) {
                     Ok(ClientMessage::Push { kind, payload }) => {
                         let ack = {
-                            let mut log = family.log.lock().await;
+                            let mut log = group.log.lock().await;
                             let frame = match log.append(kind, payload) {
                                 Ok(frame) => frame,
                                 Err(e) => {
@@ -232,8 +232,8 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
                                 payload: frame.payload,
                             }) {
                                 // Errors only mean "no subscriber" — a
-                                // family with one device online.
-                                let _ = family.forward.send(Bytes::from(wire));
+                                // group with one device online.
+                                let _ = group.forward.send(Bytes::from(wire));
                             }
                             ServerMessage::Ack { seq: frame.seq }
                         };
@@ -280,7 +280,7 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
 
 /// The first message must be a well-formed `Hello` speaking this protocol;
 /// anything else is refused by name.
-async fn expect_hello(socket: &mut WebSocket) -> Option<(FamilyId, u64, u64)> {
+async fn expect_hello(socket: &mut WebSocket) -> Option<(GroupId, u64, u64)> {
     let bytes = loop {
         match socket.recv().await? {
             Ok(Message::Binary(bytes)) => break bytes,
@@ -292,7 +292,7 @@ async fn expect_hello(socket: &mut WebSocket) -> Option<(FamilyId, u64, u64)> {
     match protocol::decode_client(&bytes) {
         Ok(ClientMessage::Hello {
             protocol: version,
-            family,
+            group,
             epoch,
             since,
         }) => {
@@ -300,7 +300,7 @@ async fn expect_hello(socket: &mut WebSocket) -> Option<(FamilyId, u64, u64)> {
                 refuse(socket, &format!("speak protocol {PROTOCOL}")).await;
                 return None;
             }
-            Some((family, epoch, since))
+            Some((group, epoch, since))
         }
         Ok(_) => {
             refuse(socket, "hello first").await;
@@ -388,7 +388,7 @@ mod tests {
 
         let hello = encode_client(&ClientMessage::Hello {
             protocol: PROTOCOL,
-            family: FamilyId::from_hex("00112233445566778899aabbccddeeff").expect("a family id"),
+            group: GroupId::from_hex("00112233445566778899aabbccddeeff").expect("a group id"),
             epoch: 0,
             since: 0,
         })

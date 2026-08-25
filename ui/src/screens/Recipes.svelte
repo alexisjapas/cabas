@@ -2,6 +2,7 @@
   import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
+  import SwipeToAdd from '../components/SwipeToAdd.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
   import { byName, formatQuantity, matches } from '../lib/format';
   import type { Session } from '../lib/session.svelte';
@@ -22,6 +23,20 @@
   /** Sorted for a reader; the core sorts by id, which is stable, not legible. */
   let recipes = $derived([...session.state.recipes].sort(byName));
   let focus = $derived(session.state.focus);
+
+  /**
+   * The list entry each recipe already has, if it has one — the same
+   * derivation the ingredient shelf makes, and for the same reason
+   * (DECISIONS 0067): the way out of a swipe belongs to the list, not to a
+   * memory of the gesture.
+   */
+  let onList = $derived.by(() => {
+    const found = new Map<string, string>();
+    for (const entry of session.state.list) {
+      if (entry.item.kind === 'recipe') found.set(entry.item.recipe, entry.id);
+    }
+    return found;
+  });
 
   /** The shelf narrows the same way every other list of names does (0058). */
   let query = $state('');
@@ -126,6 +141,19 @@
     <ul>
       {#each shown as recipe (recipe.id)}
         <li>
+          <SwipeToAdd
+            label={recipe.name}
+            entry={onList.get(recipe.id) ?? null}
+            onadd={() =>
+              session.run({
+                command: 'add_recipe_to_list',
+                recipe: recipe.id,
+                // As written. Changing it for tonight is what the list's own
+                // "− 4 pers. +" is for, and a gesture cannot ask.
+                servings: recipe.servings,
+              })}
+            onundo={(entry) => session.run({ command: 'remove_list_entry', entry })}
+          >
           <button
             type="button"
             onclick={() => session.run({ command: 'open_recipe', recipe: recipe.id, servings: null })}
@@ -147,6 +175,7 @@
               <span class="yield">{formatQuantity(recipe.yields)}</span>
             {/if}
           </button>
+          </SwipeToAdd>
         </li>
       {/each}
     </ul>

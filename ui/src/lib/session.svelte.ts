@@ -26,7 +26,7 @@
 import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { StateView } from './bindings/StateView';
-import { Core } from './core';
+import { Core, rememberIdentity } from './core';
 import { Sync } from './sync.svelte';
 
 /**
@@ -159,6 +159,22 @@ export class Session {
       this.error = cause instanceof Error ? cause.message : String(cause);
       return false;
     }
+  }
+
+  /**
+   * A command that changes who this device says it is, and the write to
+   * `localStorage` that has to follow it (DECISIONS 0068).
+   *
+   * `choose_user`, `create_user` and `name_device` all move the identity, and
+   * the core's copy dies with the page: the durable one is the host's (0031).
+   * Running them through `run` alone would work perfectly until the next
+   * launch, which is the worst shape a bug can have — so they go through
+   * here instead, and there is one door rather than a rule to remember.
+   */
+  identify(command: Command): boolean {
+    if (!this.run(command)) return false;
+    rememberIdentity(this.#core.identity());
+    return true;
   }
 
   /**

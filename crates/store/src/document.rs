@@ -1,4 +1,4 @@
-//! The family document: one replica, held whole on every device.
+//! The group document: one replica, held whole on every device.
 //!
 //! This is the entire surface `app` and `sync` are allowed to see. No Loro
 //! type appears in any signature here — versions travel as opaque bytes, and

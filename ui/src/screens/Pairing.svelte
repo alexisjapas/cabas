@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
-   * Pairing: start a family, or join one.
+   * Pairing: start a group, or join one.
    *
-   * The phrase is the whole secret (DECISIONS 0042) — key and family id both
+   * The phrase is the whole secret (DECISIONS 0042) — key and group id both
    * derive from it — so this screen is the only place it is ever shown, and it
    * says what that means rather than assuming anyone knows.
    *
@@ -17,12 +17,12 @@
    */
   import Qr from '../components/Qr.svelte';
   import { mintPhrase, readPhrase } from '../lib/core';
-  import type { Family } from '../lib/sync.svelte';
+  import type { Group } from '../lib/sync.svelte';
 
   let {
     onpaired,
     oncancel,
-  }: { onpaired: (family: Family) => void; oncancel?: () => void } = $props();
+  }: { onpaired: (group: Group) => void; oncancel?: () => void } = $props();
 
   type Step =
     | { at: 'choose' }
@@ -83,13 +83,13 @@
     <h1>cabas</h1>
     <p class="lead">Les courses et les recettes, à deux, hors ligne.</p>
     <div class="choice">
-      <button type="button" onclick={start}>Commencer une famille</button>
+      <button type="button" onclick={start}>Créer un groupe</button>
       <button type="button" class="secondary" onclick={() => (step = { at: 'joining' })}>
-        Rejoindre une famille
+        Rejoindre un groupe
       </button>
     </div>
     <p class="note">
-      Une famille, c'est une liste et des recettes partagées entre vos appareils. Si l'un d'eux en a
+      Un groupe, c'est une liste et des recettes partagées entre vos appareils. Si l'un d'eux en a
       déjà une, rejoignez-la.
     </p>
     {#if oncancel}
@@ -97,10 +97,10 @@
     {/if}
   {:else if step.at === 'created'}
     <h1>Votre phrase</h1>
-    <p class="lead">Douze mots. C'est la clé de votre famille, et il n'y en a pas d'autre.</p>
+    <p class="lead">Douze mots. C'est la clé de votre groupe, et il n'y en a pas d'autre.</p>
 
     <p class="phrase" data-phrase>{step.phrase}</p>
-    <Qr text={step.phrase} label="La phrase de votre famille, en QR code" />
+    <Qr text={step.phrase} label="La phrase de votre groupe, en QR code" />
 
     <p class="note">
       Notez-la ailleurs que sur cet appareil. Elle déchiffre tout ce que vous partagez, et

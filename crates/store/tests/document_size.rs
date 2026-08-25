@@ -1,4 +1,4 @@
-//! What a family-sized library actually costs.
+//! What a group-sized library actually costs.
 //!
 //! DECISIONS 0008 rests on an estimate — "a few hundred kilobytes, so a
 //! serialized snapshot beats a relational store". This measures it, because
@@ -22,7 +22,7 @@ use cabas_domain::{
 };
 use cabas_store::Document;
 
-/// A family library: 200 recipes over a 300-ingredient vocabulary.
+/// A group library: 200 recipes over a 300-ingredient vocabulary.
 const RECIPES: usize = 200;
 const INGREDIENTS: usize = 300;
 const USAGES_PER_RECIPE: usize = 8;
@@ -108,7 +108,7 @@ fn library() -> Document {
 }
 
 #[test]
-fn a_family_library_stays_within_the_cold_start_budget() {
+fn a_group_library_stays_within_the_cold_start_budget() {
     let built = Instant::now();
     let doc = library();
     let build_time = built.elapsed();

@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Who is in the family, on what, and the one thing this screen has to be
+   * Who is in the group, on what, and the one thing this screen has to be
    * honest about.
    *
    * It is the screen that looks most like an access control panel and is the
@@ -32,19 +32,19 @@
 
   /**
    * Rotating is the whole of revocation, and it is not a small act: this
-   * device leaves for a family only it knows the phrase of, taking its copy
+   * device leaves for a group only it knows the phrase of, taking its copy
    * of the library with it, and every other device stays where it was until
    * somebody types the new words into it.
    *
-   * The old family's log stays on the relay, sealed, and the lost device keeps
+   * The old group's log stays on the relay, sealed, and the lost device keeps
    * whatever it had already. What it stops getting is everything after this.
    */
   async function rotate(): Promise<void> {
-    const family = session.sync.family;
-    if (family === null) return;
+    const group = session.sync.group;
+    if (group === null) return;
     try {
       const phrase = await mintPhrase();
-      session.sync.pair({ phrase, relay: family.relay });
+      session.sync.pair({ phrase, relay: group.relay });
       rotation = { at: 'done', phrase };
     } catch (cause) {
       rotation = {
@@ -88,7 +88,7 @@
   </ul>
 
   <p class="note">
-    Ces noms disent qui a probablement fait quoi. Ce ne sont pas des comptes : la clé de la famille
+    Ces noms disent qui a probablement fait quoi. Ce ne sont pas des comptes : la clé du groupe
     est la même pour tout le monde, donc n'importe quel appareil appairé peut tout lire et tout
     écrire, sous n'importe quel nom.
   </p>
@@ -99,9 +99,9 @@
     {#if rotation.at === 'done'}
       <p>Voici la nouvelle phrase. Saisissez-la sur les appareils que vous gardez.</p>
       <p class="phrase" data-phrase>{rotation.phrase}</p>
-      <Qr text={rotation.phrase} label="La nouvelle phrase de votre famille, en QR code" />
+      <Qr text={rotation.phrase} label="La nouvelle phrase de votre groupe, en QR code" />
       <p class="note">
-        Cet appareil est déjà passé à la nouvelle famille, avec tout son contenu. Les autres
+        Cet appareil est déjà passé au nouveau groupe, avec tout son contenu. Les autres
         continuent sur l'ancienne tant qu'ils n'ont pas cette phrase.
       </p>
     {:else if rotation.at === 'failed'}
@@ -136,9 +136,9 @@
           </button>
           <button type="button" class="danger" onclick={rotate}>Changer la phrase</button>
         </div>
-      {:else if session.sync.family !== null}
+      {:else if session.sync.group !== null}
         <button type="button" class="secondary" onclick={() => (rotation = { at: 'asking' })}>
-          Changer la phrase de la famille
+          Changer la phrase du groupe
         </button>
       {/if}
     {/if}

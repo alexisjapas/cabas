@@ -1,7 +1,7 @@
 /**
  * The typed edge of the wasm core.
  *
- * `wasm-bindgen` declares `apply`, `state` and `mintIdentity` as returning
+ * `wasm-bindgen` declares `apply`, `state` and `mintDevice` as returning
  * `any`, because what actually crosses is a `serde` value and the glue has no
  * idea what shape it has. The shape is known — it is generated into
  * `./bindings/` from the Rust types (DECISIONS 0036) — so **this file is the
@@ -26,9 +26,9 @@ const IDENTITY_KEY = 'cabas.identity';
 
 /**
  * The module is instantiated once per page load, and `open` may be reached
- * twice — the onboarding path calls `mintIdentity` first. Caching the promise
- * rather than a boolean means a second caller awaits the first fetch instead
- * of starting its own.
+ * twice — a device that has just been paired calls `mintDevice` first. Caching
+ * the promise rather than a boolean means a second caller awaits the first
+ * fetch instead of starting its own.
  */
 let instantiated: Promise<unknown> | undefined;
 
@@ -36,13 +36,26 @@ function wasmReady(): Promise<unknown> {
   return (instantiated ??= initWasm());
 }
 
-/** Narrow enough to reject a value written by an older or broken build. */
+/**
+ * Narrow enough to reject a value written by an older or broken build.
+ *
+ * The two user fields accept `null` as well as a string, and that is not
+ * laxity — it is the state a device is in between the twelve words and the
+ * moment somebody is picked off the roster (DECISIONS 0068). Requiring
+ * strings here would make a phone closed on the "Qui êtes-vous ?" screen come
+ * back as a device that has never run: pairing again, a new device id, and a
+ * dead peer left in the replica's history.
+ *
+ * The device fields stay mandatory, because a device with no id has nothing
+ * to be.
+ */
 function isIdentity(value: unknown): value is Identity {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  const optional = (field: unknown): boolean => field === null || typeof field === 'string';
   return (
-    typeof candidate.user === 'string' &&
-    typeof candidate.user_name === 'string' &&
+    optional(candidate.user) &&
+    optional(candidate.user_name) &&
     typeof candidate.device === 'string' &&
     typeof candidate.device_name === 'string'
   );
@@ -55,7 +68,7 @@ function isIdentity(value: unknown): value is Identity {
  * A stored value that does not parse is treated as absent rather than as an
  * error: the recovery is to mint a new identity, and refusing to start would
  * strand the person on a broken screen with no way out. The cost is a new
- * name in the family roster, which is a cosmetic problem (Rule 7).
+ * name in the group roster, which is a cosmetic problem (Rule 7).
  */
 export function readIdentity(): Identity | null {
   const stored = localStorage.getItem(IDENTITY_KEY);
@@ -73,12 +86,19 @@ export function rememberIdentity(identity: Identity): void {
 }
 
 /**
- * Mints ids for a device that has never run before. Called once, ever — the
+ * Mints the id of a device that has never run before. Called once, ever — the
  * result is what `localStorage` then holds forever.
+ *
+ * It says nothing about *who* is carrying it: that is a row on the group's
+ * roster, and the roster arrives over the network (DECISIONS 0068). The
+ * question is asked once the app is open, and the answer comes back through
+ * `Core.identity` to be written down.
+ *
+ * The name is a first guess, replaced by whatever is typed on the way in.
  */
-export async function mintIdentity(userName: string, deviceName: string): Promise<Identity> {
+export async function mintDevice(deviceName: string): Promise<Identity> {
   await wasmReady();
-  return CabasApp.mintIdentity(userName, deviceName) as Identity;
+  return CabasApp.mintDevice(deviceName) as Identity;
 }
 
 /**
@@ -139,8 +159,8 @@ export function maxPhotoBytes(): number {
 }
 
 /**
- * A new family's recovery phrase — twelve words, minted once, on the device
- * that starts the family (DECISIONS 0042). Every other device joins with the
+ * A new group's recovery phrase — twelve words, minted once, on the device
+ * that starts the group (DECISIONS 0042). Every other device joins with the
  * same words, scanned or typed (0021).
  */
 export async function mintPhrase(): Promise<string> {
@@ -186,6 +206,18 @@ export class Core {
   /** Synchronous, and returns the whole new state (DECISIONS 0032, 0033). */
   apply(command: Command): StateView {
     return this.#app.apply(command) as StateView;
+  }
+
+  /**
+   * Who the core now thinks this device is.
+   *
+   * `choose_user`, `create_user` and `name_device` change it, and
+   * `localStorage` holds the only durable copy (DECISIONS 0031) — so a
+   * caller that runs one of those reads this back and remembers it, or the
+   * next launch is a device that has forgotten (0068).
+   */
+  identity(): Identity {
+    return this.#app.identity() as Identity;
   }
 
   /** Resolves to `true` when it actually wrote. Never awaited by a render. */

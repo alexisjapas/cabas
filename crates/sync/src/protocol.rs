@@ -19,7 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, SyncError};
-use crate::key::FamilyId;
+use crate::key::GroupId;
 
 /// Bumped on any incompatible change to the messages below. The relay
 /// refuses a `Hello` carrying anything else.
@@ -37,12 +37,12 @@ pub enum FrameKind {
 /// Device → relay.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ClientMessage {
-    /// The opening message of every connection: which family, and where the
+    /// The opening message of every connection: which group, and where the
     /// replay should start. `epoch` and `since` are the device's persisted
     /// cursor; a device that has never synced sends zero for both.
     Hello {
         protocol: u8,
-        family: FamilyId,
+        group: GroupId,
         epoch: u64,
         since: u64,
     },
@@ -106,10 +106,10 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key::FamilyKey;
+    use crate::key::GroupKey;
 
-    fn family() -> FamilyId {
-        FamilyKey::generate().unwrap().id()
+    fn group() -> GroupId {
+        GroupKey::generate().unwrap().id()
     }
 
     #[test]
@@ -117,7 +117,7 @@ mod tests {
         let messages = [
             ClientMessage::Hello {
                 protocol: PROTOCOL,
-                family: family(),
+                group: group(),
                 epoch: 7,
                 since: 42,
             },

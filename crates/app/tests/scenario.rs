@@ -50,8 +50,8 @@ impl Platform for TestPlatform {
 
 fn identity() -> Identity {
     Identity {
-        user: "usr_alice".into(),
-        user_name: "Alice".into(),
+        user: Some("usr_alice".into()),
+        user_name: Some("Alice".into()),
         device: "dev_phone".into(),
         device_name: "Alice's iPhone".into(),
     }
@@ -79,6 +79,7 @@ fn new_ingredient(name: &str, aisle: AisleTag) -> IngredientInput {
         staple: false,
         density: None,
         unit_weight: None,
+        default_quantity: None,
         photo: None,
     }
 }
@@ -172,7 +173,7 @@ async fn scenario() {
     // --- the library ------------------------------------------------------
     let state = stocked(&mut app).await;
     assert_eq!(state.ingredients.len(), 3);
-    assert_eq!(state.me.name, "Alice");
+    assert_eq!(state.me.as_ref().expect("a user is chosen").name, "Alice");
 
     let state = tart(&mut app, &state).await;
     let recipe = id_of_recipe(&state, "Tomato tart");
@@ -347,7 +348,7 @@ async fn scenario() {
     let state = app
         .dispatch(Command::AddIngredientToList {
             ingredient: flour.clone(),
-            quantity: amount("1", UnitTag::Kg),
+            quantity: Some(amount("1", UnitTag::Kg)),
         })
         .await
         .expect("flour goes on the list by hand");
@@ -387,7 +388,7 @@ async fn scenario() {
     assert_eq!(state.recipes.len(), 1);
     assert_eq!(state.ingredients.len(), 3);
     assert!(state.list.is_empty());
-    assert_eq!(state.me.name, "Alice");
+    assert_eq!(state.me.as_ref().expect("a user is chosen").name, "Alice");
     // Steps and their references survived the round trip through the CRDT.
     assert_eq!(state.problems, Vec::new());
 }
@@ -578,6 +579,201 @@ async fn created_under_a_host_minted_id() {
     assert_eq!(event.label, "Tomato");
 }
 
+/// Joining a group and then saying which member you are (DECISIONS 0068).
+///
+/// The window in the middle is the point: the device is open, the replica is
+/// there, the roster is readable — and nothing has been signed, because
+/// nobody has been chosen. A device record written before that would have had
+/// to invent an owner, and the invented person is exactly what the roster
+/// exists to avoid.
+async fn joining_and_saying_who_you_are() {
+    let platform = TestPlatform::default();
+    let joined = Identity::mint_device(&platform, "Alice's iPhone").expect("a device identity");
+    let mut app = App::open(MemoryStorage::new(), TestPlatform::default(), joined)
+        .await
+        .expect("the app opens");
+
+    let state = StateView::clone(&app.state().expect("state"));
+    assert_eq!(state.me, None, "nobody has been chosen yet");
+    assert_eq!(state.people, Vec::new(), "and nobody has been invented");
+
+    // Nothing attributable may be written in that window. Creating an
+    // ingredient is not attributed and does go through — the refusal is about
+    // signing something, not about being read-only.
+    let state = app
+        .dispatch(Command::SaveIngredient {
+            ingredient: new_ingredient("Flour", AisleTag::Grocery),
+        })
+        .await
+        .expect("the library is writable before anybody is named");
+    let flour = id_of_ingredient(&state, "Flour");
+    assert_eq!(
+        app.dispatch(Command::AddIngredientToList {
+            ingredient: flour.clone(),
+            quantity: None,
+        })
+        .await,
+        Err(cabas_app::AppError::NoUser),
+        "a list entry carries who added it, so it has to wait"
+    );
+
+    // The device is named before anybody is chosen, so its record is written
+    // once and already carries the name.
+    app.dispatch(Command::NameDevice {
+        name: "Le téléphone d'Alice".into(),
+    })
+    .await
+    .expect("the device is named");
+
+    // The roster is empty, so the only way through is to add yourself.
+    let state = app
+        .dispatch(Command::CreateUser {
+            name: "Alice".into(),
+        })
+        .await
+        .expect("a person is created");
+    assert_eq!(state.people[0].devices[0].name, "Le téléphone d'Alice");
+    assert_eq!(state.me.as_ref().expect("chosen").name, "Alice");
+    let alice = state.me.as_ref().expect("chosen").id.clone();
+    assert_eq!(state.people.len(), 1);
+    assert!(state.people[0].is_me);
+    assert_eq!(state.people[0].devices.len(), 1);
+    assert!(state.people[0].devices[0].is_this_one);
+    let joined_at = state.people[0].devices[0].paired_at;
+
+    // And now it can be signed.
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: flour,
+            quantity: None,
+        })
+        .await
+        .expect("the same command, once there is somebody to attribute it to");
+    assert_eq!(state.list.len(), 1);
+
+    // The phone changes hands. The device is one record: it moves to Bob
+    // rather than being duplicated, and it does not claim to have joined the
+    // group again today.
+    let state = app
+        .dispatch(Command::CreateUser { name: "Bob".into() })
+        .await
+        .expect("a second person");
+    assert_eq!(state.people.len(), 2);
+    let bob = state.me.as_ref().expect("chosen").id.clone();
+    assert_ne!(bob, alice);
+    let carried: Vec<_> = state
+        .people
+        .iter()
+        .map(|person| (person.name.as_str(), person.devices.len()))
+        .collect();
+    assert_eq!(carried, vec![("Alice", 0), ("Bob", 1)]);
+    let bob_view = state.people.iter().find(|p| p.id == bob).expect("Bob");
+    assert_eq!(bob_view.devices[0].paired_at, joined_at);
+
+    // What Alice already added stays hers: attribution records who did
+    // something, and handing over a phone does not rewrite the past (Rule 7).
+    assert_eq!(state.list[0].added_by.as_deref(), Some("Alice"));
+
+    // And back, by picking a name off the roster rather than typing one.
+    let state = app
+        .dispatch(Command::ChooseUser {
+            user: alice.clone(),
+        })
+        .await
+        .expect("an existing member is chosen");
+    assert_eq!(state.me.as_ref().expect("chosen").name, "Alice");
+    assert_eq!(state.people.len(), 2, "choosing creates nobody");
+
+    // A row that is not on the roster is refused rather than invented: the
+    // frontend was given the list it is allowed to send back.
+    assert!(matches!(
+        app.dispatch(Command::ChooseUser {
+            user: "usr_nobody".into(),
+        })
+        .await,
+        Err(cabas_app::AppError::NotFound { kind: "user", .. })
+    ));
+}
+
+/// Adding an ingredient to the list without saying how much (DECISIONS
+/// 0066) — what a swiped row does, since a gesture carries no amount.
+///
+/// The rule is the core's, not the frontend's (Rule 9): a sized ingredient
+/// contributes what it was sized at, and an unsized one contributes one
+/// piece, which is a thing a person can pick up and correct.
+async fn added_without_an_amount() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    let mut sized = new_ingredient("Flour", AisleTag::Grocery);
+    sized.default_quantity = Some(amount("1", UnitTag::Kg));
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: sized })
+        .await
+        .expect("save");
+    let flour = id_of_ingredient(&state, "Flour");
+
+    let state = app
+        .dispatch(Command::SaveIngredient {
+            ingredient: new_ingredient("Tomato", AisleTag::Produce),
+        })
+        .await
+        .expect("save");
+    let tomatoes = id_of_ingredient(&state, "Tomato");
+
+    // The sized one round-trips through the view as the form would show it:
+    // lossless, so an edit does not write back a rounded amount.
+    let stored = state
+        .ingredients
+        .iter()
+        .find(|i| i.id == flour)
+        .expect("flour");
+    assert_eq!(stored.default_quantity, Some(amount("1", UnitTag::Kg)));
+    // And an unsized one says "nobody said", which is not one piece.
+    let stored = state
+        .ingredients
+        .iter()
+        .find(|i| i.id == tomatoes)
+        .expect("tomatoes");
+    assert_eq!(stored.default_quantity, None);
+
+    let _ = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: flour,
+            quantity: None,
+        })
+        .await
+        .expect("a swipe adds without an amount");
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: tomatoes,
+            quantity: None,
+        })
+        .await
+        .expect("so does one on an ingredient nobody has sized");
+
+    let flour_line = line(&state.cart.to_buy, "Flour");
+    assert_eq!(flour_line.amounts.len(), 1);
+    assert_eq!(flour_line.amounts[0].amount, "1");
+    assert_eq!(flour_line.amounts[0].unit, UnitTag::Kg);
+
+    let tomato_line = line(&state.cart.to_buy, "Tomato");
+    assert_eq!(tomato_line.amounts.len(), 1);
+    assert_eq!(tomato_line.amounts[0].amount, "1");
+    assert_eq!(tomato_line.amounts[0].unit, UnitTag::Piece);
+
+    // A stated amount still wins: the option is a default, not a policy.
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: id_of_ingredient(&state, "Flour"),
+            quantity: Some(amount("500", UnitTag::G)),
+        })
+        .await
+        .expect("an amount that was stated");
+    let flour_line = line(&state.cart.to_buy, "Flour");
+    assert_eq!(flour_line.amounts[0].amount, "1 1/2");
+    assert_eq!(flour_line.amounts[0].unit, UnitTag::Kg);
+}
+
 /// A photo, from the bytes to the aisle it is meant to be recognised in
 /// (DECISIONS 0062).
 ///
@@ -619,7 +815,7 @@ async fn a_photo_from_the_bytes_to_the_cart() {
     let state = app
         .dispatch(Command::AddIngredientToList {
             ingredient: tomatoes.clone(),
-            quantity: amount("3", UnitTag::Piece),
+            quantity: Some(amount("3", UnitTag::Piece)),
         })
         .await
         .expect("on the list");
@@ -707,6 +903,16 @@ mod native {
     fn a_photo_reaches_the_aisle_it_is_for() {
         block_on(a_photo_from_the_bytes_to_the_cart());
     }
+
+    #[test]
+    fn an_ingredient_added_without_an_amount_uses_its_own_default() {
+        block_on(added_without_an_amount());
+    }
+
+    #[test]
+    fn a_device_joins_a_group_and_then_says_who_carries_it() {
+        block_on(joining_and_saying_who_you_are());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -741,6 +947,16 @@ mod browser {
         a_photo_from_the_bytes_to_the_cart().await;
     }
 
+    #[wasm_bindgen_test]
+    async fn an_ingredient_added_without_an_amount_uses_its_own_default() {
+        added_without_an_amount().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_device_joins_a_group_and_then_says_who_carries_it() {
+        joining_and_saying_who_you_are().await;
+    }
+
     /// The PWA's actual path: a command built as a JS object, through the
     /// exported binding, into IndexedDB and back out as a state object.
     ///
@@ -753,9 +969,30 @@ mod browser {
         use cabas_app::CabasApp;
         use cabas_app::view::StateView;
 
-        let identity = CabasApp::mint_identity("Alice".into(), "Alice's iPhone".into())
-            .expect("an identity is minted");
+        let identity =
+            CabasApp::mint_device("Alice's iPhone".into()).expect("a device identity is minted");
         let app = CabasApp::open(identity).await.expect("the app opens");
+
+        // A device that has not said who carries it yet (DECISIONS 0068).
+        // Through the binding, because `me` being `null` rather than
+        // `undefined` is the whole of 0034 and this is where it would break.
+        let opened: StateView =
+            serde_wasm_bindgen::from_value(app.state().expect("state")).expect("a state");
+        assert!(opened.me.is_none(), "nobody has been chosen yet");
+
+        let named = serde_wasm_bindgen::to_value(&Command::CreateUser {
+            name: "Alice".into(),
+        })
+        .expect("the command becomes a JS object");
+        let state: StateView =
+            serde_wasm_bindgen::from_value(app.apply(named).expect("the user is created"))
+                .expect("a state");
+        assert_eq!(state.me.expect("a user is chosen").name, "Alice");
+
+        // And the host can read the identity back to persist it.
+        let identity: cabas_app::Identity =
+            serde_wasm_bindgen::from_value(app.identity().expect("identity")).expect("an identity");
+        assert_eq!(identity.user_name.as_deref(), Some("Alice"));
 
         let command = serde_wasm_bindgen::to_value(&Command::SaveIngredient {
             ingredient: new_ingredient("Saffron", AisleTag::Grocery),
@@ -818,8 +1055,8 @@ mod browser {
             other => panic!("expected a push, got {other:?}"),
         };
 
-        let identity = CabasApp::mint_identity("Bob".into(), "Bob's iPhone".into())
-            .expect("an identity is minted");
+        let identity =
+            CabasApp::mint_device("Bob's iPhone".into()).expect("a device identity is minted");
         let app = CabasApp::open(identity).await.expect("the app opens");
 
         assert!(

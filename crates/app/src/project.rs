@@ -181,18 +181,21 @@ pub(crate) fn state(
     identity: &Identity,
     revision: u64,
 ) -> StateView {
-    let me = identity.user_id();
     StateView {
         revision,
-        me: UserView {
-            id: identity.user.clone(),
+        // Absent until this device says which member of the group it is
+        // (DECISIONS 0068) — the window between the twelve words and the
+        // roster arriving.
+        me: identity.user_id().map(|me| UserView {
+            id: me.to_string(),
             // The document wins over what the host remembers: the name may
             // have been changed from another device since this one launched.
             name: library
                 .user_name(&me)
-                .unwrap_or(&identity.user_name)
-                .to_owned(),
-        },
+                .map(str::to_owned)
+                .or_else(|| identity.user_name.clone())
+                .unwrap_or_default(),
+        }),
         people: people_views(library, identity),
         events: event_views(library, identity),
         cart: cart_view(library, &projection.cart),
@@ -204,7 +207,7 @@ pub(crate) fn state(
     }
 }
 
-/// The family roster: everyone in the document, each with what they carry.
+/// The group roster: everyone in the document, each with what they carry.
 ///
 /// A device whose owner is not in the roster is invisible here, which is what
 /// [`cabas_domain::devices_of`] decides and why: under a CRDT one replica can
@@ -222,7 +225,7 @@ fn people_views(library: &Library, identity: &Identity) -> Vec<PersonView> {
         .map(|user| PersonView {
             id: user.id.to_string(),
             name: user.name.clone(),
-            is_me: user.id == me,
+            is_me: me.as_ref() == Some(&user.id),
             devices: cabas_domain::devices_of(&library.devices, &user.id)
                 .map(|device| DeviceView {
                     id: device.id.to_string(),
@@ -250,7 +253,7 @@ fn event_views(library: &Library, identity: &Identity) -> Vec<EventView> {
         .map(|event| EventView {
             at: event.at.0,
             by: library.user_name(&event.by).map(str::to_owned),
-            by_me: event.by == me,
+            by_me: me.as_ref() == Some(&event.by),
             action: event.action.into(),
             subject: (&event.subject).into(),
             label: event.label.clone(),
@@ -370,6 +373,7 @@ fn ingredient_views(library: &Library) -> Vec<IngredientView> {
             staple: ingredient.staple,
             density: ingredient.density.map(number::render_lossless),
             unit_weight: ingredient.unit_weight.map(number::render_lossless),
+            default_quantity: ingredient.default_quantity.as_ref().map(quantity_input),
             photo: ingredient.photo.as_ref().map(PhotoId::to_string),
         })
         .collect();

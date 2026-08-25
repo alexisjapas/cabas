@@ -12,14 +12,14 @@
  * not. There is no service-worker sync, no push, and no timer running behind a
  * backgrounded PWA — iOS would kill it anyway, and pretending otherwise costs
  * battery to be wrong. Coming back to the app reconnects and replays, which on
- * a family library is a few frames.
+ * a group library is a few frames.
  *
  * # What is persisted, and why it is two keys
  *
  * The phrase and the relay URL are written once, when pairing. The cursor and
  * the shadow move constantly. They live in **separate** `localStorage` keys so
  * that the hot path never rewrites the secret: a half-written cursor costs a
- * replay, a half-written phrase would cost the family.
+ * replay, a half-written phrase would cost the group.
  *
  * # Everything here is opaque
  *
@@ -33,7 +33,18 @@ import type { SyncCursor } from './bindings/SyncCursor';
 import type { Core } from './core';
 
 /** Written at pairing time, read at every connection. */
-const FAMILY_KEY = 'cabas.family';
+const GROUP_KEY = 'cabas.group';
+/**
+ * What the same value was called before groups were called groups
+ * (DECISIONS 0063). Read once, moved, and removed: this is the twelve words,
+ * and two copies of the secret in one browser is one more than there should
+ * be. A device that has already been paired therefore stays paired across the
+ * rename without anybody retyping anything — and a build older than the
+ * rename, installed after it, asks for the phrase again. That is the cost,
+ * and it is a phrase written down beside the backup key (README, "Backups").
+ */
+const LEGACY_GROUP_KEY = 'cabas.family';
+
 /** Written constantly; holds nothing secret. */
 const CURSOR_KEY = 'cabas.sync';
 
@@ -67,15 +78,15 @@ export type SyncPhase =
    *  not help, so nothing is scheduled. */
   | 'refused';
 
-/** The family this device belongs to. The phrase *is* the key (0042). */
-export type Family = {
+/** The group this device belongs to. The phrase *is* the key (0042). */
+export type Group = {
   phrase: string;
   /** `null` means the app's own origin, which is what production serves the
    *  socket from (0012). A value here is the development override. */
   relay: string | null;
 };
 
-function isFamily(value: unknown): value is Family {
+function isGroup(value: unknown): value is Group {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
   return (
@@ -84,20 +95,37 @@ function isFamily(value: unknown): value is Family {
   );
 }
 
-/** The family, or `null` on a device that has not been paired. */
-export function readFamily(): Family | null {
-  const stored = localStorage.getItem(FAMILY_KEY);
+/**
+ * The group, or `null` on a device that has not been paired.
+ *
+ * Falls back to the key the same value used to live under, and moves it
+ * (DECISIONS 0063). The fallback is only reached on a device paired before the
+ * rename, exactly once — after which the old key is gone and this is one
+ * `getItem` again.
+ */
+export function readGroup(): Group | null {
+  const current = parseGroup(localStorage.getItem(GROUP_KEY));
+  if (current !== null) return current;
+
+  const legacy = parseGroup(localStorage.getItem(LEGACY_GROUP_KEY));
+  if (legacy === null) return null;
+  rememberGroup(legacy);
+  localStorage.removeItem(LEGACY_GROUP_KEY);
+  return legacy;
+}
+
+function parseGroup(stored: string | null): Group | null {
   if (stored === null) return null;
   try {
     const parsed: unknown = JSON.parse(stored);
-    return isFamily(parsed) ? parsed : null;
+    return isGroup(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export function rememberFamily(family: Family): void {
-  localStorage.setItem(FAMILY_KEY, JSON.stringify(family));
+export function rememberGroup(group: Group): void {
+  localStorage.setItem(GROUP_KEY, JSON.stringify(group));
 }
 
 /**
@@ -106,8 +134,8 @@ export function rememberFamily(family: Family): void {
  * installed PWA over TLS — cannot end up asking for a `ws:` the browser will
  * refuse as mixed content (DECISIONS 0044).
  */
-export function relayUrl(family: Family): string {
-  if (family.relay !== null && family.relay !== '') return family.relay;
+export function relayUrl(group: Group): string {
+  if (group.relay !== null && group.relay !== '') return group.relay;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${scheme}//${location.host}/sync`;
 }
@@ -169,12 +197,12 @@ export class Sync {
   readonly #adopt: (state: StateView) => void;
 
   /**
-   * The family this device belongs to, or `null` until it is paired. Public
+   * The group this device belongs to, or `null` until it is paired. Public
    * and reactive because Settings shows the phrase — this is the one screen
    * where the key is meant to be on display (DECISIONS 0021) — and because
    * pairing from there has to re-render what it changed.
    */
-  family = $state<Family | null>(null);
+  group = $state<Group | null>(null);
 
   #socket: WebSocket | null = null;
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -222,11 +250,11 @@ export class Sync {
 
   /**
    * Starts listening to the page lifecycle, and connects if the app is on
-   * screen and paired. Safe to call on a device with no family: it does
+   * screen and paired. Safe to call on a device with no group: it does
    * nothing until one is written.
    */
   start(): void {
-    this.family = readFamily();
+    this.group = readGroup();
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') this.#connect();
       else this.#park();
@@ -259,14 +287,14 @@ export class Sync {
    * whoever called `readPhrase` — this stores what it is given.
    *
    * Changing the phrase resets the cursor and the shadow: they describe a
-   * position in *that* family's log, and the new one has never been read. A
+   * position in *that* group's log, and the new one has never been read. A
    * relay URL that changes on its own does not — it is the same log, reached
    * by another road.
    */
-  pair(family: Family): void {
-    const elsewhere = this.family?.phrase !== family.phrase;
-    rememberFamily(family);
-    this.family = family;
+  pair(group: Group): void {
+    const elsewhere = this.group?.phrase !== group.phrase;
+    rememberGroup(group);
+    this.group = group;
     if (elsewhere) {
       this.#cursor = { epoch: '0', since: 0 };
       this.#shadow = new Uint8Array();
@@ -290,7 +318,7 @@ export class Sync {
   // --- the socket ---------------------------------------------------------
 
   #connect(): void {
-    if (this.family === null) {
+    if (this.group === null) {
       this.phase = 'unpaired';
       return;
     }
@@ -298,15 +326,15 @@ export class Sync {
     clearTimeout(this.#retryTimer);
 
     this.phase = 'connecting';
-    const socket = new WebSocket(relayUrl(this.family));
+    const socket = new WebSocket(relayUrl(this.group));
     socket.binaryType = 'arraybuffer';
     this.#socket = socket;
 
     socket.onopen = () => {
-      const family = this.family;
-      if (family === null) return;
+      const group = this.group;
+      if (group === null) return;
       try {
-        socket.send(this.#core.syncHello(family.phrase, this.#cursor));
+        socket.send(this.#core.syncHello(group.phrase, this.#cursor));
       } catch (cause) {
         // A stored phrase that does not decode. Reconnecting would produce
         // the same failure for as long as the phone is on, so it stops here
@@ -403,7 +431,7 @@ export class Sync {
     //
     // Unless the relay reset us: then the shadow describes a log that no
     // longer holds those frames, "nothing changed since" is a claim about the
-    // wrong history, and this device owes the family the whole replica —
+    // wrong history, and this device owes the group the whole replica —
     // which is what the core sends in that state (0054).
     if (!this.#reset && sameBytes(version, this.#shadow)) return;
 

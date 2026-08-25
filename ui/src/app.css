@@ -72,6 +72,22 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* A row let go of, coming back (DECISIONS 0067). Slower than anything else
+     here and the only curve that overshoots: the gesture puts something on a
+     list that is out of sight, so the recoil is the confirmation. The
+     overshoot is ~10% of the distance travelled — enough to read as a spring,
+     not enough to look like a bug. */
+  --duration-spring: 420ms;
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* --- The swipe that puts a row on the list (DECISIONS 0067) ---------- */
+  /* How far a row travels before it hits its stop. Long on purpose: this
+     gesture edits a list that is not on screen, and a short one would fire
+     on every scroll that started slightly sideways. */
+  --swipe-reach: 168px;
+  /* Where the row parks afterwards — exactly the width of the way out, so
+     "Annuler" ends up uncovered and nothing else does. */
+  --swipe-rest: 92px;
 
   /* --- Layout --------------------------------------------------------- */
   /* Phone first; on a wide screen the column stays a column rather than
@@ -127,6 +143,10 @@
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    /* The spring is the part of the swipe that is decoration; the row still
+       lands where it lands, it just gets there at once. */
+    --duration-spring: 0ms;
+    --ease-spring: var(--ease-out);
   }
 }
 

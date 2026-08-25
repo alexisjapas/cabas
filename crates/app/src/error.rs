@@ -45,6 +45,18 @@ pub enum AppError {
     #[error("platform: {0}")]
     Platform(String),
 
+    /// A command that would write something attributable, on a device that
+    /// has joined a group and not yet said which member it is (DECISIONS
+    /// 0068).
+    ///
+    /// A window the frontend keeps shut — it shows the roster and nothing
+    /// else until somebody is chosen — so reaching this is a host that let
+    /// the app through too early, not a person doing something wrong. It is
+    /// an error rather than a placeholder name because "added by nobody" is
+    /// a row two people would then have to interpret forever.
+    #[error("no user chosen on this device yet")]
+    NoUser,
+
     /// Sync: a recovery phrase that does not decode, a frame that does not
     /// open, a relay speaking a protocol this build does not. Carries no
     /// vendor type — `sync` already saw to that, for the same reason `store`

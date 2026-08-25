@@ -17,6 +17,8 @@
     unit = $bindable(),
     label = 'Quantité',
     required = false,
+    field = undefined,
+    onkeydown = undefined,
   }: {
     amount: string;
     unit: UnitTag;
@@ -24,6 +26,15 @@
     /** Lets the browser block the submit, rather than the core refusing an
         empty amount after the fact. */
     required?: boolean;
+    /** Names both controls for `ui-test`, which queries the DOM globally. */
+    field?: string | undefined;
+    /**
+     * Given by a caller that is **not** a `<form>` and lives inside one.
+     * `IngredientForm` is the case: left alone, Enter here submits the recipe
+     * being written rather than the panel being filled in (DECISIONS 0056).
+     * It is on each control because that is where the browser looks.
+     */
+    onkeydown?: ((event: KeyboardEvent) => void) | undefined;
   } = $props();
 </script>
 
@@ -36,9 +47,16 @@
       placeholder="1,5"
       aria-label="Quantité"
       autocomplete="off"
+      data-field={field}
       {required}
+      {onkeydown}
     />
-    <select bind:value={unit} aria-label="Unité">
+    <select
+      bind:value={unit}
+      aria-label="Unité"
+      data-field={field === undefined ? undefined : `${field}-unit`}
+      {onkeydown}
+    >
       {#each UNIT_GROUPS as group (group.label)}
         <optgroup label={group.label}>
           {#each group.units as tag (tag)}

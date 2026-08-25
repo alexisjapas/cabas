@@ -30,7 +30,7 @@ use cabas_domain::list::{ListEntry, ListItem};
 use cabas_domain::recipe::{Component, IngredientUsage, Segment, Step, SubRecipeUsage};
 use cabas_domain::{
     Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, PhotoId, Quantity, Rational,
-    Recipe, RecipeId, SubRecipeAmount, Timestamp, UsageId, User, finish_shopping,
+    Recipe, RecipeId, SubRecipeAmount, Timestamp, UsageId, User, UserId, finish_shopping,
 };
 use cabas_store::{Document, Storage};
 
@@ -101,31 +101,124 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(app)
     }
 
-    /// Writes this device and its owner into the family document, if they are
+    /// Writes this device and its owner into the group document, if they are
     /// not already there.
     ///
     /// Only ever *adds*. The name in the document wins over the one the host
     /// passed in, because the other device may have renamed the person since
     /// this one last launched, and a launch is not a rename.
+    ///
+    /// **Does nothing at all on a device that has not said who is carrying
+    /// it** (DECISIONS 0068). That is the whole of the joining window: a
+    /// device record needs an owner, so writing one before there is a person
+    /// would mean inventing the person — which is exactly the ghost member
+    /// the roster is there to avoid. `choose_user` and `create_user` call it
+    /// again the moment somebody is chosen.
     fn enrol(&mut self) -> Result<()> {
-        let user = self.identity.user_id();
+        let Some(user) = self.identity.user_id() else {
+            return Ok(());
+        };
         if !self.document.users()?.iter().any(|u| u.id == user) {
-            self.document
-                .put_user(&User::new(user.clone(), &self.identity.user_name))?;
+            // The name is the host's copy, which is only ever consulted when
+            // the document has lost the record — a replica rebuilt from
+            // nothing under a `localStorage` that survived.
+            let name = self.identity.user_name.clone().unwrap_or_default();
+            self.document.put_user(&User::new(user.clone(), name))?;
             self.mark_changed();
         }
 
         let device = self.identity.device_id();
-        if !self.document.devices()?.iter().any(|d| d.id == device) {
-            self.document.put_device(&Device::new(
-                device,
-                user,
-                &self.identity.device_name,
-                self.platform.now(),
-            ))?;
-            self.mark_changed();
+        let known = self
+            .document
+            .devices()?
+            .into_iter()
+            .find(|d| d.id == device);
+        match known {
+            // Already here and pointing at the right person: nothing to say.
+            Some(held) if held.owner == user => {}
+            // Here, pointing elsewhere: somebody handed the phone over
+            // (0068). The device keeps its id, its name and the date it
+            // joined — only who carries it changes, and rewriting `paired_at`
+            // would claim it joined again today.
+            Some(held) => {
+                self.document
+                    .put_device(&Device::new(device, user, held.name, held.paired_at))?;
+                self.mark_changed();
+            }
+            None => {
+                self.document.put_device(&Device::new(
+                    device,
+                    user,
+                    &self.identity.device_name,
+                    self.platform.now(),
+                ))?;
+                self.mark_changed();
+            }
         }
         Ok(())
+    }
+
+    /// The person this device belongs to, or a refusal (DECISIONS 0068).
+    ///
+    /// Every attributable write goes through here rather than reading the
+    /// identity directly, so the joining window cannot leak a row signed by
+    /// nobody.
+    fn user_id(&self) -> Result<UserId> {
+        self.identity.user_id().ok_or(AppError::NoUser)
+    }
+
+    /// This device now belongs to a person the group already knows
+    /// (DECISIONS 0068).
+    ///
+    /// The name comes out of the document rather than from the caller: the
+    /// frontend showed a roster it had been given, and the only thing it is
+    /// trusted to send back is which row was tapped.
+    fn choose_user(&mut self, user: &str, library: &Library) -> Result<bool> {
+        let id = UserId::from_raw(user);
+        let name = library
+            .user_name(&id)
+            .ok_or_else(|| AppError::not_found("user", id.as_str()))?
+            .to_owned();
+        self.identity.belongs_to(&id, &name);
+        self.enrol()?;
+        Ok(true)
+    }
+
+    /// A person the group did not have yet, and this device is them.
+    ///
+    /// The same command whether it is the first member of a brand-new group
+    /// or a third person joining an old one — there is no difference to make,
+    /// and inventing one would be inventing a notion of ownership the key
+    /// model does not have (Rule 7).
+    /// Names this device (DECISIONS 0068).
+    ///
+    /// Before there is an owner it is only the host's copy that changes,
+    /// which is the whole reason this command exists: the record is then
+    /// written once, already named, by the choose or create that follows.
+    /// Afterwards it is a rename of a record that is already in the roster.
+    fn name_device(&mut self, name: &str) -> Result<bool> {
+        let name = text("name", name)?.to_owned();
+        self.identity.device_name = name.clone();
+
+        let id = self.identity.device_id();
+        let Some(held) = self.document.devices()?.into_iter().find(|d| d.id == id) else {
+            // Nothing in the document yet, and nothing to say about it: the
+            // host's copy is the only place this lives until somebody is
+            // chosen. No document change, so no state push is owed either.
+            return Ok(false);
+        };
+        self.document
+            .put_device(&Device::new(id, held.owner, name, held.paired_at))?;
+        Ok(true)
+    }
+
+    fn create_user(&mut self, name: &str) -> Result<bool> {
+        let name = text("name", name)?.to_owned();
+        let id = UserId::from_raw(self.mint(id::USER)?);
+        self.document.put_user(&User::new(id.clone(), &name))?;
+        self.identity.belongs_to(&id, &name);
+        self.enrol()?;
+        Ok(true)
     }
 
     /// The current state, without changing anything.
@@ -207,6 +300,13 @@ impl<S: Storage, P: Platform> App<S, P> {
         self.changed_at = self.revision;
     }
 
+    /// Who this device says it is.
+    ///
+    /// The host holds the only durable copy (DECISIONS 0031), and
+    /// [`Command::ChooseUser`] and [`Command::CreateUser`] change it — so a
+    /// host that ran one reads this back and writes it down again, or the
+    /// next launch is a device that has forgotten who is carrying it
+    /// (DECISIONS 0068).
     pub fn identity(&self) -> &Identity {
         &self.identity
     }
@@ -310,7 +410,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             Command::AddIngredientToList {
                 ingredient,
                 quantity,
-            } => self.add_ingredient_to_list(&ingredient, &quantity, library),
+            } => self.add_ingredient_to_list(&ingredient, quantity.as_ref(), library),
             Command::SetEntryServings { entry, servings } => {
                 self.set_entry_servings(&entry, servings, library)
             }
@@ -333,11 +433,17 @@ impl<S: Storage, P: Platform> App<S, P> {
                 Ok(false)
             }
             Command::RenameUser { name } => {
-                let name = text("name", &name)?;
-                self.document
-                    .put_user(&User::new(self.identity.user_id(), name))?;
+                let name = text("name", &name)?.to_owned();
+                let user = self.user_id()?;
+                self.document.put_user(&User::new(user.clone(), &name))?;
+                // The host's copy follows, or a replica rebuilt from nothing
+                // would put the old name back (see `enrol`).
+                self.identity.belongs_to(&user, &name);
                 Ok(true)
             }
+            Command::ChooseUser { user } => self.choose_user(&user, library),
+            Command::CreateUser { name } => self.create_user(&name),
+            Command::NameDevice { name } => self.name_device(&name),
         }
     }
 
@@ -361,6 +467,11 @@ impl<S: Storage, P: Platform> App<S, P> {
         ingredient.staple = input.staple;
         ingredient.density = coefficient("density", input.density.as_deref())?;
         ingredient.unit_weight = coefficient("unit_weight", input.unit_weight.as_deref())?;
+        ingredient.default_quantity = input
+            .default_quantity
+            .as_ref()
+            .map(|q| self.quantity("default_quantity", q))
+            .transpose()?;
         ingredient.photo = photo(input.photo.as_deref())?;
 
         self.document.put_ingredient(&ingredient)?;
@@ -504,19 +615,29 @@ impl<S: Storage, P: Platform> App<S, P> {
         self.add_entry(entry, library)
     }
 
+    /// Puts a bare ingredient on the list.
+    ///
+    /// No `quantity` means "as much of it as one usually buys": the
+    /// ingredient's own default, or one piece (DECISIONS 0066). The
+    /// substitution is read off the ingredient rather than decided here,
+    /// because it is the same rule wherever an amount is missing.
     fn add_ingredient_to_list(
         &mut self,
         ingredient: &str,
-        quantity: &QuantityInput,
+        quantity: Option<&QuantityInput>,
         library: &Library,
     ) -> Result<bool> {
-        let ingredient = IngredientId::from_raw(ingredient);
-        if !library.ingredients.contains_key(&ingredient) {
-            return Err(AppError::not_found("ingredient", ingredient.as_str()));
-        }
+        let id = IngredientId::from_raw(ingredient);
+        let Some(known) = library.ingredients.get(&id) else {
+            return Err(AppError::not_found("ingredient", id.as_str()));
+        };
+        let quantity = match quantity {
+            Some(input) => self.quantity("quantity", input)?,
+            None => known.shopping_quantity(),
+        };
         let entry = self.entry(ListItem::Ingredient {
-            ingredient,
-            quantity: self.quantity("quantity", quantity)?,
+            ingredient: id,
+            quantity,
         })?;
         self.add_entry(entry, library)
     }
@@ -525,7 +646,7 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(ListEntry {
             id: ListEntryId::from_raw(self.mint(id::LIST_ENTRY)?),
             item,
-            added_by: self.identity.user_id(),
+            added_by: self.user_id()?,
             added_at: self.now(),
         })
     }
@@ -618,7 +739,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             Explicit::Unchecked
         } else {
             Explicit::Checked {
-                by: self.identity.user_id(),
+                by: self.user_id()?,
                 at: self.now(),
             }
         };
@@ -680,7 +801,7 @@ impl<S: Storage, P: Platform> App<S, P> {
     fn record(&mut self, action: Action, subject: Subject, label: &str) -> Result<()> {
         self.document.record_event(&Event::new(
             self.now(),
-            self.identity.user_id(),
+            self.user_id()?,
             action,
             subject,
             label,

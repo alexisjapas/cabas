@@ -1,6 +1,6 @@
 //! Encrypted transport between devices.
 //!
-//! One symmetric key per family, shared by every paired device. Sync
+//! One symmetric key per group, shared by every paired device. Sync
 //! messages are sealed before they leave the device, so the relay stores
 //! and forwards ciphertext it cannot read.
 //!
@@ -36,5 +36,5 @@ mod seal;
 mod session;
 
 pub use error::{Result, SyncError};
-pub use key::{FamilyId, FamilyKey, PHRASE_WORDS};
+pub use key::{GroupId, GroupKey, PHRASE_WORDS};
 pub use session::{Event, Session};

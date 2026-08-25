@@ -23,7 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::command::RecipeInput;
+use crate::command::{QuantityInput, RecipeInput};
 use crate::number;
 use crate::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
 use cabas_domain::Quantity;
@@ -37,8 +37,14 @@ pub struct StateView {
     /// reopened; it orders nothing across devices.
     pub revision: u64,
     /// Who this device says it is — the name attribution will use.
-    pub me: UserView,
-    /// Everyone in the family and the devices they carry, in document order.
+    ///
+    /// `None` on a device that has joined a group and not yet said which
+    /// member it is (DECISIONS 0068). Everything else on this state is real
+    /// and readable in that window — the library arrives over sync while the
+    /// question is on screen — so this is the frontend's cue to ask it, not a
+    /// sign that nothing has loaded.
+    pub me: Option<UserView>,
+    /// Everyone in the group and the devices they carry, in document order.
     /// Sorting is the screen's business, like every other list here.
     pub people: Vec<PersonView>,
     /// What has been edited and deleted, newest first and capped
@@ -63,7 +69,7 @@ pub struct UserView {
     pub name: String,
 }
 
-/// One person in the family, and the devices they carry.
+/// One person in the group, and the devices they carry.
 ///
 /// **Names, not permissions** (Rule 7, DECISIONS 0024). One shared key
 /// decrypts the whole document, so every one of these says who most likely
@@ -87,7 +93,7 @@ pub struct DeviceView {
     pub name: String,
     /// The device this state was rendered on.
     pub is_this_one: bool,
-    /// When it joined the family, in milliseconds since the epoch.
+    /// When it joined the group, in milliseconds since the epoch.
     ///
     /// A number rather than text: a millisecond count is nowhere near where a
     /// double stops being exact (DECISIONS 0046), and the words around a date
@@ -257,6 +263,18 @@ pub struct IngredientView {
     pub staple: bool,
     pub density: Option<String>,
     pub unit_weight: Option<String>,
+    /// How much of it one usually buys, if anybody said (DECISIONS 0066).
+    ///
+    /// Shaped like the input the form writes back and the command that adds
+    /// it to a list takes, rather than like a rendered `QuantityView`: this
+    /// is the value an edit form has to put in its fields, and a form must
+    /// render losslessly or it writes a rounded amount back on the next save.
+    /// `FocusView::edit` carries a `RecipeInput` for the same reason.
+    ///
+    /// `None` is "nobody said", which is not the same as one piece — the
+    /// form shows an empty field, and the core substitutes a piece at the
+    /// moment it is needed.
+    pub default_quantity: Option<QuantityInput>,
     /// The ingredient's photo, if it has one. An id; see
     /// `CartLineView::photo`.
     pub photo: Option<String>,

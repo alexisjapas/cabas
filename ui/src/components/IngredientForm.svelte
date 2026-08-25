@@ -2,6 +2,7 @@
   import type { AisleTag } from '../lib/bindings/AisleTag';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { IngredientView } from '../lib/bindings/IngredientView';
+  import type { UnitTag } from '../lib/bindings/UnitTag';
 
   /**
    * The library form, wherever it is needed — the Ingredients tab, the list,
@@ -27,6 +28,15 @@
     staple: boolean;
     density: string;
     unitWeight: string;
+    /**
+     * How much of it one usually buys, as typed (DECISIONS 0066). An empty
+     * amount means nobody has said, which is not the same as zero and not the
+     * same as one — the core substitutes a piece where it is needed. The unit
+     * is kept even while the amount is empty, so clearing the field and
+     * typing again does not also reset the dropdown.
+     */
+    defaultAmount: string;
+    defaultUnit: UnitTag;
     /** The id of a stored photo, or none. Bytes never travel in a draft. */
     photo: string | null;
   };
@@ -56,6 +66,8 @@
       staple: false,
       density: '',
       unitWeight: '',
+      defaultAmount: '',
+      defaultUnit: 'piece',
       photo: null,
     };
   }
@@ -69,6 +81,8 @@
       staple: ingredient.staple,
       density: ingredient.density ?? '',
       unitWeight: ingredient.unit_weight ?? '',
+      defaultAmount: ingredient.default_quantity?.amount ?? '',
+      defaultUnit: ingredient.default_quantity?.unit ?? 'piece',
       photo: ingredient.photo,
     };
   }
@@ -91,6 +105,12 @@
       staple: draft.staple,
       density: orNull(draft.density),
       unit_weight: orNull(draft.unitWeight),
+      // The unit alone says nothing: a dropdown left on "pièce" over an empty
+      // amount is the absence of an answer, not an answer of one piece.
+      default_quantity:
+        draft.defaultAmount.trim() === ''
+          ? null
+          : { amount: draft.defaultAmount.trim(), unit: draft.defaultUnit },
       photo: draft.photo,
     };
   }
@@ -102,6 +122,7 @@
   import { AISLE_LABEL, AISLES } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
   import PhotoField from './PhotoField.svelte';
+  import QuantityField from './QuantityField.svelte';
 
   /**
    * # Why this is not a `<form>`
@@ -212,6 +233,19 @@
     </span>
   </label>
 
+  <!-- A shopping amount, not a cooking one: it is what a swipe puts on the
+       list, and no recipe reads it (DECISIONS 0066). -->
+  <div class="usual">
+    <QuantityField
+      bind:amount={draft.defaultAmount}
+      bind:unit={draft.defaultUnit}
+      label="Quantité habituelle"
+      field="default-quantity"
+      {onkeydown}
+    />
+    <small>Ce qu'on en achète quand on l'ajoute d'un geste. Vide : une pièce.</small>
+  </div>
+
   <div class="pair">
     <label>
       Densité
@@ -306,6 +340,12 @@
   .check span {
     display: flex;
     flex-direction: column;
+  }
+
+  .usual {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .pair {

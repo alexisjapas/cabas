@@ -5,8 +5,8 @@
  *
  * **Supplied by the host, never invented here.** The ids have to survive a
  * restart or every launch would look like a new person to the rest of the
- * family, and where a device remembers things about *itself* is a host
- * concern: `localStorage` in the PWA, a config file under Tauri. The family
+ * group, and where a device remembers things about *itself* is a host
+ * concern: `localStorage` in the PWA, a config file under Tauri. The group
  * document holds the [`cabas_domain::User`] and [`cabas_domain::Device`]
  * records these ids point at — that half *is* shared, and [`crate::App`]
  * writes it on first open.
@@ -15,5 +15,25 @@
  * boundary verbatim: the host stores what it is given and hands it back.
  *
  * Attribution built on this is declarative, never access control (Rule 7).
+ *
+ * # The user half can be missing, and the device half cannot
+ *
+ * A device knows what it is the moment it exists — the replica's peer id is
+ * derived from the device id, so there is no launch without one. *Who* is
+ * carrying it is a different question, and on a phone joining an existing
+ * group it is one only the group's roster can answer: the members are in the
+ * document, and the document arrives over the network (DECISIONS 0068). So
+ * `user` and `user_name` are `None` between the twelve words and the moment
+ * somebody picks a name off that roster or adds one to it.
+ *
+ * The two move together — both `Some` or both `None`, which
+ * [`Identity::belongs_to`] is the only way to set. `user_name` is not
+ * redundant with the document: a device whose replica is lost while
+ * `localStorage` survives has to be able to put its own user back, and the
+ * name is the part no id can reconstruct.
+ *
+ * The shape is also what an identity written before 0068 already looks like
+ * from here — both fields present, both strings — so a paired device reads
+ * its own stored identity across the change without a migration.
  */
-export type Identity = { user: string, user_name: string, device: string, device_name: string, };
+export type Identity = { user: string | null, user_name: string | null, device: string, device_name: string, };

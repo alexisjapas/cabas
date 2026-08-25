@@ -23,7 +23,7 @@ epoch: string,
 /**
  * The last sequence number applied. A plain number: the relay hands
  * these out one per frame from 1, so reaching the point where a double
- * stops being exact would take more frames than a family will ever
+ * stops being exact would take more frames than a group will ever
  * produce.
  */
 since: number, };

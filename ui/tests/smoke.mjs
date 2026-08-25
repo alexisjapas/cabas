@@ -293,6 +293,53 @@ const HELPERS = `
   /** The photo a row or a panel is showing, once its bytes have been read. */
   window.__photoSrc = (selector = '.photo img') =>
     document.querySelector(selector)?.getAttribute('src') ?? null;
+  /**
+   * Drags a row to the right and lets go — the gesture that puts something on
+   * the list (DECISIONS 0067).
+   *
+   * Synthesised as pointer events rather than driven through CDP's input
+   * domain, because what is under test is the component's own axis decision
+   * and threshold, not the browser's touch emulation. \`setPointerCapture\`
+   * needs a pointer the element believes in, so the id is fixed and the moves
+   * carry it; \`isPrimary\` is what \`down\` checks first.
+   *
+   * \`distance\` is how far the row travels **after** the axis is decided, not
+   * how far the finger moves: the component anchors the drag at the moment it
+   * commits to the horizontal, so the first few pixels are spent choosing and
+   * the row does not jump to meet the finger. Measuring from the same place
+   * the component does is what keeps this from testing the slop by accident.
+   */
+  window.__swipe = async (selector, text, distance) => {
+    const front = [...document.querySelectorAll(selector)]
+      .find((node) => node.textContent.trim().includes(text));
+    if (!front) throw new Error('no ' + selector + ' containing ' + text);
+
+    const box = front.getBoundingClientRect();
+    const y = box.top + box.height / 2;
+    const from = box.left + 8;
+    const at = (type, x) =>
+      front.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 7,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+
+    // Just past the slop, which is where the axis is decided and where the
+    // drag is anchored.
+    const anchor = from + 12;
+    at('pointerdown', from);
+    at('pointermove', anchor);
+    for (const step of [0.5, 1]) at('pointermove', anchor + distance * step);
+    at('pointerup', anchor + distance);
+    await window.__settle();
+  };
   window.__count = (selector) => document.querySelectorAll(selector).length;
   window.__click = (selector) => {
     const el = document.querySelector(selector);
@@ -408,17 +455,17 @@ await evaluate(`
 
 await load(APP);
 await waitFor(`__text('h1') === 'cabas'`, 'the pairing screen');
-ok('a device with no identity is asked about its family first');
+ok('a device with no identity is asked about its group first');
 
-// Start a family rather than join one: this is the first phone, and the
+// Start a group rather than join one: this is the first phone, and the
 // phrase it mints is the whole secret from here on (DECISIONS 0021, 0042).
-await evaluate(`__clickText('button', 'Commencer une famille')`);
+await evaluate(`__clickText('button', 'Créer un groupe')`);
 await waitFor(`__text('[data-phrase]')`, 'the phrase');
 const phrase = await evaluate(`__text('[data-phrase]')`);
 if (phrase.split(/\s+/).length !== 12) {
   throw failed(`the phrase is not twelve words: ${JSON.stringify(phrase)}`);
 }
-ok(`the family's phrase is twelve words`);
+ok(`the group's phrase is twelve words`);
 
 // The encoder against qrencode — fixed phrases plus the one just minted —
 // and then the drawing against the encoder. A picture that renders and does
@@ -455,35 +502,67 @@ if (rendered.size !== expected.size || [...expected].some((cell) => !rendered.ha
 ok(`the page draws the symbol it was given (${expected.size} dark modules)`);
 await shot('00-pairing');
 
+// The replica opens before anybody is named, and the question is asked over
+// it (DECISIONS 0068). On a group this device just created the roster is
+// empty by construction, so the only way through is to create somebody — the
+// same door a phone joining an existing group takes when it is not on the
+// list.
 await evaluate(`__clickText('button', "J'ai noté la phrase")`);
-await waitFor('document.querySelector("form input")', 'onboarding form');
-ok('and then it asks who this device belongs to');
+await waitFor(`__text('h1') === 'Qui êtes-vous ?'`, 'the identify screen');
+ok('the replica opens first, and then asks who is carrying the device');
 
-await evaluate(`__set('input[autocomplete="given-name"]', 'Alexis')`);
-await evaluate(`__set('form label:nth-of-type(2) input', 'iPhone de test')`);
-await evaluate(`__click('button[type="submit"]')`);
+const unnamed = await evaluate(`JSON.parse(localStorage.getItem('cabas.identity'))`);
+if (!unnamed?.device?.startsWith('dev_') || unnamed.user !== null) {
+  throw failed(`a device with no user should be minted first: ${JSON.stringify(unnamed)}`);
+}
+ok('the device is minted before its user, and stored that way (0031, 0068)');
+
+// Closed on this screen and reopened. The identity in `localStorage` has a
+// `null` user at this point, and a reader that insisted on a string would send
+// this device back to pairing — a second device id, a dead peer, and the group
+// typed in again. It is the one moment the half-written identity is on disk,
+// so it is the one moment worth reloading in.
+await load(APP);
+await waitFor(`__text('h1') === 'Qui êtes-vous ?'`, 'the same question, after a reload');
+ok('a device closed before it has a user comes back to the question, still paired');
+
+await evaluate(`__clickText('button', 'Créer un utilisateur')`);
+await waitFor('document.querySelector(\'[data-field="new-user"]\')', 'the new-user field');
+await evaluate(`__set('[data-field="new-user"]', 'Alexis')`);
+await evaluate(`__clickText('button', 'Continuer')`);
+
+// The device is named after the person and before the record exists, which is
+// what writes it once with its name already on it.
+await waitFor('document.querySelector(\'[data-field="device-name"]\')', 'the device field');
+await evaluate(`__set('[data-field="device-name"]', 'iPhone de test')`);
+await evaluate(`__clickText('button', 'Terminer')`);
 await waitFor('document.querySelector("nav")', 'tab bar');
-ok('identity minted and the replica opened');
+ok('a user is created and the app opens');
 
 const identity = await evaluate(`JSON.parse(localStorage.getItem('cabas.identity'))`);
 if (!identity?.user?.startsWith('usr_') || !identity?.device?.startsWith('dev_')) {
   throw new Error(`identity looks wrong: ${JSON.stringify(identity)}`);
 }
-ok('identity persisted to localStorage (DECISIONS 0031)');
+if (identity.user_name !== 'Alexis' || identity.device_name !== 'iPhone de test') {
+  throw failed(
+    `the identity was not written back after the choice: ${JSON.stringify(identity)}`,
+  );
+}
+ok('identity persisted to localStorage (DECISIONS 0031, 0068)');
 
 // Point this device at the relay before anything is built, the way a real one
-// is pointed at the family's own server — everything below then syncs as it
+// is pointed at the group's own server — everything below then syncs as it
 // happens rather than in one burst at the end. In production the relay serves
 // the app and this field stays empty, which is why it says so (0043, 0044).
 await evaluate(`__clickText('nav button', 'Réglages')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'the settings screen');
-await evaluate(`__set('.family input', ${JSON.stringify(RELAY_URL)})`);
-await evaluate(`__clickText('.family button', 'Enregistrer le serveur')`);
+await evaluate(`__set('.group input', ${JSON.stringify(RELAY_URL)})`);
+await evaluate(`__clickText('.group button', 'Enregistrer le serveur')`);
 await waitFor(
-  `JSON.parse(localStorage.getItem('cabas.family')).relay === ${JSON.stringify(RELAY_URL)}`,
+  `JSON.parse(localStorage.getItem('cabas.group')).relay === ${JSON.stringify(RELAY_URL)}`,
   'the relay override, stored',
 );
-await waitFor(`__text('.family .status') === 'Synchronisé'`, 'a live connection');
+await waitFor(`__text('.group .status') === 'Synchronisé'`, 'a live connection');
 ok('the relay is set from settings, and the engine connects to it');
 await shot('01-empty-cart');
 
@@ -492,15 +571,41 @@ await shot('01-empty-cart');
 // The form is a panel rather than a `<form>`, and its fields are found by
 // `data-field`: the same component opens inside the list's form and inside the
 // recipe editor's, and a nested `<form>` is not parsed (DECISIONS 0056).
+// The tabs read left to right in the order the app is used (DECISIONS 0064).
+// Asserted as a whole sequence rather than as "cart is last", because what
+// broke before was the *order*, and any single-position check passes on half
+// of a reversal.
+const tabs = await evaluate(`JSON.stringify(__all('nav button'))`);
+const expectedTabs = ['Réglages', 'Ingrédients', 'Recettes', 'Liste', 'Courses'];
+if (JSON.parse(tabs).join('·') !== expectedTabs.join('·')) {
+  throw failed(`the tabs run ${tabs}, not ${JSON.stringify(expectedTabs)}`);
+}
+ok('the tabs run from the shelves to the trip, left to right');
+
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'ingredients screen');
 await evaluate(`__clickText('button', 'Nouveau')`);
 await waitFor('document.querySelector(".ingredient-form")', 'ingredient form');
 await evaluate(`__set('[data-field="name"]', 'Tomates')`);
 await evaluate(`__set('[data-field="aisle"]', 'produce')`);
+// How much of it one usually buys, which is what a swiped row puts on the
+// list (DECISIONS 0066). Six, so that "1" nowhere below can pass by accident.
+await evaluate(`__set('[data-field="default-quantity"]', '6')`);
+await evaluate(`__set('[data-field="default-quantity-unit"]', 'piece')`);
 await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates in the library');
 ok('an ingredient is created and listed');
+
+// It comes back into the form as it was typed — a form that rounded would
+// write the rounded value back on the next save.
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Tomates, open again');
+const usual = await evaluate(`document.querySelector('[data-field="default-quantity"]').value`);
+if (usual !== '6') {
+  throw failed(`the usual quantity came back as ${JSON.stringify(usual)}`);
+}
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+ok('and its usual quantity round-trips through the form');
 
 await evaluate(`__clickText('button', 'Nouveau')`);
 await waitFor('document.querySelector(".ingredient-form")', 'ingredient form');
@@ -542,7 +647,65 @@ await waitFor(
 await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__count('li .photo img') === 1`, 'the photo on the shelf');
 ok(`a photo is taken and stored beside the document (${encoded} bytes of JPEG)`);
+
+// The other way a photo arrives: the one already in the roll. Two inputs and
+// two buttons, because `capture` opens the camera and *only* the camera on a
+// phone (DECISIONS 0065).
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Tomates, open for editing');
+if ((await evaluate(`__count('[data-field="photo-import"]')`)) !== 1) {
+  throw failed('the import input is missing — a photo can only be taken, not chosen');
+}
+const imported = await evaluate(`__photograph('[data-field="photo-import"]')`);
+await waitFor(
+  `__photoSrc('.photo-field .photo img')?.startsWith('blob:')`,
+  'the imported photo, read back',
+);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+ok(`a photo is imported from the device by the same path (${imported} bytes)`);
 await shot('02-library');
+
+// --- a row pushed onto the list ---------------------------------------------
+//
+// The gesture (DECISIONS 0067) and the amount it uses (0066), in one pass —
+// and it puts the library back the way it found it, because everything below
+// depends on the list holding exactly what is put into it.
+
+await waitFor(`__count('.swipe') > 0`, 'the shelf rows, wrapped for the gesture');
+// Short of the stop: nothing happens. This is the assertion that matters, and
+// the reason the gesture is long — a shelf is scrolled far more than it is
+// swiped.
+await evaluate(`__swipe('.swipe .front', 'Tomates', 40)`);
+if ((await evaluate(`__count('.swipe .undo')`)) !== 0) {
+  throw failed('a short drag put something on the list');
+}
+ok('a row dragged part of the way comes back and adds nothing');
+
+await evaluate(`__swipe('.swipe .front', 'Tomates', 200)`);
+await waitFor(`__count('.swipe .undo') === 1`, 'the way out, uncovered on the left');
+ok('and one dragged to the stop is added, leaving "Annuler" behind it');
+
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates, on the list');
+const pushed = await evaluate(`__text('li .quantity')`);
+if (!pushed.includes('6')) {
+  throw failed(`the swipe used ${JSON.stringify(pushed)} rather than the usual six`);
+}
+ok(`a gesture with no amount in it uses what the ingredient is usually bought by (${pushed})`);
+
+// Back to the shelf: the way out is still there, because it is read off the
+// list rather than remembered from the gesture.
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__count('.swipe .undo') === 1`, 'the way out, after a remount');
+ok('and it survives leaving the screen — it is the list that says so, not the row');
+
+await evaluate(`__click('.swipe .undo')`);
+await waitFor(`__count('.swipe .undo') === 0`, 'the row, back where it was');
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__count('li .name') === 0`, 'the list, empty again');
+ok('and "Annuler" takes it back off');
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the shelf again');
 
 // --- the list --------------------------------------------------------------
 
@@ -1153,16 +1316,16 @@ await send('Emulation.clearDeviceMetricsOverride');
 // The relay is the real binary, started by `ui-test`, because a mock of it
 // would only prove that this file and the mock agree.
 
-/** The relay's log for whichever family appeared, or `null` while it is
- *  empty. One family for most of this run — but **not at the end**, where
+/** The relay's log for whichever group appeared, or `null` while it is
+ *  empty. One group for most of this run — but **not at the end**, where
  *  rotating mints a second one, and where this returns the older of the two
  *  because it takes the first non-empty it finds. Everything below the
- *  rotation must use `waitForNewFamily` instead; assuming "the first
+ *  rotation must use `waitForNewGroup` instead; assuming "the first
  *  directory is the one" is what made that assertion race. */
 async function relayLog() {
-  const families = await readdir(RELAY_DATA).catch(() => []);
-  for (const family of families) {
-    const bytes = await readFile(join(RELAY_DATA, family, 'log')).catch(() => null);
+  const groups = await readdir(RELAY_DATA).catch(() => []);
+  for (const group of groups) {
+    const bytes = await readFile(join(RELAY_DATA, group, 'log')).catch(() => null);
     if (bytes !== null && bytes.length > 0) return bytes;
   }
   return null;
@@ -1179,14 +1342,14 @@ async function waitForRelay(label, timeoutMs = 15000) {
 }
 
 /**
- * One family's log, once it has stopped growing.
+ * One group's log, once it has stopped growing.
  *
  * "What the relay had at the moment I looked" is not "what it ends up with":
  * a change is debounced on the device (Session.FLUSH_DELAY_MS) and then has a
  * round trip to make. Taking the first and comparing it against the second is
  * exactly how the untouched-log check below failed on a runner — the deletion
  * from the journal section was still in flight when its baseline was taken,
- * and landed in the old family a moment later, correctly.
+ * and landed in the old group a moment later, correctly.
  *
  * @param {string} id
  * @param {string} label
@@ -1210,9 +1373,9 @@ async function waitForSettledLog(id, label, quietMs = 1500, timeoutMs = 25000) {
 }
 
 /**
- * A family that is not one of `known`, once it has actually been written to.
+ * A group that is not one of `known`, once it has actually been written to.
  *
- * Rotating the phrase is the only thing here that produces a second family,
+ * Rotating the phrase is the only thing here that produces a second group,
  * and two events have to land before it can be asserted on: the relay creates
  * the directory on the new `Hello`, and the device pushes its library a moment
  * later. Waiting for the directory alone would swap one race for another.
@@ -1222,23 +1385,23 @@ async function waitForSettledLog(id, label, quietMs = 1500, timeoutMs = 25000) {
  * @param {number} timeoutMs
  * @returns {Promise<{ id: string, bytes: number }>}
  */
-async function waitForNewFamily(known, label, timeoutMs = 20000) {
+async function waitForNewGroup(known, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const families = await readdir(RELAY_DATA).catch(() => []);
-    for (const id of families) {
+    const groups = await readdir(RELAY_DATA).catch(() => []);
+    for (const id of groups) {
       if (known.includes(id)) continue;
       const log = await readFile(join(RELAY_DATA, id, 'log')).catch(() => null);
       if (log !== null && log.length > 0) return { id, bytes: log.length };
     }
     if (Date.now() > deadline) {
-      throw failed(`timed out waiting for ${label} (families: ${JSON.stringify(families)})`);
+      throw failed(`timed out waiting for ${label} (groups: ${JSON.stringify(groups)})`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
-// The family was created on the pairing screen at the top of this file and
+// The group was created on the pairing screen at the top of this file and
 // the relay set right after, so everything above has been syncing as it was
 // built. What is left is to look at what reached the relay.
 const log = await waitForRelay('the push to reach the relay');
@@ -1306,7 +1469,7 @@ await shot('13-synced');
 
 // --- and a second device, joining by hand ------------------------------------
 //
-// Everything this device is, gone: identity, family, cursor and replica. What
+// Everything this device is, gone: identity, group, cursor and replica. What
 // comes back is a phone that has only the twelve words someone read out to it,
 // which is the path 0021 makes mandatory and the one that has to work when a
 // camera does not.
@@ -1324,7 +1487,7 @@ await evaluate(`
 await load(APP);
 await waitFor(`__text('h1') === 'cabas'`, 'the pairing screen, on a blank device');
 
-await evaluate(`__clickText('button', 'Rejoindre une famille')`);
+await evaluate(`__clickText('button', 'Rejoindre un groupe')`);
 await waitFor('document.querySelector("textarea")', 'the phrase field');
 
 await evaluate(`__set('textarea', 'abandon abandon abandon')`);
@@ -1334,21 +1497,35 @@ ok('a phrase of the wrong length is refused, in French, before anything is store
 
 await evaluate(`__set('textarea', ${JSON.stringify(phrase.toUpperCase())})`);
 await evaluate(`__click('button[type="submit"]')`);
-await waitFor('document.querySelector("form input")', 'the naming form');
+await waitFor(`__text('h1') === 'Qui êtes-vous ?'`, 'the identify screen');
 ok('and the right one is accepted whatever the case it is typed in');
 
-await evaluate(`__set('input[autocomplete="given-name"]', 'Camille')`);
-await evaluate(`__set('form label:nth-of-type(2) input', 'Téléphone de Camille')`);
-await evaluate(`__click('button[type="submit"]')`);
+// The whole of DECISIONS 0068 in one assertion: this device has typed twelve
+// words and nothing else, and the people already in the group appear under
+// the question as the first frames arrive. Nothing was typed to produce that
+// name — it came off the relay, sealed. (No relay override is set yet, so the
+// socket goes to the app's own origin, which is where `ui-test` serves both.)
+await waitFor(`__all('.people .name').includes('Alexis')`, "the group's roster, over sync");
+ok('a device that has only joined is shown who is already in the group');
+
+// Camille is not on it, so she takes the other door — the same one a
+// brand-new group offers when the roster is empty.
+await evaluate(`__clickText('button', "Je n'y suis pas")`);
+await waitFor('document.querySelector(\'[data-field="new-user"]\')', 'the new-user field');
+await evaluate(`__set('[data-field="new-user"]', 'Camille')`);
+await evaluate(`__clickText('button', 'Continuer')`);
+await waitFor('document.querySelector(\'[data-field="device-name"]\')', 'the device field');
+await evaluate(`__set('[data-field="device-name"]', 'Téléphone de Camille')`);
+await evaluate(`__clickText('button', 'Terminer')`);
 await waitFor('document.querySelector("nav")', 'the app, on the device that joined');
 
 await evaluate(`__clickText('nav button', 'Réglages')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the joined device');
-await evaluate(`__set('.family input', ${JSON.stringify(RELAY_URL)})`);
-await evaluate(`__clickText('.family button', 'Enregistrer le serveur')`);
+await evaluate(`__set('.group input', ${JSON.stringify(RELAY_URL)})`);
+await evaluate(`__clickText('.group button', 'Enregistrer le serveur')`);
 
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
-await waitFor(`__all('li .name').includes('Tomates')`, 'the family library, on the new device');
+await waitFor(`__all('li .name').includes('Tomates')`, 'the group library, on the new device');
 ok('twelve words typed by hand are the whole of pairing — the library follows');
 await shot('14-joined');
 
@@ -1356,7 +1533,7 @@ await shot('14-joined');
 //
 // The screen that looks like access control and is not one (Rule 7). It can
 // only be checked here, after two devices have met: before this point the
-// family has one of each and proves nothing about grouping.
+// group has one of each and proves nothing about grouping.
 
 await evaluate(`__clickText('nav button', 'Réglages')`);
 
@@ -1425,8 +1602,59 @@ await shot('15-people');
 // so the first entry it shows was written by somebody else and arrived sealed
 // through the relay.
 
+// --- and the phone can change hands -----------------------------------------
+//
+// The other half of 0068: a device already in a group picks a different member
+// off the roster. It is not a rename — Alexis and Camille both stay, and the
+// device moves from one to the other.
+
 await evaluate(`__clickText('button', 'Retour')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'settings again');
+
+await evaluate(`__clickText('button', "Changer d'utilisateur")`);
+await waitFor(`__text('h1') === "Changer d'utilisateur"`, 'the user picker');
+// No device question here: this one is already in the roster and keeps its
+// name.
+await evaluate(`__clickText('.people button', 'Alexis')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings, as somebody else');
+await waitFor(
+  `document.querySelector('input[autocomplete="given-name"]').value === 'Alexis'`,
+  'the name of the person now carrying this device',
+);
+const handed = await evaluate(`JSON.parse(localStorage.getItem('cabas.identity')).user_name`);
+if (handed !== 'Alexis') {
+  throw failed(`the identity was not written back on a handover: ${JSON.stringify(handed)}`);
+}
+ok('a device changes hands by picking a name off the roster, and remembers it');
+
+await evaluate(`__clickText('button', "Changer d'utilisateur")`);
+await waitFor(`__text('h1') === "Changer d'utilisateur"`, 'the user picker again');
+await evaluate(`__clickText('.people button', 'Camille')`);
+await waitFor(
+  `document.querySelector('input[autocomplete="given-name"]').value === 'Camille'`,
+  'the phone, handed back',
+);
+await evaluate(`__clickText('button', 'Personnes et appareils')`);
+await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster, after the round trip');
+const rosterAfter = JSON.parse(
+  await evaluate(`
+    JSON.stringify([...document.querySelectorAll('.people > li')].map((person) => ({
+      name: person.querySelector('.name').textContent.trim(),
+      devices: [...person.querySelectorAll('.devices .device-name')].map((d) => d.textContent.trim()),
+    })))
+  `),
+);
+if (rosterAfter.length !== 2) {
+  throw failed(`changing user created or removed somebody: ${JSON.stringify(rosterAfter)}`);
+}
+const back = rosterAfter.find((person) => person.name.startsWith('Camille'));
+if (!back?.devices.includes('Téléphone de Camille')) {
+  throw failed(`the device did not come back with its name: ${JSON.stringify(rosterAfter)}`);
+}
+ok('and back again — two people throughout, one device record that moved');
+
+await evaluate(`__clickText('button', 'Retour')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings once more');
 await evaluate(`__clickText('button', 'Journal')`);
 await waitFor(`__text('h1') === 'Journal'`, 'the journal');
 
@@ -1465,26 +1693,26 @@ ok('and a deletion made here lands at the top of it, named and attributed');
 await shot('16-journal');
 
 // Rotating the key is the whole of revocation, and it is destructive enough to
-// be the last thing this file does: the family it leaves behind is the one
+// be the last thing this file does: the group it leaves behind is the one
 // every assertion above was made against.
-// By name, not by count: what comes after has to tell the new family from the
+// By name, not by count: what comes after has to tell the new group from the
 // old one, and identify the old one again to prove nothing wrote into it.
 //
 // Settled, not merely read: everything above this line has been pushing as it
 // went, and the journal's deletion is the most recent of them. A baseline
 // taken while that is still in flight makes the untouched check below fail on
 // the arrival of a change that predates the rotation entirely.
-const familiesBefore = await readdir(RELAY_DATA);
-if (familiesBefore.length !== 1) {
-  throw failed(`one family up to this point, found ${JSON.stringify(familiesBefore)}`);
+const groupsBefore = await readdir(RELAY_DATA);
+if (groupsBefore.length !== 1) {
+  throw failed(`one group up to this point, found ${JSON.stringify(groupsBefore)}`);
 }
-const abandoned = familiesBefore[0];
-const abandonedLog = await waitForSettledLog(abandoned, 'the family about to be abandoned');
+const abandoned = groupsBefore[0];
+const abandonedLog = await waitForSettledLog(abandoned, 'the group about to be abandoned');
 await evaluate(`__clickText('button', 'Retour')`);
 await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the roster');
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
 await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster, to rotate from');
-await evaluate(`__clickText('.revoke button', 'Changer la phrase de la famille')`);
+await evaluate(`__clickText('.revoke button', 'Changer la phrase du groupe')`);
 // Four, and the count is the assertion's teeth: rotating is the one
 // irreversible thing in the app, and every consequence of it — including the
 // log it leaves on the relay (DECISIONS 0050) — is named before it happens.
@@ -1497,35 +1725,35 @@ const rotated = await evaluate(`__text('.revoke [data-phrase]')`);
 if (rotated.split(/\s+/).length !== 12 || rotated === phrase) {
   throw failed(`the new phrase is not a new phrase: ${JSON.stringify(rotated)}`);
 }
-const stored = await evaluate(`JSON.parse(localStorage.getItem('cabas.family')).phrase`);
+const stored = await evaluate(`JSON.parse(localStorage.getItem('cabas.group')).phrase`);
 if (stored !== rotated) {
   throw failed('the device kept its old phrase');
 }
 ok('a new phrase is minted and this device moves to it');
 
-// A different phrase is a different family id, so the relay grows a second
+// A different phrase is a different group id, so the relay grows a second
 // log rather than writing into the first. The old one stays exactly where it
 // was — sealed, and readable only by whoever still has the old words. That is
 // the log DECISIONS 0050 is about: nothing here will ever collect it.
 //
 // Waited for by *name*, and not through `waitForRelay`: that one returns as
-// soon as any family has a non-empty log, and the family this rotation
+// soon as any group has a non-empty log, and the group this rotation
 // abandoned has had one for the whole run — so it waited for a condition that
 // was already true and left the assertion below racing the new device's first
 // push. It won that race on a laptop and lost it on a runner.
-const arrived = await waitForNewFamily(familiesBefore, 'the library, pushed into the new family');
-const familiesAfter = await readdir(RELAY_DATA);
-if (familiesAfter.length !== familiesBefore.length + 1) {
+const arrived = await waitForNewGroup(groupsBefore, 'the library, pushed into the new group');
+const groupsAfter = await readdir(RELAY_DATA);
+if (groupsAfter.length !== groupsBefore.length + 1) {
   throw failed(
-    `expected one more family on the relay, found ${familiesAfter.length} against ${familiesBefore.length}`,
+    `expected one more group on the relay, found ${groupsAfter.length} against ${groupsBefore.length}`,
   );
 }
 // "Untouched" was claimed here long before anything checked it.
 const abandonedNow = await readFile(join(RELAY_DATA, abandoned, 'log'));
 if (!abandonedNow.equals(abandonedLog)) {
-  throw failed(`rotating wrote ${abandonedNow.length - abandonedLog.length} bytes into the old family`);
+  throw failed(`rotating wrote ${abandonedNow.length - abandonedLog.length} bytes into the old group`);
 }
-ok(`and the relay holds a second family (${arrived.bytes} bytes), the first one untouched`);
+ok(`and the relay holds a second group (${arrived.bytes} bytes), the first one untouched`);
 await shot('17-rotated');
 
 if (consoleErrors.length > 0) {

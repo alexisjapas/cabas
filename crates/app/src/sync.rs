@@ -44,7 +44,7 @@
 use serde::{Deserialize, Serialize};
 
 use cabas_store::Storage;
-use cabas_sync::{Event, FamilyKey, Session};
+use cabas_sync::{Event, GroupKey, Session};
 
 use crate::app::App;
 use crate::error::Result;
@@ -73,7 +73,7 @@ pub struct SyncCursor {
     pub epoch: u64,
     /// The last sequence number applied. A plain number: the relay hands
     /// these out one per frame from 1, so reaching the point where a double
-    /// stops being exact would take more frames than a family will ever
+    /// stops being exact would take more frames than a group will ever
     /// produce.
     pub since: u64,
 }
@@ -104,13 +104,13 @@ pub struct SyncStatus {
     /// compaction is device-driven — the relay cannot merge what it cannot
     /// read (0042).
     pub replayed: u64,
-    /// Frames the family key refused to open. Nonzero is either corruption or
-    /// company: someone holding the family id, which the relay stores in the
+    /// Frames the group key refused to open. Nonzero is either corruption or
+    /// company: someone holding the group id, which the relay stores in the
     /// clear, but not the phrase.
     pub dropped: u64,
     /// The relay served a log that does not hold what the cursor claimed —
     /// restored from a backup, or reset. The host reads this to know that its
-    /// shadow is void and that it owes the family a push even if nothing
+    /// shadow is void and that it owes the group a push even if nothing
     /// changed locally (DECISIONS 0054); [`SyncSession::push`] acts on it by
     /// itself, so nothing has to be recomputed from it.
     pub reset: bool,
@@ -144,7 +144,7 @@ pub enum SyncEvent {
     Acked { seq: u64 },
 
     /// The relay hung up with a reason. Reconnecting without changing
-    /// something — the protocol version, the family — will not help.
+    /// something — the protocol version, the group — will not help.
     Refused { reason: String },
 
     /// A frame did not open and was stepped over. Not fatal, and not worth
@@ -162,13 +162,13 @@ pub struct SyncSession {
 }
 
 impl SyncSession {
-    /// Derives the family key from the phrase and resumes at `cursor`.
+    /// Derives the group key from the phrase and resumes at `cursor`.
     ///
     /// The only failure is a phrase that does not decode — wrong word count,
     /// a word off the list, a checksum that says one was mistyped — and its
     /// message is written to be shown to whoever is retyping it (0021).
     pub fn open(phrase: &str, cursor: SyncCursor) -> Result<Self> {
-        let key = FamilyKey::from_phrase(phrase)?;
+        let key = GroupKey::from_phrase(phrase)?;
         Ok(SyncSession {
             inner: Session::new(key, cursor.epoch, cursor.since),
         })
@@ -253,13 +253,13 @@ impl SyncSession {
     }
 }
 
-/// A new family: twelve words, from the OS's entropy (0042).
+/// A new group: twelve words, from the OS's entropy (0042).
 ///
-/// Called once ever, by the device that starts the family. Every other device
+/// Called once ever, by the device that starts the group. Every other device
 /// joins by scanning or typing the same words, which is why pairing by QR and
 /// pairing by hand are one operation with two input methods (0021).
 pub fn mint_phrase() -> Result<String> {
-    Ok(FamilyKey::generate()?.phrase().to_string())
+    Ok(GroupKey::generate()?.phrase().to_string())
 }
 
 /// The canonical spelling of a phrase as typed or scanned — lowercase, single
@@ -268,5 +268,5 @@ pub fn mint_phrase() -> Result<String> {
 /// The pairing screen calls this before storing anything: a phrase that only
 /// fails at the first connection would look like the relay being down.
 pub fn read_phrase(phrase: &str) -> Result<String> {
-    Ok(FamilyKey::from_phrase(phrase)?.phrase().to_string())
+    Ok(GroupKey::from_phrase(phrase)?.phrase().to_string())
 }

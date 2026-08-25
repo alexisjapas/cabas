@@ -3,4 +3,13 @@ import type { IngredientInput } from "./IngredientInput";
 import type { QuantityInput } from "./QuantityInput";
 import type { RecipeInput } from "./RecipeInput";
 
-export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, servings: number, } | { "command": "add_ingredient_to_list", ingredient: string, quantity: QuantityInput, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, };
+export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, servings: number, } | { "command": "add_ingredient_to_list", ingredient: string, 
+/**
+ * Absent means "as much of it as one usually buys": the
+ * ingredient's own default quantity, or one piece if it has none
+ * (DECISIONS 0066). That is how a swiped row asks — a gesture has
+ * nowhere to put an amount, and the rule for choosing one is
+ * business logic rather than something the frontend should hold
+ * (Rule 9).
+ */
+quantity: QuantityInput | null, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, } | { "command": "choose_user", user: string, } | { "command": "create_user", name: string, } | { "command": "name_device", name: string, };

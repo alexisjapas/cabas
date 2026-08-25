@@ -41,7 +41,7 @@ a decision number identifies a decision.
 **Why Android moved behind it.** Both phones already run the PWA, installed
 from the permanent origin, and M7 is a *better wrapper* around the same
 frontend rather than a missing capability — so it is not what v1 is waiting
-for. Remembering what the family actually buys is a thing the app cannot do at
+for. Remembering what the group actually buys is a thing the app cannot do at
 all, and it only starts accumulating history the day it ships. A feature whose
 value grows with its age is worth starting early; a repackaging is not.
 
@@ -112,13 +112,13 @@ Assistant base image, and published by CI as
 this repository an add-on repository you can paste into Home Assistant
 (DECISIONS 0049). `ui-test` runs against the relay rather than `pnpm preview`,
 so the end-to-end suite is also the proof that the shipped artifact has an app
-in it. The relay also grew the two subcommands an abandoned family log needs —
-`families` and `forget` — because nothing automatic could ever be right about
+in it. The relay also grew the two subcommands an abandoned group log needs —
+`groups` and `forget` — because nothing automatic could ever be right about
 it (DECISIONS 0050).
 
 **The app is on the internet, at its permanent address.**
 `https://cabas.cladelabs.com` reaches the relay on the Pi through a Cloudflare
-Tunnel, and **both phones are installed from it** — a new family, twelve new
+Tunnel, and **both phones are installed from it** — a new group, twelve new
 words, the old install and its `cabas local CA` profile gone. Eleven of this
 milestone's fourteen items are closed; the three that are left need a shell on
 the Pi, a backup schedule set on it and a backup taken from it, not a change to
@@ -139,7 +139,7 @@ secure context, which is exactly what stopped a phone installing from the Pi
 directly.
 
 **Next action, on the Pi: the restore drill**, which is the last thing between
-here and M6's exit criterion, plus the leftover test family forgotten on the
+here and M6's exit criterion, plus the leftover test group forgotten on the
 way past — that command has never been run against real data, and the drill is
 the moment it should be. The procedure is in the README, "The restore drill",
 in two halves that prove different things: that a wiped device gets its library
@@ -151,12 +151,33 @@ about HA's.
 done and in 0.5.0: a photo is taken from an ingredient's form or a recipe's,
 downscaled and encoded by the browser, stored beside the document one record
 per photo, and shown on the shelves, in the recipe reader and **on the cart
-line**, offline. What is left is the socket that carries it to the other
-phone; until it exists, a photo taken on one device is named on the other and
-absent there, which `ui-test` asserts on purpose rather than working around.
-The reasoning is DECISIONS 0062 and the checklist is under "M10 — Photos".
+line**, offline. **0.6.0 adds importing one from the device** rather than only
+taking it (DECISIONS 0065). What is left is the socket that carries it to the
+other phone; until it exists, a photo taken on one device is named on the
+other and absent there, which `ui-test` asserts on purpose rather than working
+around. The reasoning is DECISIONS 0062 and the checklist is under "M10 —
+Photos".
 
-**Read the marker off the relay, not off a phone.** `cabas-relay families`
+**0.6.0 also settled four things that were not on any milestone**, all of them
+about the app's own shape rather than its plumbing, and each with an entry
+carrying the reasoning:
+
+- **A family is a group** (0063) — everywhere a person or a programmer reads
+  it, including `cabas-relay groups`. The phrase, the relay's `/data` and
+  `docs/DECISIONS.md` are deliberately untouched, so no phone was unpaired and
+  no log was rewritten.
+- **The tabs run from the shelves to the trip** (0064), left to right, instead
+  of in the order the milestones were built.
+- **An ingredient knows how much of it one buys** (0066), and **a shelf row
+  goes on the list by being dragged across** (0067) — the second is why the
+  first exists, since a gesture carries no amount.
+- **A device joins a group and then says who is carrying it** (0068). This one
+  fixed a real defect rather than adding a feature: every phone that joined
+  used to invent a *new* person, so two phones belonging to one human produced
+  two of them in the roster, permanently. The duplicate is created at the
+  moment of joining, which is why the question moved to after the first sync.
+
+**Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
 does not reach into those. The README carries the corrected procedure.
@@ -192,9 +213,9 @@ sorting and searching decision in it happens after the document is read.
 
 What is left, in order, with the detail of each in the README:
 
-1. `cabas-relay forget cabaf00dcabaf00dcabaf00dcabaf00d` — the test family the
+1. `cabas-relay forget cabaf00dcabaf00dcabaf00dcabaf00d` — the test group the
    keepalive check created, and the first real run of that procedure. Note the
-   real family's frame count while there.
+   real group's frame count while there.
 2. **Half one**: one phone closed, the other wiped and reinstalled from the
    tunnel, twelve words. It must open on the pairing screen.
 3. **Half two**: one phone closed for the whole window; frame count, backup,
@@ -246,7 +267,7 @@ and takes over at the next start (DECISIONS 0038). Nothing here is optional:
 **a version that does not move never reaches the Pi**, since that string is
 what the Supervisor compares.
 
-One tail from M5 remains true and needs no hardware: **rotating the family
+One tail from M5 remains true and needs no hardware: **rotating the group
 phrase leaves an abandoned log** on the relay, sealed and orphaned, which
 nothing prunes. It is forgotten by hand or not at all (DECISIONS 0050).
 
@@ -572,8 +593,8 @@ by then the shell is precached and the question only arises once per install.
 
 ## M5 — Relay and sync
 
-- [x] `cabas-relay`: axum, WebSocket per family, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
-- [x] E2EE: XChaCha20-Poly1305, one shared family key, sealed before leaving the device (Rule 7)
+- [x] `cabas-relay`: axum, WebSocket per group, **persists the encrypted snapshot and deltas** — a pure broadcast relay never reconciles two devices that are never online together
+- [x] E2EE: XChaCha20-Poly1305, one shared group key, sealed before leaving the device (Rule 7)
 - [x] Pairing by QR code, **with the 12-word recovery phrase as a mandatory fallback** — the camera is historically brittle in an installed iOS PWA, and the phrase doubles as the key backup (DECISIONS 0021). The QR is **shown and never scanned**, and the joining device types the words: the fallback is now the only path, which is the one that cannot quietly rot (DECISIONS 0047)
 - [x] Users and devices: pairing asks who you are, and the roster behind Settings lists everyone with the devices they carry — stating plainly that these are names rather than accounts, that there is no way to remove one device, and that the only answer to a lost one is a new phrase for everybody. Rotating it is offered there, behind its consequences (Rule 7, DECISIONS 0024)
 - [x] Attribution: `added_by`, `checked_by`, capped event log — declarative, never presented as access control (Rule 7). The log had been *written* by every deletion and edit since M3; it now has a view-model and a screen, newest first, each line naming who and what — and saying at the bottom that a shared key makes none of it proof
@@ -600,7 +621,7 @@ searching the settings for "certificat" is what survives. The instruction page
 until that is fixed.
 
 **What M5 built.** `cabas-sync` holds the whole of the cryptography: the
-12-word phrase is the single canonical secret, and key and family id both
+12-word phrase is the single canonical secret, and key and group id both
 derive from its BIP39 seed. `cabas-relay` is an axum process that brokers a
 log it cannot read. `app::sync` composes the sans-IO client with the replica
 so that a frame which opens is merged inside the core, and `CabasApp` hands
@@ -681,13 +702,13 @@ closed could not reach a relay at all.
       it, so there is nothing to configure and nothing to map. That HA's
       backups *actually* carry it is not a thing this repo can assert: it is
       the first half of the restore drill below
-- [x] **The abandoned family log**: forgotten by hand, or not at all (DECISIONS
-      0050). No expiry and no sweep — the relay cannot tell an abandoned family
+- [x] **The abandoned group log**: forgotten by hand, or not at all (DECISIONS
+      0050). No expiry and no sweep — the relay cannot tell an abandoned group
       from a quiet one, and the log is the recovery point if every device is
-      lost, so there is no safe *N* days. Instead `cabas-relay families` lists
+      lost, so there is no safe *N* days. Instead `cabas-relay groups` lists
       what is on disk with how long since each last received anything, and
       `cabas-relay forget <id>` removes one, named in full. Not an HTTP
-      endpoint: a family id is the only access control the relay has, and the
+      endpoint: a group id is the only access control the relay has, and the
       port faces the tunnel. The rotation screen now names the leftover as its
       fourth consequence, and `cabas-relay/DOCS.md` carries the procedure
 - [x] **The relay pings every 30 seconds** (DECISIONS 0051). Cloudflare closes
@@ -713,17 +734,17 @@ closed could not reach a relay at all.
       seconds stayed open and took four keepalive pings (0051) — the only place
       that behaviour can be observed. One cache rule was needed and is part of
       the deployment (0052)
-- [ ] **Forget the test family on the Pi.** Verifying the keepalive through the
+- [ ] **Forget the test group on the Pi.** Verifying the keepalive through the
       tunnel meant opening a real connection, and any connection creates its
-      family's directory — `FamilyLog::open` mints an epoch. So `/data` holds
+      group's directory — `GroupLog::open` mints an epoch. So `/data` holds
       one log that belongs to nobody:
       `cabas-relay forget cabaf00dcabaf00dcabaf00dcabaf00d`, from a shell on the
       machine (DECISIONS 0050). It costs a few hundred bytes and no correctness;
       it is here because nothing on that machine can work out on its own that
-      this family is fictional, which is the entire premise of 0050 — and
+      this group is fictional, which is the entire premise of 0050 — and
       because it doubles as the first real run of that procedure
 - [x] **Both phones onto the new origin.** Deliberately *not* a migration: the
-      family moving with them was never on this relay, so it started fresh —
+      group moving with them was never on this relay, so it started fresh —
       new twelve words, written down somewhere that is not a phone — and the
       old install was deleted along with the `cabas local CA` profile that let
       it load. The README's phone section carries both procedures
@@ -736,7 +757,7 @@ closed could not reach a relay at all.
       silently, on both sides, for as many pushes as the restore rolled back.
       The relay now replays from zero when a cursor points past the end of the
       log, which is the same trade 0045 made: one bounded replay against a
-      family that never converges again. `convergence.rs` stages the restore
+      group that never converges again. `convergence.rs` stages the restore
 - [x] **A device whose cursor was reset pushes a whole replica, not a delta**
       (DECISIONS 0054). The other half of the same restore, and the half 0053
       does not reach: the *shadow* is the claim "the relay already holds
@@ -767,7 +788,7 @@ closed could not reach a relay at all.
       phone with the *other one closed*, reinstall from the tunnel, type the
       twelve words, and check the library and the other phone's journal
       entries come back — that is the log, and nothing else, doing it.
-      **Two**: `cabas-relay families` for the frame count, back up, add an
+      **Two**: `cabas-relay groups` for the frame count, back up, add an
       ingredient named `TÉMOIN`, restore, and read the count again **before
       opening a phone** — a restore that did nothing looks identical to one
       that worked, and the relay is the only party a restore rolls back, so
@@ -844,7 +865,7 @@ first, where every bug has one replica and one cause, then the transfer.
 
 ### Half two — the photo reaches the other phone
 
-- [ ] **`sync`**: the photo protocol — a `Hello` naming the family, one round
+- [ ] **`sync`**: the photo protocol — a `Hello` naming the group, one round
       trip reconciling what each side has and wants, one sealed payload per
       photo, and **its own protocol byte**, so `/sync`'s `PROTOCOL` stays 1
       and an older phone keeps converging without photos. `seal`/`open`
@@ -853,7 +874,7 @@ first, where every bug has one replica and one cause, then the transfer.
       it decides what to offer and what to ask for, seals and opens, and
       returns one event per message. The socket belongs to whoever calls it,
       which is what lets M7's Tauri host drive the same code
-- [ ] **`relay`**: `/photos`, a per-family directory of sealed blobs, a byte
+- [ ] **`relay`**: `/photos`, a per-group directory of sealed blobs, a byte
       cap that refuses a push rather than filling the SD card Home Assistant
       runs on, `survey` reporting the count and the weight, and `forget`
       taking the photos with the log
@@ -931,7 +952,7 @@ history and not two; and Settings says how much room the app takes.
 - [ ] Validate the `.#android` shell pins (SDK, build-tools, NDK) — deliberately unvalidated until now
 - [ ] Tauri v2 wrapper around the **unchanged** Svelte frontend; the Rust core switches from wasm to native, storage from IndexedDB to a file — both already behind traits since M3
 - [ ] `arm64-v8a` first, `armeabi-v7a` only if an actually old device needs it; `--split-per-abi`
-- [ ] APK distributed to the family directly (no store)
+- [ ] APK distributed to the group directly (no store)
 
 **Exit**: APK installed, feature parity with the PWA, native core.
 

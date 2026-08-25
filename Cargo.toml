@@ -15,7 +15,7 @@ members = [
 # it is not decoration either: the Supervisor decides an add-on has an update
 # by comparing this string to the installed one, so anything that must reach
 # the Pi has to move it.
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/alexisjapas/cabas"
@@ -110,7 +110,7 @@ getrandom = "0.3"
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 # 12-word recovery phrase: the mandatory fallback to QR pairing, because the
 # camera is historically brittle in an installed iOS PWA (DECISIONS 0021).
-# The mnemonic is the single canonical secret — key and family id are both
+# The mnemonic is the single canonical secret — key and group id are both
 # derived from its seed, and no argon2: 128 machine-generated bits need no
 # stretching (DECISIONS 0042).
 bip39 = "2"

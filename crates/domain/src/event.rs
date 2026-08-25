@@ -8,7 +8,7 @@
 //! The log is **capped on purpose**. It is a courtesy feature, not an audit
 //! trail, and every device holds a full copy of the document: an unbounded
 //! append-only list is a slow leak paid for by the smallest phone in the
-//! family.
+//! group.
 
 use crate::{IngredientId, ListEntryId, RecipeId, Timestamp, UserId};
 
@@ -76,7 +76,7 @@ pub struct EventLog {
 }
 
 impl EventLog {
-    /// How many events survive. Months of family use at a handful of edits a
+    /// How many events survive. Months of group use at a handful of edits a
     /// week — far past the point where anybody scrolls.
     pub const CAP: usize = 200;
 

@@ -1,4 +1,4 @@
-//! One family's sealed log: the state that makes the relay worth having.
+//! One group's sealed log: the state that makes the relay worth having.
 //!
 //! A pure broadcast relay never reconciles two devices that are never
 //! online at the same time — the normal case for a phone in a shop and a
@@ -8,7 +8,7 @@
 //! itself — the **epoch**, which is how a device can tell that the log its
 //! cursor points into still exists (0042).
 //!
-//! Layout on disk, under `<data>/<family id in hex>/`:
+//! Layout on disk, under `<data>/<group id in hex>/`:
 //!
 //! - `meta` — `Meta { epoch, next_seq }`, rewritten atomically (tmp +
 //!   rename) so a crash mid-write costs a re-replay, never a misparse.
@@ -17,7 +17,7 @@
 //!   on load: the device that pushed it never got its ack, so it will
 //!   push again.
 //!
-//! Everything is held in memory too. A family's history between
+//! Everything is held in memory too. A group's history between
 //! compactions is bounded by the same argument that sized `store`'s
 //! snapshots: two people's shopping does not outgrow a Raspberry Pi's RAM.
 
@@ -44,16 +44,16 @@ pub(crate) struct Meta {
     pub(crate) next_seq: u64,
 }
 
-pub struct FamilyLog {
+pub struct GroupLog {
     dir: PathBuf,
     epoch: u64,
     next_seq: u64,
     frames: Vec<StoredFrame>,
 }
 
-impl FamilyLog {
+impl GroupLog {
     /// Opens or creates the log directory. Creation is triggered by the
-    /// first `Hello` naming this family — the id is unguessable, so a
+    /// first `Hello` naming this group — the id is unguessable, so a
     /// stranger cannot mine directories into existence (0042).
     pub fn open(dir: PathBuf) -> std::io::Result<Self> {
         fs::create_dir_all(&dir)?;
@@ -69,7 +69,7 @@ impl FamilyLog {
         if let Some(last) = frames.last() {
             next_seq = next_seq.max(last.seq + 1);
         }
-        let log = FamilyLog {
+        let log = GroupLog {
             dir,
             epoch,
             next_seq,
@@ -176,7 +176,7 @@ fn encode_record(frame: &StoredFrame) -> std::io::Result<Vec<u8>> {
 }
 
 /// Also read by [`crate::admin`], which reports on a log without opening it —
-/// surveying every family on disk must not mint an epoch for a directory it
+/// surveying every group on disk must not mint an epoch for a directory it
 /// is only counting.
 pub(crate) fn read_meta(path: &Path) -> std::io::Result<Option<Meta>> {
     let bytes = match fs::read(path) {
@@ -278,7 +278,7 @@ pub(crate) mod tests {
     #[test]
     fn sequences_start_at_one_and_replay_respects_since() {
         let dir = TempDir::new("replay");
-        let mut log = FamilyLog::open(dir.0.clone()).expect("open");
+        let mut log = GroupLog::open(dir.0.clone()).expect("open");
         assert!(log.replay(0).is_empty());
         for payload in [b"a".to_vec(), b"b".to_vec(), b"c".to_vec()] {
             log.append(FrameKind::Delta, payload).expect("append");
@@ -298,14 +298,14 @@ pub(crate) mod tests {
     fn the_log_survives_a_restart() {
         let dir = TempDir::new("restart");
         let epoch = {
-            let mut log = FamilyLog::open(dir.0.clone()).expect("open");
+            let mut log = GroupLog::open(dir.0.clone()).expect("open");
             log.append(FrameKind::Delta, b"first".to_vec())
                 .expect("append");
             log.append(FrameKind::Delta, b"second".to_vec())
                 .expect("append");
             log.epoch()
         };
-        let mut log = FamilyLog::open(dir.0.clone()).expect("reopen");
+        let mut log = GroupLog::open(dir.0.clone()).expect("reopen");
         assert_eq!(log.epoch(), epoch, "the epoch is the log's identity");
         assert_eq!(log.replay(0).len(), 2);
         let next = log
@@ -317,7 +317,7 @@ pub(crate) mod tests {
     #[test]
     fn a_snapshot_truncates_what_it_covers() {
         let dir = TempDir::new("truncate");
-        let mut log = FamilyLog::open(dir.0.clone()).expect("open");
+        let mut log = GroupLog::open(dir.0.clone()).expect("open");
         for payload in [b"a".to_vec(), b"b".to_vec(), b"c".to_vec()] {
             log.append(FrameKind::Delta, payload).expect("append");
         }
@@ -328,7 +328,7 @@ pub(crate) mod tests {
         assert_eq!(seqs, vec![3, 4]);
 
         // And the truncation is durable, not an in-memory illusion.
-        let log = FamilyLog::open(dir.0.clone()).expect("reopen");
+        let log = GroupLog::open(dir.0.clone()).expect("reopen");
         let seqs: Vec<u64> = log.replay(0).iter().map(|f| f.seq).collect();
         assert_eq!(seqs, vec![3, 4]);
     }
@@ -337,7 +337,7 @@ pub(crate) mod tests {
     fn a_torn_tail_is_cut_off_not_fatal() {
         let dir = TempDir::new("torn");
         {
-            let mut log = FamilyLog::open(dir.0.clone()).expect("open");
+            let mut log = GroupLog::open(dir.0.clone()).expect("open");
             log.append(FrameKind::Delta, b"whole".to_vec())
                 .expect("append");
         }
@@ -350,7 +350,7 @@ pub(crate) mod tests {
         file.write_all(&[42, 0, 0, 0, 1, 2, 3]).expect("tear");
         drop(file);
 
-        let mut log = FamilyLog::open(dir.0.clone()).expect("reopen");
+        let mut log = GroupLog::open(dir.0.clone()).expect("reopen");
         assert_eq!(log.replay(0).len(), 1, "the whole record survives");
         let next = log
             .append(FrameKind::Delta, b"after".to_vec())
@@ -358,7 +358,7 @@ pub(crate) mod tests {
         assert_eq!(next.seq, 2);
         // The torn bytes are gone from disk too, or the next reopen would
         // misparse the record appended after them.
-        let log = FamilyLog::open(dir.0.clone()).expect("re-reopen");
+        let log = GroupLog::open(dir.0.clone()).expect("re-reopen");
         assert_eq!(log.replay(0).len(), 2);
     }
 
@@ -366,12 +366,12 @@ pub(crate) mod tests {
     fn a_lost_meta_changes_the_epoch() {
         let dir = TempDir::new("epoch");
         let epoch = {
-            let mut log = FamilyLog::open(dir.0.clone()).expect("open");
+            let mut log = GroupLog::open(dir.0.clone()).expect("open");
             log.append(FrameKind::Delta, b"x".to_vec()).expect("append");
             log.epoch()
         };
         fs::remove_file(dir.0.join("meta")).expect("lose the meta");
-        let log = FamilyLog::open(dir.0.clone()).expect("reopen");
+        let log = GroupLog::open(dir.0.clone()).expect("reopen");
         assert_ne!(
             log.epoch(),
             epoch,

@@ -56,7 +56,7 @@ pairing is twelve words shown with a QR that is never scanned
 `ui-test` proves the round trip against the real relay binary: a device pushes
 its library, loses its replica, gets everything back, and a second one joins by
 typing the words — with nothing in the relay's log readable as text. Behind
-Settings there is a roster of who is in the family on what, and a journal of
+Settings there is a roster of who is in the group on what, and a journal of
 what was edited and deleted; both say plainly that a shared key means these are
 names and not permissions (Rule 7). The milestone was closed where M4's was —
 on the devices: an iPhone and a Pixel 8 pair with twelve words and converge
@@ -92,7 +92,7 @@ stored and shown on the shelves, in the recipe reader and on the cart line,
 offline. Half two is the socket that carries a photo to the other phone; until
 it lands, a photo taken here is named there and not yet visible.
 
-A family library of 200 recipes is a **154 kB** snapshot that loads in
+A group library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
 ([DECISIONS 0008](docs/DECISIONS.md#0008--serialized-snapshots-not-sqlite)), and
 what decided where photos could not go: twenty of them inside that snapshot
@@ -189,7 +189,7 @@ after rebuilding, close the app and reopen it — reloading achieves nothing, an
 a phone left open stays a build behind.
 
 **This whole path is development-only now.** The permanent origin exists — the
-tunnel below — and that is where the family's phones install from. `ui-serve`
+tunnel below — and that is where the group's phones install from. `ui-serve`
 is for putting an unreleased build in front of a real phone, which lands as a
 *separate* app with its own empty storage, because it is a separate origin.
 
@@ -258,7 +258,8 @@ lists — install the profile, **then** trust it under Settings → General →
 About → Certificate Trust Settings. Skipping the second leaves a certificate
 that is installed, listed and still refused. Then open
 `https://<address>:8443`, Share → Add to Home Screen, and launch it from there.
-Choose **Commencer une famille** and write the twelve words down.
+Choose **Créer un groupe**, write the twelve words down, then say who you are
+and name the phone ([0068](docs/DECISIONS.md#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it)).
 
 **On the Android.** The phone needs a screen lock before it will accept a
 certificate at all — set one first, or the install is silently not offered.
@@ -273,7 +274,11 @@ about the network being monitored. (The page served on `:8080` still explains
 only the iOS route; this paragraph is the Android one until that is fixed.)
 
 Then open `https://<address>:8443`, Chrome menu → Add to Home screen, launch it
-from the icon, choose **Rejoindre une famille** and type the twelve words.
+from the icon, choose **Rejoindre un groupe** and type the twelve words. It
+then shows the people already in the group: pick yourself if you are there,
+and create yourself only if you are not — a second phone that invents a second
+you is exactly what [0068](docs/DECISIONS.md#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it)
+exists to stop.
 
 Leave **Serveur** empty in Réglages on both. The relay is reached through the
 app's own origin, which is the whole point of the proxy above and the shape
@@ -327,12 +332,12 @@ an installed app notices a new version
 
 **Moving phones onto this origin is not a migration.** An app installed from
 an older address is a different app: its library sits in that origin's storage,
-and its family log sits on whatever relay that origin proxied to. Installing
+and its group log sits on whatever relay that origin proxied to. Installing
 from the tunnel gives an empty app, and pairing it with the old twelve words
-finds nothing, because this relay never held that family. Two ways through, and
+finds nothing, because this relay never held that group. Two ways through, and
 the first one is usually right:
 
-- **Start a new family** on the new origin, and let the old install go. New
+- **Start a new group** on the new origin, and let the old install go. New
   twelve words, written down somewhere that is not a phone.
 - **Or push the old library here first**, by pointing the old origin's proxy at
   this relay — `CABAS_RELAY=<pi-address>:8787 ui-serve` — and opening the old
@@ -390,18 +395,18 @@ the installed one, so a change that does not move it never arrives on the Pi
 The same binary answers two questions from a shell on the machine:
 
 ```sh
-cabas-relay families           # what is on disk, and when each last received anything
-cabas-relay forget <id>        # remove one family's log, named in full, for good
+cabas-relay groups           # what is on disk, and when each last received anything
+cabas-relay forget <id>        # remove one group's log, named in full, for good
 ```
 
-That is the whole answer to an **abandoned family log**. Changing the family
-phrase is how a lost phone is revoked, and it leaves the old family's log
-behind; nothing collects it, because nothing on the relay can tell a family
+That is the whole answer to an **abandoned group log**. Changing the group
+phrase is how a lost phone is revoked, and it leaves the old group's log
+behind; nothing collects it, because nothing on the relay can tell a group
 that was abandoned from one whose phones have been quiet for a season — and
 that log is the recovery point if every phone is lost, so there is no safe
 number of days
-([0050](docs/DECISIONS.md#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all)).
-Deliberately not an HTTP endpoint: a family id is the only access control the
+([0050](docs/DECISIONS.md#0050--an-abandoned-group-log-is-forgotten-by-hand-or-not-at-all)).
+Deliberately not an HTTP endpoint: a group id is the only access control the
 relay has, and its port faces the tunnel.
 
 ### Backups
@@ -432,7 +437,7 @@ on open, so a hot archive can only catch a state the relay already knows how to
 come back from. `backup: cold` would buy a nightly sync outage against a doubt
 the code already answers.
 
-**Photos change the arithmetic, and only the arithmetic.** A family library is
+**Photos change the arithmetic, and only the arithmetic.** A group library is
 a few hundred kilobytes; a photo is up to half a megabyte, and there is one per
 recipe and per ingredient
 ([0062](docs/DECISIONS.md#0062--a-photo-is-a-blob-beside-the-document-never-in-it)).
@@ -491,17 +496,17 @@ the restore is expected to destroy, and make that the thing you check.
 
 1. Take a Home Assistant backup that includes this add-on.
 2. From a shell on the machine (the SSH add-on, then `docker exec` into this
-   one), run `cabas-relay families` and **write down the frame count**. That
+   one), run `cabas-relay groups` and **write down the frame count**. That
    number is the marker, and unlike anything on a phone it cannot be supplied
    from somewhere else.
 3. On a phone, add an ingredient named something you will recognise —
    `TÉMOIN` — and let it sync; Settings says `online` when it has. Run
-   `cabas-relay families` again: the count has grown.
+   `cabas-relay groups` again: the count has grown.
 4. Restore the backup.
-5. Run `cabas-relay families` once more, **before opening either phone.**
+5. Run `cabas-relay groups` once more, **before opening either phone.**
 
 What proves it, and the only thing that does: the frame count is back to what
-step 2 recorded. A family that is **not** listed at all is a backup that did
+step 2 recorded. A group that is **not** listed at all is a backup that did
 not carry `/data` — question two, answered the way nobody wants.
 
 **Before opening either phone** is not tidiness, it is the only chance. The
@@ -618,7 +623,7 @@ Four ideas carry the design, each with its rationale recorded:
   check actions. Everything else is a pure function
   ([0019](docs/DECISIONS.md#0019--the-cart-is-derived-the-overlay-stores-only-explicit-actions)).
 - **The relay cannot read anything.** Payloads are sealed on the device
-  under one shared family key, which makes where it runs a matter of
+  under one shared group key, which makes where it runs a matter of
   convenience rather than trust
   ([0009](docs/DECISIONS.md#0009--zero-knowledge-relay-with-app-layer-e2ee)).
 - **Exact quantities.** Rationals end to end, and no cross-dimension

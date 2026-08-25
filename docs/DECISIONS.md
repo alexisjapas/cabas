@@ -1,3 +1,9 @@
+| [0063](#0063--a-family-is-called-a-group) | A family is called a group | Product |
+| [0064](#0064--the-tabs-run-from-the-shelves-to-the-trip) | The tabs run from the shelves to the trip | Product |
+| [0065](#0065--a-photo-can-be-chosen-as-well-as-taken) | A photo can be chosen as well as taken | Product |
+| [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys) | An ingredient knows how much of it one buys | Domain |
+| [0067](#0067--a-row-goes-on-the-list-by-being-pushed-there) | A row goes on the list by being pushed there | Product |
+| [0068](#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it) | A device joins a group, and then says who is carrying it | Product |
 # Decisions — historical record
 
 Every technical and product choice, with the reasoning that produced it.
@@ -72,6 +78,12 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0060](#0060--what-was-searched-for-is-what-gets-created) | What was searched for is what gets created | Product |
 | [0061](#0061--purchases-are-recorded-statistics-are-derived-from-them) | Purchases are recorded; statistics are derived from them | Product |
 | [0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it) | A photo is a blob beside the document, never in it | Storage |
+| [0063](#0063--a-family-is-called-a-group) | A family is called a group | Product |
+| [0064](#0064--the-tabs-run-from-the-shelves-to-the-trip) | The tabs run from the shelves to the trip | Product |
+| [0065](#0065--a-photo-can-be-chosen-as-well-as-taken) | A photo can be chosen as well as taken | Product |
+| [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys) | An ingredient knows how much of it one buys | Domain |
+| [0067](#0067--a-row-goes-on-the-list-by-being-pushed-there) | A row goes on the list by being pushed there | Product |
+| [0068](#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it) | A device joins a group, and then says who is carrying it | Product |
 
 ---
 
@@ -2725,3 +2737,322 @@ thing that is present on the desk and absent on the phone. **Encrypting the
 local photo store at rest** — the document is not encrypted there either; the
 phone's own encryption is that boundary, and a second one here would protect
 the photos of a library sitting in plaintext beside them.
+
+## 0063 — A family is called a group
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee),
+[0024](#0024--users-devices-and-an-event-log),
+[0042](#0042--the-sync-protocol-and-what-the-relay-stores),
+[0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all)
+
+**Context.** "Family" was chosen when the product was two people and their
+phones, and it described that exactly. It stopped describing the thing the
+moment a third device belonged to somebody who is not family — a flatmate, a
+parent's spare phone, the two of us plus whoever is cooking this week. The
+word also implies a structure the software does not have and must not
+acquire: one shared key, no roles, no owner, no head of anything (Rule 7).
+
+The word was everywhere: 33 types and functions across five crates, the
+relay's `families` subcommand, a `localStorage` key on two live phones, and
+several hundred lines of prose.
+
+**Decision.** **Group**, everywhere a person or a programmer can read it.
+`FamilyKey` → `GroupKey`, `FamilyId` → `GroupId`, `FamilyLog` → `GroupLog`,
+`cabas-relay families` → `cabas-relay groups`, and every French string.
+
+Three things deliberately **did not** change:
+
+1. **The key derivation.** The symmetric key and the id are the first 48 bytes
+   of the phrase's BIP39 seed (0042) — bytes, with no domain-separation string
+   in them. So the rename cannot invalidate a phrase, and the twelve words
+   written down beside the backup key still open the same group.
+2. **What is on disk.** `Meta` is postcard, which is positional: renaming a
+   field renames nothing in the file. The relay's directories are named after
+   the group id in hex, which the rename does not touch either. An existing
+   `/data` is read by the new binary without noticing.
+3. **`docs/DECISIONS.md`.** Append-only is a rule (Rule 14), and rewriting
+   sixty entries to say "group" would be editing the reasoning of decisions
+   that were taken about a family. Every entry before this one still says
+   family, and means group.
+
+The one thing that *does* move is the `localStorage` key: `cabas.family`
+becomes `cabas.group`, read once from the old name and migrated (`readGroup`).
+It carries the phrase, so getting it wrong unpairs a phone in the field.
+
+**Consequences.** A device paired before this build stays paired, and the
+migration removes the old key rather than leaving a second copy of the twelve
+words in the browser. The cost is one-directional: a build older than the
+rename, installed *after* it, would ask for the phrase again. That is a
+recoverable state — the phrase is written down (README, "Backups") — and the
+alternative was keeping the secret in two places forever.
+
+Two collateral renames had to be undone by hand and are worth naming, because
+the next bulk rename will meet them again: `target_family` is a Rust `cfg`,
+and `font-family` is CSS. Both matched, both broke everything, and neither had
+anything to do with families.
+
+**Rejected.** **Renaming the French only** — the word appears in the code far
+more often than on screen, and a codebase whose types disagree with its
+screens is where the next person's confusion comes from. **Renaming DECISIONS
+too** — Rule 14. **"Household"** — it is already an `Aisle` (0057), and a
+second meaning for a word this codebase uses for shelves is a trap.
+**"Home"** — collides with Home Assistant in every operational sentence.
+**Migrating the relay's directory names** — nothing needed it, and a rename of
+live data to fix a word would be the only irreversible part of this change.
+
+## 0064 — The tabs run from the shelves to the trip
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0003](#0003--ios-ships-as-a-pwa),
+[0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there)
+
+**Context.** The tab bar was `Courses · Liste · Recettes · Ingrédients ·
+Réglages` — the order the milestones were built in, which is the order the
+*author* met the screens and not the order anybody uses them. Read left to
+right it is the story backwards: the finished trip first, the raw materials
+last.
+
+**Decision.** Reverse it: **`Réglages · Ingrédients · Recettes · Liste ·
+Courses`**. The shelves an ingredient comes off, then the recipe that uses it,
+then the list it is asked for on, then the trip it is bought on. Réglages
+takes the far end because it is where a flow starts least often.
+
+**Consequences.** The two screens used while standing in a shop — Liste and
+Courses — end up under the right thumb, which is where they should have been.
+Nothing about the change is persisted: `session.screen` stores a name, not an
+index, so a phone that was left on the cart is still on the cart after the
+update.
+
+`ui-test` asserts the whole sequence rather than one position, because a
+reversal that goes half wrong passes any single check.
+
+**Rejected.** **Réglages at the far right**, keeping the four content tabs in
+flow order — it puts the least-used screen where the most-used one belongs.
+**Leaving it alone and calling it habit** — two people use this, both said the
+same thing about it.
+
+## 0065 — A photo can be chosen as well as taken
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it),
+[0047](#0047--the-qr-code-is-shown-and-never-scanned)
+
+**Context.** `PhotoField` had one input, carrying `capture="environment"`.
+That attribute is not a preference: on a phone it opens the camera and *only*
+the camera. The photo already in the roll — the label photographed in the shop
+before cabas was open, the dish someone sent, the picture taken last week — was
+unreachable, and the way to attach one was to point the camera at a screen.
+
+**Decision.** Two hidden inputs and two buttons: **"Prendre une photo"** with
+`capture`, **"Importer"** without. Everything behind them is unchanged — the
+same `encodePhoto`, the same ceiling, the same `putPhoto` (0062).
+
+Two inputs rather than one whose attribute is flipped between clicks:
+`capture` is read when the picker opens, so an input that means something
+different depending on which button was pressed last is a race with a slow
+phone, and the failure is silent.
+
+**Consequences.** The buttons row wraps on a narrow screen rather than
+shrinking its labels into initials; with a photo attached there are three of
+them beside a thumbnail. On a desktop, where `capture` is ignored, the two
+buttons do the same thing — which is honest rather than confusing, since the
+machine that has no camera is the one where it does not matter.
+
+`ui-test` drives the import input by the same `DataTransfer` trick as the
+camera one, so the second path is covered end to end and not merely present.
+
+**Rejected.** **Dropping `capture` and keeping one button** — the camera is
+the common case, and an extra tap through the OS picker for every photo taken
+in a shop is the wrong trade. **A single button with a menu** — one OS picker
+behind another. **Drag-and-drop** — no phone has it, and it is the platform
+this is for.
+
+## 0066 — An ingredient knows how much of it one buys
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0015](#0015--no-cross-dimension-conversion-without-an-explicit-coefficient),
+[0029](#0029--how-the-document-encodes-domain-values),
+[0067](#0067--a-row-goes-on-the-list-by-being-pushed-there)
+
+**Context.** `AddIngredientToList` has always required an amount, and every
+caller was a form with a field in it. The gesture in 0067 is not a form: a row
+swiped across a screen carries no number, and there is nowhere to put a
+question in the middle of it.
+
+Something has to be put on the list. "One piece" is right for tomatoes and
+absurd for flour; asking afterwards turns a gesture back into a form.
+
+**Decision.** Two halves.
+
+An ingredient gains an optional **`default_quantity`** — a kilo of flour, six
+eggs, a litre of milk. It is a *shopping* amount and nothing else: no recipe
+reads it, and it is not a third conversion coefficient (Rule 5 is untouched —
+it converts nothing and enables no conversion).
+
+`AddIngredientToList`'s `quantity` becomes **optional**, and absent means "as
+much of it as one usually buys": the ingredient's default, or **one piece** if
+it has none. The substitution lives in
+`cabas_domain::Ingredient::shopping_quantity`, so the rule is in the domain
+where a rule belongs, and the frontend sends `null` rather than deciding
+anything (Rule 9).
+
+**Consequences.** Additive on the persisted schema, like `photo` before it
+(0062) and for the same reason: an older build ignores the key on read and
+does not rewrite it on save, so `SCHEMA_VERSION` does not move. A phone three
+weeks out of date puts one piece where a current one puts a kilo — a wrong
+amount on a shopping list, which is a thing a person corrects in a shop, and
+not a document it cannot read.
+
+The view carries it as a `QuantityInput` rather than a rendered
+`QuantityView`, because the only thing that displays it is an edit form and a
+form that rounds writes the rounded value back on the next save. `None` stays
+distinct from "one piece" all the way to the screen: the field is empty when
+nobody has said, which is the same distinction the density fields have kept
+since 0015.
+
+**Rejected.** **One piece for everything**, no field — it is wrong for
+precisely the staples that are swiped most. **Asking for the amount after the
+swipe** — that is a form, and the gesture exists to avoid one. **Deriving it
+from what has been bought before** — that is M9's data (0061), it does not
+exist yet, and a default that changes on its own is one nobody can predict.
+**Putting the fallback in the frontend** — business logic, and there would
+then be two of it when the Tauri host lands (Rule 9, 0005).
+
+## 0067 — A row goes on the list by being pushed there
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there),
+[0066](#0066--an-ingredient-knows-how-much-of-it-one-buys),
+[0020](#0020--a-list-entry-disappears-when-it-is-settled-purge-is-deferred)
+
+**Context.** Putting a known ingredient on the list took a tab change, a
+button, a picker, an amount and a submit. The thing being asked for is
+"this one, the usual amount", and it was five interactions long.
+
+**Decision.** A horizontal gesture on the shelf rows — ingredients and
+recipes. Drag right to a hard stop, let go, and it is on the list with the
+amount 0066 decides. The row springs back and **parks short of home**,
+leaving "Annuler" uncovered on the left; the text revealed *during* the drag
+is "Ajouter à la liste", so the gesture says what it will do before it does
+it.
+
+Four decisions inside that, each of which fails quietly if taken the other
+way:
+
+1. **Long, and committed on release.** The row has to reach a stop before the
+   add happens, and sliding back cancels it. This screen is scrolled far more
+   often than it is swiped; a short flick would fire on every scroll that
+   started slightly sideways.
+2. **`touch-action: pan-y`, and the axis decided once.** Vertical scrolling
+   stays the browser's. Without the declaration the browser claims the first
+   ambiguous frame as a scroll and the row simply never moves. Ties go to
+   vertical.
+3. **The parked state is derived, not remembered.** "Annuler" is shown because
+   the core's list holds an entry for this row — so it survives leaving the
+   screen and a reload, and it disappears by itself when the *other* phone
+   takes the entry off the list. A flag set by the gesture would go stale in
+   all three cases.
+4. **The gesture only ever adds.** Removing is the button. A leftward flick
+   over a row that is scrolling is not a deliberate enough act to delete
+   something with.
+
+**Consequences.** The click at the end of a drag is swallowed, or every swipe
+would also open the ingredient it swiped. The distances are tokens in
+`app.css` (Rule 10) read back into the component, because the pointer maths
+needs numbers; the spring is a token too, and `prefers-reduced-motion` flattens
+it to nothing while the row still lands where it lands.
+
+Nothing is only reachable this way: the list's own add form does both jobs,
+which is what keeps a gesture from being a keyboard trap. That is the whole
+accessibility argument and it is worth stating, because the honest version is
+"this is an accelerator, not an interface".
+
+`setPointerCapture` is attempted and its failure ignored — capture is what
+keeps a drag alive when the finger wanders off the row, not what makes it
+work.
+
+**Rejected.** **A "+" button on every row** — a fifth control on a line that
+already carries a photo, a name, an aisle and a badge, and the row is already
+a button. **Swipe left to remove** — see 4. **Long-press** — invisible, and it
+fights the OS's own text selection. **Firing at the threshold rather than on
+release** — nothing to cancel, and a mis-scroll becomes an edit.
+
+## 0068 — A device joins a group, and then says who is carrying it
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0024](#0024--users-devices-and-an-event-log),
+[0031](#0031--the-device-identity-lives-in-the-host),
+[0063](#0063--a-family-is-called-a-group),
+[0021](#0021--pairing-by-qr-with-a-12-word-recovery-phrase)
+
+**Context.** A device that joined a group typed the twelve words and then a
+first name, and that name minted a **new user**. Every phone that joined
+therefore invented a person, whether or not that person was already in the
+group. Two phones belonging to Alexis produced two Alexis; the roster grew a
+duplicate of somebody it already had, and the journal attributed the same
+human's edits to two different names, permanently — no command deleted a user
+and nothing merged them.
+
+The information needed to avoid it exists and is already synced: the group's
+roster is in the document. What was missing was asking the question *after*
+the document arrived instead of before.
+
+**Decision.** Splitting the identity in two. A device knows what it is from
+the moment it exists — the replica's peer id derives from the device id — so
+`Identity.device` is minted at pairing time as it always was. `Identity.user`
+becomes **optional**, and is `None` between the twelve words and the moment
+somebody is chosen off the roster or added to it.
+
+The app therefore **opens with no user**: the replica loads, sync connects,
+and "Qui êtes-vous ?" is rendered *over* a running app, with the roster
+filling in underneath the question as the first frames land. Three commands
+serve it — `ChooseUser` (a member the group already has), `CreateUser` (one it
+does not), and `NameDevice`.
+
+Consequences that are decisions in their own right:
+
+- **Nothing attributable can be written in that window.** `App::user_id`
+  returns `AppError::NoUser`, and every attributed write goes through it. A
+  placeholder name would be a row two people have to interpret forever. The
+  library is still writable, because creating an ingredient is not attributed.
+- **`enrol` writes nothing without a user.** A device record needs an owner,
+  so writing one early would mean inventing the owner — the exact ghost this
+  entry exists to prevent.
+- **`NameDevice` comes before the choice, not after.** The device record
+  cannot exist before it has an owner, so naming it first writes nothing and
+  naming it afterwards writes the record twice — once with an empty name,
+  which is the version the other phone would see.
+- **Changing user is the same act.** Settings offers the same picker, and a
+  phone handed to somebody else keeps its device record: only the owner moves,
+  and `paired_at` is not rewritten, because the device did not join again
+  today. What was already added stays attributed to whoever added it (Rule 7).
+- **The identity is written back by the host.** `localStorage` holds the only
+  durable copy (0031), so `Session.identify` exists as the single door for the
+  three commands that move it. Running them through `run` would work perfectly
+  until the next launch, which is the worst shape a bug can have.
+
+**Consequences.** `StateView.me` is now `Option<UserView>`, which is the
+frontend's cue to ask rather than a sign that nothing loaded. The stored
+identity needs **no migration**: an identity written before this change has
+both fields present as strings, which is valid under the new shape.
+
+Offline, the roster is empty and "créer" is the only door — the same place the
+old flow always landed, and the screen says the list arrives with the first
+sync rather than implying the group is empty. Rule 6 holds: nothing waits.
+
+A brand-new group is the same flow with an empty roster, so there is one path
+and not two.
+
+**Rejected.** **Matching on the typed name** — "Alexis" and "alexis" and
+"Alexis " are three people or one depending on a rule nobody can see, and
+guessing wrong merges two humans. **Blocking until the first sync completes**
+— it makes the app unusable offline to prevent a duplicate that only matters
+online (Rule 6). **Asking only in Settings and keeping the old onboarding** —
+the duplicate is created at the moment of joining, which is the one moment
+this has to be right. **A "primary" device that approves joiners** — an owner,
+a role, and an access-control story the one shared key cannot back (Rule 7).
+**Deleting a user to clean up after the old behaviour** — a delete under a
+CRDT races a concurrent write to the same person, and the log entries pointing
+at them would dangle. The duplicates that exist stay; the roster is where they
+are visible, and renaming one is a label change.

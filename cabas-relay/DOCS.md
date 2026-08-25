@@ -11,7 +11,7 @@ Two things, from one address:
   so this add-on is what the phones install from and what they load every time
   they open.
 - **It brokers sync.** Each device seals its changes on the device itself and
-  pushes ciphertext here; the relay appends it to that family's log and
+  pushes ciphertext here; the relay appends it to that group's log and
   forwards it to whoever else is connected. A phone that has been offline for a
   week replays the log and catches up. That is the whole reason this is a
   server and not a broadcast — two phones are rarely awake at the same time.
@@ -94,7 +94,7 @@ with **Cache eligibility → Bypass cache**. The hashed files under `/assets/`
 carry their own `max-age` and must keep being cached — do not widen the rule
 to cover them.
 
-Do not put a Cloudflare Access policy in front of the hostname. The family id
+Do not put a Cloudflare Access policy in front of the hostname. The group id
 is the whole of the access control here and everything is encrypted before it
 arrives; a login page in front would break the service worker and the `/sync`
 socket without protecting anything that is not already unreadable.
@@ -103,7 +103,7 @@ socket without protecting anything that is not already unreadable.
 
 Everything this add-on holds lives in `/data`, which Home Assistant's own
 backups cover. That makes it the recovery point if every phone is lost at
-once: install the add-on, restore the backup, and pair a phone with the family
+once: install the add-on, restore the backup, and pair a phone with the group
 phrase — the library comes back from the log.
 
 The phrase is not in the backup, and cannot be. Write it down somewhere else.
@@ -116,17 +116,17 @@ the app still opens, the library is still there. So plant something the restore
 is expected to destroy, and read the answer **here**, not on a phone:
 
 ```sh
-cabas-relay families          # (a) note the frame count
+cabas-relay groups          # (a) note the frame count
 ```
 
 1. Take the backup.
 2. On a phone, add an ingredient with a name you will recognise — `TÉMOIN` —
    and wait until Settings reports `online`, which means it reached here.
-   `cabas-relay families` again: the count has grown.
+   `cabas-relay groups` again: the count has grown.
 3. Restore.
-4. `cabas-relay families` once more, **before opening any phone.**
+4. `cabas-relay groups` once more, **before opening any phone.**
 
-The count being back to `(a)` is the proof, and a family that is not listed at
+The count being back to `(a)` is the proof, and a group that is not listed at
 all means the backup did not carry `/data`.
 
 **Do not look for `TÉMOIN` on a phone.** It lives in the replica of every phone
@@ -153,11 +153,11 @@ you are looking at, and the fix is a version above those.
 The sharpest version of this check keeps one phone **switched off** from step 1
 to step 4, because that is the case the log alone has to answer.
 
-## After changing the family phrase
+## After changing the group phrase
 
 Changing the phrase is how a lost phone is revoked: every phone moves to a new
-family, and **the old one's log stays here**. Nothing collects it, because
-nothing here can tell a family that was abandoned from one whose phones have
+group, and **the old one's log stays here**. Nothing collects it, because
+nothing here can tell a group that was abandoned from one whose phones have
 simply been quiet for a season — and that log is the recovery point if every
 phone is lost, so guessing is not on offer.
 
@@ -165,11 +165,11 @@ So it is a thing you do, once, when you have finished re-pairing everyone. From
 a shell on the machine (the SSH add-on, then `docker exec` into this one):
 
 ```sh
-cabas-relay families
+cabas-relay groups
 ```
 
 ```
-family                              frames       size  last write
+group                              frames       size  last write
 5a7bcc53b64acb1c9465f84e1e54ad50       412     154 kB  97 days ago
 9f1e2d3c4b5a69788796a5b4c3d2e1f0        26      10 kB  4min ago
 ```
@@ -182,10 +182,10 @@ cabas-relay forget 5a7bcc53b64acb1c9465f84e1e54ad50
 ```
 
 There is no undo, no prefix matching and no "delete everything older than". You
-can run it while the add-on is going: the family you are forgetting is one no
+can run it while the add-on is going: the group you are forgetting is one no
 phone connects to any more, which is what abandoned means.
 
-Not doing it costs a directory the size of one family's library. And it is
+Not doing it costs a directory the size of one group's library. And it is
 worth being clear about what it does not do: the old log holds nothing the
 holder of the old phrase does not already have on the phone that was lost.
 Changing the phrase stops the future, not the past.

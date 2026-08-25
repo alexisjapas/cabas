@@ -63,7 +63,14 @@ pub enum Command {
     /// off earlier in the same trip (Rule 3).
     AddIngredientToList {
         ingredient: String,
-        quantity: QuantityInput,
+        /// Absent means "as much of it as one usually buys": the
+        /// ingredient's own default quantity, or one piece if it has none
+        /// (DECISIONS 0066). That is how a swiped row asks — a gesture has
+        /// nowhere to put an amount, and the rule for choosing one is
+        /// business logic rather than something the frontend should hold
+        /// (Rule 9).
+        #[serde(default)]
+        quantity: Option<QuantityInput>,
     },
 
     /// "We are six tonight." Rescales one list entry in place.
@@ -105,6 +112,38 @@ pub enum Command {
     RenameUser {
         name: String,
     },
+
+    /// Says which member of the group is carrying this device — one of the
+    /// people already in the document (DECISIONS 0068).
+    ///
+    /// Used twice: by a phone that has just typed the twelve words and been
+    /// shown the roster, and by one being handed to somebody else. The two
+    /// are the same act, so they are the same command. What changes is a
+    /// label on future edits and the owner of this device's record; nothing
+    /// already written is re-attributed, because it was not written by this
+    /// person (Rule 7).
+    ChooseUser {
+        user: String,
+    },
+
+    /// Adds a person to the group and says this device is them.
+    ///
+    /// The way out of a roster that does not have you on it — including the
+    /// empty roster of a group that was created a moment ago.
+    CreateUser {
+        name: String,
+    },
+
+    /// What this device is called in the roster — "l'iPhone d'Alexis".
+    ///
+    /// Sent before [`Command::ChooseUser`] or [`Command::CreateUser`] on a
+    /// first launch, which is what lets the device record be written once,
+    /// with its name already on it: the record cannot exist before there is
+    /// an owner, and the name is answered after the owner is (DECISIONS
+    /// 0068).
+    NameDevice {
+        name: String,
+    },
 }
 
 /// A quantity as typed: `{ amount: "1,5", unit: "kg" }`.
@@ -135,6 +174,13 @@ pub struct IngredientInput {
     /// Grams per piece, as text. Same bargain, for count ↔ mass.
     #[serde(default)]
     pub unit_weight: Option<String>,
+    /// How much of this one buys when nobody says how much — a kilo of
+    /// flour, six eggs (DECISIONS 0066). Absent means one piece, decided by
+    /// [`cabas_domain::Ingredient::shopping_quantity`] rather than here.
+    ///
+    /// A shopping quantity and not a cooking one: no recipe reads it.
+    #[serde(default)]
+    pub default_quantity: Option<QuantityInput>,
     /// The id of a photo already stored by [`crate::photos::Photos::put`],
     /// or `null` to detach the one that is there.
     ///

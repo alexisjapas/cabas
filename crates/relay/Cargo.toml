@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Zero-knowledge sync relay and PWA host — ships as a Home Assistant OS add-on"
 
 [dependencies]
-# Protocol types and the family id — never a key: what the relay cannot
+# Protocol types and the group id — never a key: what the relay cannot
 # name it cannot misuse (Rule 7).
 cabas-sync.workspace = true
 axum = { workspace = true, features = ["ws"] }
@@ -17,7 +17,7 @@ tokio = { workspace = true, features = ["net", "sync", "time"] }
 # The log's on-disk record format, same codec as the wire (DECISIONS 0042).
 postcard.workspace = true
 serde.workspace = true
-# Mints a family log's epoch — the number that tells devices their cursor
+# Mints a group log's epoch — the number that tells devices their cursor
 # survived, or did not.
 getrandom.workspace = true
 tracing.workspace = true

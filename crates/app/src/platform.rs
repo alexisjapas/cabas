@@ -58,8 +58,8 @@ impl Platform for SystemPlatform {
 ///
 /// **Supplied by the host, never invented here.** The ids have to survive a
 /// restart or every launch would look like a new person to the rest of the
-/// family, and where a device remembers things about *itself* is a host
-/// concern: `localStorage` in the PWA, a config file under Tauri. The family
+/// group, and where a device remembers things about *itself* is a host
+/// concern: `localStorage` in the PWA, a config file under Tauri. The group
 /// document holds the [`cabas_domain::User`] and [`cabas_domain::Device`]
 /// records these ids point at — that half *is* shared, and [`crate::App`]
 /// writes it on first open.
@@ -68,33 +68,62 @@ impl Platform for SystemPlatform {
 /// boundary verbatim: the host stores what it is given and hands it back.
 ///
 /// Attribution built on this is declarative, never access control (Rule 7).
+///
+/// # The user half can be missing, and the device half cannot
+///
+/// A device knows what it is the moment it exists — the replica's peer id is
+/// derived from the device id, so there is no launch without one. *Who* is
+/// carrying it is a different question, and on a phone joining an existing
+/// group it is one only the group's roster can answer: the members are in the
+/// document, and the document arrives over the network (DECISIONS 0068). So
+/// `user` and `user_name` are `None` between the twelve words and the moment
+/// somebody picks a name off that roster or adds one to it.
+///
+/// The two move together — both `Some` or both `None`, which `belongs_to` is
+/// the only way to set. `user_name` is not redundant with the document: a
+/// device whose replica is lost while `localStorage` survives has to be able
+/// to put its own user back, and the name is the part no id can reconstruct.
+///
+/// The shape is also what an identity written before 0068 already looks like
+/// from here — both fields present, both strings — so a paired device reads
+/// its own stored identity across the change without a migration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Identity {
-    pub user: String,
-    pub user_name: String,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub user_name: Option<String>,
     pub device: String,
     pub device_name: String,
 }
 
 impl Identity {
-    /// Mints a brand-new identity. The host calls this **once**, on the very
-    /// first launch, and persists the result.
-    pub fn mint(
-        platform: &impl Platform,
-        user_name: impl Into<String>,
-        device_name: impl Into<String>,
-    ) -> Result<Self> {
+    /// Mints the identity of a device that has never run before, before
+    /// anybody has said who is carrying it.
+    ///
+    /// The host calls this **once**, on the very first launch, and persists
+    /// the result. The user half is filled in later, by
+    /// [`crate::Command::ChooseUser`] or [`crate::Command::CreateUser`], and
+    /// the host persists the identity again when it is.
+    pub fn mint_device(platform: &impl Platform, device_name: impl Into<String>) -> Result<Self> {
         Ok(Self {
-            user: crate::id::mint(platform, crate::id::USER)?,
-            user_name: user_name.into(),
+            user: None,
+            user_name: None,
             device: crate::id::mint(platform, crate::id::DEVICE)?,
             device_name: device_name.into(),
         })
     }
 
-    pub(crate) fn user_id(&self) -> UserId {
-        UserId::from_raw(self.user.clone())
+    /// Points this device at a person. Both halves move at once, which is
+    /// what keeps "there is a user id but no name" from existing.
+    pub(crate) fn belongs_to(&mut self, user: &UserId, name: &str) {
+        self.user = Some(user.to_string());
+        self.user_name = Some(name.to_owned());
+    }
+
+    pub(crate) fn user_id(&self) -> Option<UserId> {
+        self.user.clone().map(UserId::from_raw)
     }
 
     pub(crate) fn device_id(&self) -> DeviceId {
@@ -142,18 +171,30 @@ mod tests {
     }
 
     #[test]
-    fn a_minted_identity_has_two_distinct_ids() {
-        let identity = Identity::mint(&Stub::default(), "Alice", "Alice's iPhone").expect("mint");
-        assert_ne!(identity.user, identity.device);
-        assert!(identity.user.starts_with(crate::id::USER));
+    fn a_minted_device_knows_itself_and_not_who_carries_it() {
+        let identity = Identity::mint_device(&Stub::default(), "Alice's iPhone").expect("mint");
         assert!(identity.device.starts_with(crate::id::DEVICE));
+        // The half the roster answers, and the network brings the roster
+        // (DECISIONS 0068).
+        assert_eq!(identity.user, None);
+        assert_eq!(identity.user_name, None);
+        assert_eq!(identity.user_id(), None);
+    }
+
+    #[test]
+    fn a_device_points_at_a_person_with_both_halves_at_once() {
+        let mut identity = Identity::mint_device(&Stub::default(), "iPhone").expect("mint");
+        identity.belongs_to(&UserId::from_raw("usr_1"), "Alice");
+        assert_eq!(identity.user.as_deref(), Some("usr_1"));
+        assert_eq!(identity.user_name.as_deref(), Some("Alice"));
+        assert_eq!(identity.user_id(), Some(UserId::from_raw("usr_1")));
     }
 
     #[test]
     fn the_peer_id_is_stable_for_a_device_and_differs_between_devices() {
         let one = Identity {
-            user: "usr_1".into(),
-            user_name: "Alice".into(),
+            user: Some("usr_1".into()),
+            user_name: Some("Alice".into()),
             device: "dev_1".into(),
             device_name: "iPhone".into(),
         };

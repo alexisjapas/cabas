@@ -590,6 +590,33 @@ fn a_photo_reference_survives_a_snapshot_and_the_bytes_never_enter_it() {
 }
 
 #[test]
+fn a_default_quantity_survives_a_round_trip() {
+    let doc = Document::new();
+    doc.put_ingredient(&tomato().with_default_quantity(Quantity::whole(6, Unit::Piece)))
+        .expect("write");
+
+    let reloaded = Document::load(&doc.snapshot().expect("snapshot")).expect("load");
+    assert_eq!(
+        reloaded.ingredients().expect("read")[0].default_quantity,
+        Some(Quantity::whole(6, Unit::Piece))
+    );
+}
+
+#[test]
+fn an_ingredient_nobody_has_sized_reads_as_having_no_default() {
+    // What every document written before 0066 looks like from here: the key
+    // is absent, and absent is not zero (Rule 5's habit, applied to an
+    // amount).
+    let doc = Document::new();
+    doc.put_ingredient(&tomato()).expect("write");
+    let reloaded = Document::load(&doc.snapshot().expect("snapshot")).expect("load");
+    assert_eq!(
+        reloaded.ingredients().expect("read")[0].default_quantity,
+        None
+    );
+}
+
+#[test]
 fn an_ingredient_with_no_photo_reads_as_having_none() {
     // What every document written before 0062 looks like from here.
     let doc = Document::new();

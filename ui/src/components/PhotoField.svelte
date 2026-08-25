@@ -15,8 +15,20 @@
    * `capture="environment"` asks for the back camera and the OS answers with
    * its own picker — no permission prompt of ours, no video element, nothing
    * that rots across iOS versions (the reasoning of DECISIONS 0047, restated
-   * in 0062). It also lets an existing photo be chosen, which a live stream
-   * cannot.
+   * in 0062).
+   *
+   * # Two inputs, because `capture` is not a suggestion
+   *
+   * An input carrying `capture` opens the camera and *only* the camera on a
+   * phone: the photo already in the roll — the one taken last week, the one
+   * received from someone else, the label photographed in the shop before
+   * cabas was open — is unreachable through it. Dropping the attribute
+   * instead would take the camera away from the common case. So there are two
+   * hidden inputs and two buttons, which is also why the attribute is not
+   * flipped on one input between clicks: `capture` is read when the picker
+   * opens, and an input that means something different depending on which
+   * button was last pressed is a bug waiting for a slow phone (DECISIONS
+   * 0065).
    *
    * # The bytes are stored before the form is saved
    *
@@ -40,7 +52,8 @@
     label?: string;
   } = $props();
 
-  let input = $state<HTMLInputElement | null>(null);
+  let camera = $state<HTMLInputElement | null>(null);
+  let library = $state<HTMLInputElement | null>(null);
   let busy = $state(false);
   let problem = $state<string | null>(null);
 
@@ -75,8 +88,16 @@
     {/if}
 
     <div class="buttons">
-      <button type="button" data-action="take-photo" disabled={busy} onclick={() => input?.click()}>
-        {#if busy}Traitement…{:else if photo !== null}Remplacer{:else}Prendre une photo{/if}
+      <button type="button" data-action="take-photo" disabled={busy} onclick={() => camera?.click()}>
+        {#if busy}Traitement…{:else if photo !== null}Reprendre{:else}Prendre une photo{/if}
+      </button>
+      <button
+        type="button"
+        data-action="import-photo"
+        disabled={busy}
+        onclick={() => library?.click()}
+      >
+        Importer
       </button>
       {#if photo !== null}
         <button
@@ -98,11 +119,22 @@
   {#if problem !== null}<small class="problem">{problem}</small>{/if}
 
   <input
-    bind:this={input}
+    bind:this={camera}
     type="file"
     accept="image/*"
     capture="environment"
     data-field="photo"
+    hidden
+    onchange={(event) => void chosen(event)}
+  />
+
+  <!-- The same field without `capture`: the OS offers the photo library, and
+       on a desktop it is the only one of the two that means anything. -->
+  <input
+    bind:this={library}
+    type="file"
+    accept="image/*"
+    data-field="photo-import"
     hidden
     onchange={(event) => void chosen(event)}
   />
@@ -123,9 +155,13 @@
     gap: var(--space-3);
   }
 
+  /* Three buttons beside a thumbnail do not fit across a 390 px phone, so
+     they are allowed to take a second row rather than shrink until their
+     labels are unreadable. */
   .buttons {
     display: flex;
     flex: 1;
+    flex-wrap: wrap;
     gap: var(--space-2);
     min-width: 0;
   }

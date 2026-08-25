@@ -61,16 +61,31 @@ pub struct CabasApp {
 
 #[wasm_bindgen]
 impl CabasApp {
-    /// Mints the ids for a device that has never run before.
+    /// Mints the id of a device that has never run before.
     ///
     /// Called **once**, by the host, which then persists the result and hands
     /// it to [`CabasApp::open`] on every launch. Where a device remembers
     /// things about itself is the host's business — `localStorage` here —
-    /// and the family document holds only the records these ids point at.
-    #[wasm_bindgen(js_name = mintIdentity)]
-    pub fn mint_identity(user_name: String, device_name: String) -> Result<JsValue, JsError> {
-        let identity = Identity::mint(&SystemPlatform, user_name, device_name)?;
+    /// and the group document holds only the records these ids point at.
+    ///
+    /// It says nothing about *who* is carrying the device: that is a row on
+    /// the group's roster, and the roster arrives over the network
+    /// (DECISIONS 0068). The host asks once the app is open, runs
+    /// `choose_user` or `create_user`, and persists [`CabasApp::identity`].
+    #[wasm_bindgen(js_name = mintDevice)]
+    pub fn mint_device(device_name: String) -> Result<JsValue, JsError> {
+        let identity = Identity::mint_device(&SystemPlatform, device_name)?;
         to_js(&identity)
+    }
+
+    /// Who this device says it is, after a command may have changed it.
+    ///
+    /// The host persists this: it holds the only durable copy (0031), and a
+    /// device that chose a user and did not write the result down comes back
+    /// from the next launch not knowing who it is.
+    #[wasm_bindgen(js_name = identity)]
+    pub fn identity(&self) -> Result<JsValue, JsError> {
+        to_js(self.inner.borrow().identity())
     }
 
     /// Which build this is — the workspace version, and so the exact string
@@ -213,8 +228,8 @@ impl CabasApp {
     // Plaintext never appears here: a frame that opens is merged inside the
     // core and what comes back is a state object like any other.
 
-    /// A new family's recovery phrase. Called once, on the device that starts
-    /// the family; the phrase is then the only secret there is (0042).
+    /// A new group's recovery phrase. Called once, on the device that starts
+    /// the group; the phrase is then the only secret there is (0042).
     #[wasm_bindgen(js_name = mintPhrase)]
     pub fn mint_phrase() -> Result<String, JsError> {
         Ok(crate::sync::mint_phrase()?)

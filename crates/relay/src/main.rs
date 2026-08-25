@@ -11,7 +11,7 @@
 //! - `CABAS_RELAY_ADDR` — listen address, default `0.0.0.0:8787`; the
 //!   Cloudflare Tunnel (DECISIONS 0012) terminates in front of this.
 //!
-//! The same reasoning covers the subcommands: `families` and `forget` are
+//! The same reasoning covers the subcommands: `groups` and `forget` are
 //! matched by name, positionally, and everything else is a usage message.
 //! Two verbs do not need a parser either.
 
@@ -25,16 +25,16 @@ const USAGE: &str = "\
 cabas-relay — sync relay and host for the cabas app
 
   cabas-relay                 serve (the add-on's default)
-  cabas-relay families        what is on disk, per family
-  cabas-relay forget <id>     delete one family's log, irreversibly
+  cabas-relay groups        what is on disk, per group
+  cabas-relay forget <id>     delete one group's log, irreversibly
 
 Environment:
   CABAS_RELAY_DATA  where the sealed logs live (default /data)
   CABAS_RELAY_ADDR  listen address (default 0.0.0.0:8787)
 
-`forget` is how an abandoned family goes away — rotating the phrase leaves
+`forget` is how an abandoned group goes away — rotating the phrase leaves
 its log here and nothing collects it, because nothing here can tell an
-abandoned family from a quiet one. See cabas-relay/DOCS.md.
+abandoned group from a quiet one. See cabas-relay/DOCS.md.
 ";
 
 #[tokio::main]
@@ -42,11 +42,11 @@ async fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         None => serve().await,
-        Some("families") => families(),
+        Some("groups") => groups(),
         Some("forget") => match args.next() {
             Some(id) => forget(&id),
             None => {
-                eprintln!("forget: which family? `cabas-relay families` lists them.");
+                eprintln!("forget: which group? `cabas-relay groups` lists them.");
                 ExitCode::from(2)
             }
         },
@@ -101,11 +101,11 @@ async fn serve() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn families() -> ExitCode {
+fn groups() -> ExitCode {
     let data = admin::data_dir();
     match admin::survey(&data) {
-        Ok(families) => {
-            print!("{}", admin::render(&families, SystemTime::now()));
+        Ok(groups) => {
+            print!("{}", admin::render(&groups, SystemTime::now()));
             ExitCode::SUCCESS
         }
         Err(e) => fail(&data, e),
@@ -115,10 +115,10 @@ fn families() -> ExitCode {
 fn forget(id: &str) -> ExitCode {
     let data = admin::data_dir();
     match admin::forget(&data, id) {
-        Ok(family) => {
+        Ok(group) => {
             println!(
                 "forgot {} — {} frames, gone for good",
-                family.id, family.frames
+                group.id, group.frames
             );
             ExitCode::SUCCESS
         }

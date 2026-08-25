@@ -47,6 +47,15 @@ pub struct Ingredient {
     pub density: Option<Rational>,
     /// Grams per piece. Enables count ↔ mass.
     pub unit_weight: Option<Rational>,
+    /// How much of this one buys when nobody says how much: a kilo of flour,
+    /// six eggs, a litre of milk (DECISIONS 0066).
+    ///
+    /// It is a *shopping* quantity and never a cooking one — nothing in a
+    /// recipe reads it, because a recipe states its own amounts. The only
+    /// caller is the path that adds an ingredient to the list with no amount
+    /// attached, and `None` there means one piece: the honest answer for a
+    /// thing nobody has said anything about, and one a shopper can act on.
+    pub default_quantity: Option<Quantity>,
     /// The photo of this ingredient, if one was taken (DECISIONS 0062). A
     /// reference and never the bytes: those live in a store of their own,
     /// outside the document, because every save rewrites the whole document.
@@ -64,6 +73,7 @@ impl Ingredient {
             staple: false,
             density: None,
             unit_weight: None,
+            default_quantity: None,
             photo: None,
         }
     }
@@ -78,6 +88,11 @@ impl Ingredient {
         self
     }
 
+    pub fn with_default_quantity(mut self, quantity: Quantity) -> Self {
+        self.default_quantity = Some(quantity);
+        self
+    }
+
     pub fn with_photo(mut self, photo: PhotoId) -> Self {
         self.photo = Some(photo);
         self
@@ -86,6 +101,20 @@ impl Ingredient {
     pub fn as_staple(mut self) -> Self {
         self.staple = true;
         self
+    }
+
+    /// What goes on the list when this ingredient is asked for and no amount
+    /// is given (DECISIONS 0066).
+    ///
+    /// One piece is the fallback rather than an error, because the caller is
+    /// a gesture: a row swiped across in a shop has nowhere to put a
+    /// question, and "1 Farine" on a list is a thing a person can buy, read
+    /// and correct. Living here rather than in the frontend is Rule 9 — the
+    /// rule is business logic, and there is one of it.
+    pub fn shopping_quantity(&self) -> Quantity {
+        self.default_quantity
+            .clone()
+            .unwrap_or_else(|| Quantity::whole(1, Unit::Piece))
     }
 
     /// Does `name` denote this ingredient? Case-insensitive over the canonical
@@ -198,6 +227,35 @@ mod tests {
 
     const G: Unit = Unit::Mass(MassUnit::Gram);
     const ML: Unit = Unit::Volume(VolumeUnit::Milliliter);
+
+    #[test]
+    fn an_ingredient_nobody_has_sized_is_bought_one_at_a_time() {
+        // The fallback is a piece rather than an error, because the caller is
+        // a gesture with nowhere to put a question (DECISIONS 0066).
+        assert_eq!(
+            tomato().shopping_quantity(),
+            Quantity::whole(1, Unit::Piece)
+        );
+    }
+
+    #[test]
+    fn a_default_quantity_is_what_gets_bought() {
+        let kilo = Quantity::whole(1, Unit::Mass(MassUnit::Kilogram));
+        let sized = flour().with_default_quantity(kilo.clone());
+        assert_eq!(sized.shopping_quantity(), kilo);
+    }
+
+    #[test]
+    fn a_default_quantity_is_a_shopping_amount_and_changes_no_conversion() {
+        // It is read at one call site and nowhere else: sizing an ingredient
+        // must not quietly become a third coefficient (Rule 5).
+        let plain = tomato();
+        let sized = tomato().with_default_quantity(Quantity::whole(6, Unit::Piece));
+        assert_eq!(
+            plain.convert(&Quantity::whole(2, Unit::Piece), Dimension::Mass),
+            sized.convert(&Quantity::whole(2, Unit::Piece), Dimension::Mass)
+        );
+    }
 
     #[test]
     fn mass_and_volume_convert_through_density() {

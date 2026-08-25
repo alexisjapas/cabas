@@ -9,7 +9,7 @@
    * attributed on the object.
    *
    * A courtesy, capped at two hundred lines, and **not** an audit trail: the
-   * family shares one key, so any device can write any of these under any
+   * group shares one key, so any device can write any of these under any
    * name (Rule 7). The screen says so at the bottom rather than pretending
    * otherwise.
    */

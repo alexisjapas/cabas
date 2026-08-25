@@ -137,7 +137,7 @@ Plaintext never leaves a device. All cryptography lives in `crates/sync`.
 The relay stores and forwards sealed payloads and holds no key.
 
 Attribution (`added_by`, `checked_by`, the event log) is a **convenience,
-not access control**: with one shared family key, any holder can write as
+not access control**: with one shared group key, any holder can write as
 anyone. This limit is deliberate and must be stated wherever the UI implies
 identity — including the device screen, where revoking a lost device means
 rotating the key and re-pairing everyone, with no middle ground.

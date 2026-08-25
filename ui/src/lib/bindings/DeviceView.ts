@@ -6,7 +6,7 @@ export type DeviceView = { id: string, name: string,
  */
 is_this_one: boolean, 
 /**
- * When it joined the family, in milliseconds since the epoch.
+ * When it joined the group, in milliseconds since the epoch.
  *
  * A number rather than text: a millisecond count is nowhere near where a
  * double stops being exact (DECISIONS 0046), and the words around a date

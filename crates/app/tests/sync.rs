@@ -66,8 +66,8 @@ async fn open(base: u64, user: &str, name: &str) -> App<MemoryStorage, TestPlatf
         MemoryStorage::new(),
         TestPlatform::from(base),
         Identity {
-            user: user.into(),
-            user_name: name.into(),
+            user: Some(user.into()),
+            user_name: Some(name.into()),
             device: format!("dev_{user}"),
             device_name: format!("{name}'s phone"),
         },
@@ -99,6 +99,7 @@ fn save(name: &str) -> Command {
             staple: false,
             density: None,
             unit_weight: None,
+            default_quantity: None,
             photo: None,
         },
     }
@@ -118,10 +119,10 @@ fn a_sealed_push_from_one_device_becomes_a_state_on_the_other() {
         alice
             .dispatch(Command::AddIngredientToList {
                 ingredient: tomatoes,
-                quantity: QuantityInput {
+                quantity: Some(QuantityInput {
                     amount: "5".into(),
                     unit: UnitTag::Piece,
-                },
+                }),
             })
             .await
             .expect("add to list");
@@ -159,7 +160,7 @@ fn a_sealed_push_from_one_device_becomes_a_state_on_the_other() {
     });
 }
 
-/// A frame sealed by another family — or by nobody — is stepped over. The
+/// A frame sealed by another group — or by nobody — is stepped over. The
 /// cursor still advances: refetching it forever would not make it open (0042).
 #[test]
 fn a_frame_from_a_stranger_is_dropped_without_touching_the_replica() {

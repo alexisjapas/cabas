@@ -5,7 +5,7 @@
 //! per-person one.
 //!
 //! Everything keyed on these names is **declarative, never access control**
-//! (Rule 7). One shared family key decrypts the whole document, so any holder
+//! (Rule 7). One shared group key decrypts the whole document, so any holder
 //! can write as anyone; `added_by` says who most likely did something, not
 //! who was allowed to.
 
@@ -35,7 +35,7 @@ impl User {
 /// A paired device, belonging to exactly one user.
 ///
 /// The device screen is the one place the UI must state the limit of all this
-/// (Rule 7): revoking a lost device means rotating the family key and
+/// (Rule 7): revoking a lost device means rotating the group key and
 /// re-pairing everyone, because there is no per-device credential to revoke
 /// on its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub struct Device {
     pub owner: UserId,
     /// What the device list calls it — "Alexis' iPhone".
     pub name: String,
-    /// When this device joined the family document. Supplied by the caller,
+    /// When this device joined the group document. Supplied by the caller,
     /// like every timestamp here: the domain reads no clock (Rule 1).
     pub paired_at: Timestamp,
 }

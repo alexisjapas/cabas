@@ -5,22 +5,23 @@
   import type { Session } from '../lib/session.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
   import Events from './Events.svelte';
+  import Identify from './Identify.svelte';
   import Pairing from './Pairing.svelte';
   import People from './People.svelte';
 
   let { session }: { session: Session } = $props();
 
   /**
-   * Three views behind one tab, the way Recipes has three of its own. The
-   * roster and the log are screens rather than sections: each has something
-   * to say at the bottom that a section would bury, and both are reached from
-   * the one place someone would look for them.
+   * Four views behind one tab, where Recipes has three of its own. The
+   * roster, the log and the user picker are screens rather than sections:
+   * each has something to say at the bottom that a section would bury, and
+   * all of them are reached from the one place someone would look for them.
    */
-  let showing = $state<'settings' | 'people' | 'events'>('settings');
+  let showing = $state<'settings' | 'people' | 'events' | 'identify'>('settings');
 
   /**
    * The device half of the identity never appears in a view-model: it is a
-   * fact about this device, not about the family document (DECISIONS 0031).
+   * fact about this device, not about the group document (DECISIONS 0031).
    * `localStorage` is where it lives, so `localStorage` is where this reads
    * it. Read once — it cannot change while the app is running.
    */
@@ -41,7 +42,7 @@
    * another device while this screen is open.
    */
   let edited = $state<string | null>(null);
-  let name = $derived(edited ?? session.state.me.name);
+  let name = $derived(edited ?? session.state.me?.name ?? '');
   let saved = $state(false);
 
   /**
@@ -65,21 +66,21 @@
   /** Same shape as the name field: a draft that wins once typing starts, and
    *  the stored value until then. */
   let relayDraft = $state<string | null>(null);
-  let relay = $derived(relayDraft ?? session.sync.family?.relay ?? '');
+  let relay = $derived(relayDraft ?? session.sync.group?.relay ?? '');
 
   function saveRelay(event: SubmitEvent): void {
     event.preventDefault();
-    const family = session.sync.family;
-    if (family === null) return;
+    const group = session.sync.group;
+    if (group === null) return;
     const trimmed = relay.trim();
-    session.sync.pair({ phrase: family.phrase, relay: trimmed === '' ? null : trimmed });
+    session.sync.pair({ phrase: group.phrase, relay: trimmed === '' ? null : trimmed });
     relayDraft = null;
   }
 
   function rename(event: SubmitEvent): void {
     event.preventDefault();
     const trimmed = name.trim();
-    if (trimmed === '' || trimmed === session.state.me.name) return;
+    if (trimmed === '' || trimmed === session.state.me?.name) return;
     // Attribution is a label, so this changes what future entries are signed
     // with and nothing about what anyone is allowed to do (Rule 7).
     if (session.run({ command: 'rename_user', name: trimmed })) {
@@ -94,6 +95,10 @@
   <People {session} onback={() => (showing = 'settings')} />
 {:else if showing === 'events'}
   <Events {session} onback={() => (showing = 'settings')} />
+{:else if showing === 'identify'}
+  <!-- The same screen the first launch shows, minus the device question: the
+       device is already in the roster and keeps its name (DECISIONS 0068). -->
+  <Identify {session} oncancel={() => (showing = 'settings')} />
 {:else}
   <Screen title="Réglages">
     <form onsubmit={rename}>
@@ -107,10 +112,17 @@
         />
         <small>Ce que voient les autres appareils à côté de ce que vous ajoutez ou cochez.</small>
       </label>
-      <button type="submit" disabled={name.trim() === '' || name.trim() === session.state.me.name}>
+      <button type="submit" disabled={name.trim() === '' || name.trim() === session.state.me?.name}>
         {saved ? 'Enregistré' : 'Enregistrer'}
       </button>
     </form>
+
+    <!-- Renaming and changing person are two different acts, and the
+         difference matters: the first corrects a label everyone sees, the
+         second says this phone is now somebody else's (DECISIONS 0068). -->
+    <button type="button" class="secondary switch" onclick={() => (showing = 'identify')}>
+      Changer d'utilisateur
+    </button>
 
     <dl>
       <div>
@@ -131,15 +143,15 @@
       </div>
     </dl>
 
-    <section class="family">
-      <h2>Famille</h2>
+    <section class="group">
+      <h2>Groupe</h2>
       <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
 
-      {#if session.sync.family === null}
+      {#if session.sync.group === null}
         {#if pairingOpen}
           <Pairing
-            onpaired={(family) => {
-              session.sync.pair(family);
+            onpaired={(group) => {
+              session.sync.pair(group);
               pairingOpen = false;
             }}
             oncancel={() => (pairingOpen = false)}
@@ -151,15 +163,15 @@
           <button type="button" onclick={() => (pairingOpen = true)}>Appairer cet appareil</button>
         {/if}
       {:else}
-        {@const family = session.sync.family}
+        {@const group = session.sync.group}
         <p class="note">
-          Pour ajouter un appareil : ouvrez cabas dessus, choisissez « Rejoindre une famille », et
+          Pour ajouter un appareil : ouvrez cabas dessus, choisissez « Rejoindre un groupe », et
           recopiez ces douze mots.
         </p>
 
         {#if revealed}
-          <p class="phrase" data-phrase>{family.phrase}</p>
-          <Qr text={family.phrase} label="La phrase de votre famille, en QR code" />
+          <p class="phrase" data-phrase>{group.phrase}</p>
+          <Qr text={group.phrase} label="La phrase de votre groupe, en QR code" />
           <button type="button" class="secondary" onclick={() => (revealed = false)}>Masquer</button>
         {:else}
           <button type="button" class="secondary" onclick={() => (revealed = true)}>
@@ -281,7 +293,7 @@
     font-size: var(--text-sm);
   }
 
-  .family {
+  .group {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -303,7 +315,7 @@
     font-size: var(--text-sm);
   }
 
-  .family .note {
+  .group .note {
     margin: 0;
   }
 
@@ -311,7 +323,7 @@
     font-size: var(--text-xs);
   }
 
-  .family form {
+  .group form {
     margin: 0;
     gap: var(--space-3);
   }
@@ -333,6 +345,11 @@
     border: 1px solid var(--border-strong);
     background: var(--surface-raised);
     color: var(--text);
+  }
+
+  .switch {
+    width: 100%;
+    margin-bottom: var(--space-5);
   }
 
   .elsewhere {

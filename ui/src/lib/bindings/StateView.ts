@@ -21,10 +21,16 @@ export type StateView = {
 revision: number, 
 /**
  * Who this device says it is — the name attribution will use.
+ *
+ * `None` on a device that has joined a group and not yet said which
+ * member it is (DECISIONS 0068). Everything else on this state is real
+ * and readable in that window — the library arrives over sync while the
+ * question is on screen — so this is the frontend's cue to ask it, not a
+ * sign that nothing has loaded.
  */
-me: UserView, 
+me: UserView | null, 
 /**
- * Everyone in the family and the devices they carry, in document order.
+ * Everyone in the group and the devices they carry, in document order.
  * Sorting is the screen's business, like every other list here.
  */
 people: Array<PersonView>, 

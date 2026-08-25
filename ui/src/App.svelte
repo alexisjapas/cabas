@@ -3,33 +3,36 @@
 
   import ErrorBanner from './components/ErrorBanner.svelte';
   import TabBar from './components/TabBar.svelte';
-  import { mintIdentity, readIdentity, rememberIdentity } from './lib/core';
+  import { mintDevice, readIdentity, rememberIdentity } from './lib/core';
   import { keyboard } from './lib/keyboard.svelte';
   import { Session } from './lib/session.svelte';
   import Cart from './screens/Cart.svelte';
+  import Identify from './screens/Identify.svelte';
   import Ingredients from './screens/Ingredients.svelte';
   import List from './screens/List.svelte';
-  import Onboarding from './screens/Onboarding.svelte';
   import Pairing from './screens/Pairing.svelte';
   import Recipes from './screens/Recipes.svelte';
   import Settings from './screens/Settings.svelte';
-  import { rememberFamily, type Family } from './lib/sync.svelte';
+  import { rememberGroup, type Group } from './lib/sync.svelte';
 
   /**
    * Boot, in the order DECISIONS 0031 requires: the device's identity comes
    * out of `localStorage` before anything else can run, and a device that has
-   * never launched is asked who it is.
+   * never launched mints one.
    *
-   * A first launch is asked one thing before that, though — which family this
-   * device belongs to. Pairing comes first because joining an existing one is
-   * the common case for the *second* phone, and a device that mints an
-   * identity before knowing that has already written a user into a document
-   * nobody else will ever see.
+   * A first launch is asked one thing before that — which group this device
+   * belongs to. Pairing comes first because joining an existing one is the
+   * common case for the *second* phone, and because the twelve words are what
+   * make the group's roster reachable at all.
+   *
+   * **Who is carrying the device is asked afterwards, not here** (DECISIONS
+   * 0068). The roster lives in the document and the document arrives over the
+   * network, so the question is asked over a running app rather than in front
+   * of one — which is why there is no onboarding step in this list any more.
    */
   type Phase =
     | { step: 'loading' }
     | { step: 'pairing' }
-    | { step: 'onboarding'; family: Family }
     | { step: 'ready'; session: Session }
     | { step: 'failed'; message: string };
 
@@ -79,17 +82,26 @@
     void tick().then(() => session.restoreScroll(screen));
   });
 
-  async function register(family: Family, userName: string, deviceName: string): Promise<void> {
+  /**
+   * A device that has just been paired: remember the group, mint the device,
+   * open.
+   *
+   * The group is written before the identity, so the engine finds it the
+   * moment `Session.open` starts it — which is what makes the roster arrive
+   * while "Qui êtes-vous ?" is on screen (DECISIONS 0068). No user is minted
+   * here, and that is the change: a device that names a person before seeing
+   * the group's roster is how one human ends up in the document twice.
+   */
+  async function register(group: Group): Promise<void> {
     phase = { step: 'loading' };
     try {
-      // The family before the identity, so the engine finds it the moment
-      // `Session.open` starts it — the first sync then carries this device's
-      // own user record out with everything else.
-      rememberFamily(family);
-      const identity = await mintIdentity(userName, deviceName);
+      rememberGroup(group);
+      // Unnamed: `Identify` asks, and `name_device` writes it before the
+      // device record exists at all.
+      const identity = await mintDevice('');
       // Stored before the replica opens, deliberately: if opening fails, the
-      // next launch must retry with *this* identity. Minting a second one
-      // would leave the first user record orphaned in the family document.
+      // next launch must retry with *this* device id. A second one would
+      // leave a dead peer in the replica's history.
       rememberIdentity(identity);
       await openWith(identity);
     } catch (cause) {
@@ -107,11 +119,17 @@
   </p>
 {:else if phase.step === 'pairing'}
   <main class="first">
-    <Pairing onpaired={(family) => (phase = { step: 'onboarding', family })} />
+    <Pairing onpaired={(group) => void register(group)} />
   </main>
-{:else if phase.step === 'onboarding'}
-  {@const family = phase.family}
-  <Onboarding onsubmit={(userName, deviceName) => register(family, userName, deviceName)} />
+{:else if phase.session.state.me === null}
+  <!-- The app is open, the replica is loaded and sync is running; what is
+       missing is the one thing only the group's roster can answer, so the
+       question sits over it rather than in front of it (DECISIONS 0068). -->
+  {@const session = phase.session}
+  {#if session.error !== null}
+    <ErrorBanner message={session.error} ondismiss={() => session.dismissError()} />
+  {/if}
+  <Identify {session} />
 {:else}
   {@const session = phase.session}
   {#if session.error !== null}

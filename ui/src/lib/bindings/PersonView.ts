@@ -2,7 +2,7 @@
 import type { DeviceView } from "./DeviceView";
 
 /**
- * One person in the family, and the devices they carry.
+ * One person in the group, and the devices they carry.
  *
  * **Names, not permissions** (Rule 7, DECISIONS 0024). One shared key
  * decrypts the whole document, so every one of these says who most likely

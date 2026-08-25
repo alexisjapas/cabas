@@ -104,6 +104,11 @@ pub(crate) fn write_ingredient(entry: &LoroMap, ing: &Ingredient) -> Result<()> 
     )?;
     set_optional(
         entry,
+        schema::ingredient::DEFAULT_QUANTITY,
+        ing.default_quantity.as_ref().map(codec::quantity_value),
+    )?;
+    set_optional(
+        entry,
         schema::ingredient::PHOTO,
         ing.photo.as_ref().map(|p| text(p.as_str())),
     )
@@ -132,6 +137,9 @@ pub(crate) fn read_ingredient(id: &str, value: &LoroValue) -> Result<Ingredient>
             .transpose()?,
         unit_weight: codec::optional(map, schema::ingredient::UNIT_WEIGHT)
             .map(|v| codec::rational(v, &path))
+            .transpose()?,
+        default_quantity: codec::optional(map, schema::ingredient::DEFAULT_QUANTITY)
+            .map(|v| codec::quantity(v, &path))
             .transpose()?,
         photo: codec::optional(map, schema::ingredient::PHOTO)
             .map(|v| codec::string(v, &path).map(PhotoId::from_raw))

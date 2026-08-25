@@ -208,7 +208,7 @@ pub(crate) fn aisle(value: &LoroValue, path: &str) -> Result<Aisle> {
         // It is also what makes adding one a non-breaking change: a phone
         // three weeks out of date reads "items" as `Other` and shows the line
         // at the end of the cart, rather than failing to open the document
-        // its family just synced to it (DECISIONS 0057).
+        // its group just synced to it (DECISIONS 0057).
         _ => Aisle::Other,
     })
 }

@@ -17,7 +17,7 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 
 use crate::error::{Result, SyncError};
-use crate::key::FamilyKey;
+use crate::key::GroupKey;
 
 /// XChaCha20's extended nonce, the first bytes of every sealed frame.
 pub const NONCE_LEN: usize = 24;
@@ -26,9 +26,9 @@ pub const NONCE_LEN: usize = 24;
 /// the two combined.
 const TAG_LEN: usize = 16;
 
-/// Seals a plaintext under the family key. Every call draws a fresh nonce,
+/// Seals a plaintext under the group key. Every call draws a fresh nonce,
 /// so sealing the same bytes twice yields unrelated frames.
-pub fn seal(key: &FamilyKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+pub fn seal(key: &GroupKey, plaintext: &[u8]) -> Result<Vec<u8>> {
     let mut nonce = [0u8; NONCE_LEN];
     getrandom::fill(&mut nonce).map_err(|e| SyncError::Entropy(e.to_string()))?;
     let ciphertext = XChaCha20Poly1305::new(key.bytes().into())
@@ -42,9 +42,9 @@ pub fn seal(key: &FamilyKey, plaintext: &[u8]) -> Result<Vec<u8>> {
 
 /// Opens a sealed frame. One bit of failure, on purpose: a frame that does
 /// not open is dropped and counted by the session, never merged — that is
-/// the entire client-side handling of a stranger who found the family id
+/// the entire client-side handling of a stranger who found the group id
 /// (DECISIONS 0042).
-pub fn open(key: &FamilyKey, sealed: &[u8]) -> Result<Vec<u8>> {
+pub fn open(key: &GroupKey, sealed: &[u8]) -> Result<Vec<u8>> {
     if sealed.len() < NONCE_LEN + TAG_LEN {
         return Err(SyncError::Open);
     }
@@ -58,8 +58,8 @@ pub fn open(key: &FamilyKey, sealed: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
-    fn key() -> FamilyKey {
-        FamilyKey::generate().unwrap()
+    fn key() -> GroupKey {
+        GroupKey::generate().unwrap()
     }
 
     #[test]
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn the_wrong_key_opens_nothing() {
-        let sealed = seal(&key(), b"for one family only").unwrap();
+        let sealed = seal(&key(), b"for one group only").unwrap();
         assert_eq!(open(&key(), &sealed), Err(SyncError::Open));
     }
 }

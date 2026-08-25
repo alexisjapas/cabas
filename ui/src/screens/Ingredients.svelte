@@ -7,6 +7,7 @@
   import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
+  import SwipeToAdd from '../components/SwipeToAdd.svelte';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { IngredientView } from '../lib/bindings/IngredientView';
   import { mintIngredientId } from '../lib/core';
@@ -41,6 +42,24 @@
       matches([ingredient.name, ...ingredient.aliases].join(' '), query),
     ),
   );
+
+  /**
+   * The list entry each ingredient already has, if it has one (DECISIONS
+   * 0067).
+   *
+   * Derived from the core's own list rather than remembered from the
+   * gesture, which is what makes a swiped row still offer its way out after
+   * a reload — and makes it stop offering one the moment the other phone
+   * takes the entry off the list. The newest entry wins, because it is the
+   * one an undo means.
+   */
+  let onList = $derived.by(() => {
+    const found = new Map<string, string>();
+    for (const entry of session.state.list) {
+      if (entry.item.kind === 'ingredient') found.set(entry.item.ingredient, entry.id);
+    }
+    return found;
+  });
 
   /**
    * The draft is always a whole one and `writing` says whether it is on
@@ -132,17 +151,31 @@
   <ul>
     {#each shown as ingredient (ingredient.id)}
       <li>
-        <button type="button" onclick={() => open(ingredient)}>
-          <Photo {session} photo={ingredient.photo} alt="" />
-          <span class="text">
-            <span class="name">{ingredient.name}</span>
-            <span class="meta">
-              {AISLE_LABEL[ingredient.aisle]}
-              {#if ingredient.aliases.length > 0}· {ingredient.aliases.join(', ')}{/if}
+        <SwipeToAdd
+          label={ingredient.name}
+          entry={onList.get(ingredient.id) ?? null}
+          onadd={() =>
+            session.run({
+              command: 'add_ingredient_to_list',
+              ingredient: ingredient.id,
+              // No amount: the gesture has nowhere to put one, and the core
+              // knows what this ingredient is usually bought by (0066).
+              quantity: null,
+            })}
+          onundo={(entry) => session.run({ command: 'remove_list_entry', entry })}
+        >
+          <button type="button" onclick={() => open(ingredient)}>
+            <Photo {session} photo={ingredient.photo} alt="" />
+            <span class="text">
+              <span class="name">{ingredient.name}</span>
+              <span class="meta">
+                {AISLE_LABEL[ingredient.aisle]}
+                {#if ingredient.aliases.length > 0}· {ingredient.aliases.join(', ')}{/if}
+              </span>
             </span>
-          </span>
-          {#if ingredient.staple}<span class="badge">base</span>{/if}
-        </button>
+            {#if ingredient.staple}<span class="badge">base</span>{/if}
+          </button>
+        </SwipeToAdd>
       </li>
     {/each}
   </ul>

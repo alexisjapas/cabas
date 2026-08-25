@@ -14,7 +14,7 @@
 //! wire bytes, and tracks the two numbers worth persisting.
 
 use crate::error::{Result, SyncError};
-use crate::key::FamilyKey;
+use crate::key::GroupKey;
 use crate::protocol::{self, ClientMessage, FrameKind, PROTOCOL, ServerMessage};
 use crate::seal;
 
@@ -44,7 +44,7 @@ pub enum Event {
     /// message. Reconnecting without changing something is pointless.
     Refused { reason: String },
 
-    /// A frame arrived that the family key does not open — a stranger who
+    /// A frame arrived that the group key does not open — a stranger who
     /// found the id, or a corrupted blob. Dropped, counted, cursor
     /// advanced: refetching it forever would not make it open (0042).
     Dropped { seq: u64 },
@@ -54,7 +54,7 @@ pub enum Event {
 /// cursor, drive it with wire bytes, persist [`Session::cursor`] when it
 /// moves.
 pub struct Session {
-    key: FamilyKey,
+    key: GroupKey,
     epoch: u64,
     since: u64,
     /// The `since` the hello carried. Kept because the relay does not
@@ -70,7 +70,7 @@ pub struct Session {
 impl Session {
     /// `epoch` and `since` are what [`Session::cursor`] returned last time —
     /// zeros on a device that has never synced.
-    pub fn new(key: FamilyKey, epoch: u64, since: u64) -> Self {
+    pub fn new(key: GroupKey, epoch: u64, since: u64) -> Self {
         Session {
             key,
             epoch,
@@ -87,7 +87,7 @@ impl Session {
     pub fn hello(&self) -> Result<Vec<u8>> {
         protocol::encode_client(&ClientMessage::Hello {
             protocol: PROTOCOL,
-            family: self.key.id(),
+            group: self.key.id(),
             epoch: self.epoch,
             since: self.since,
         })
@@ -205,7 +205,7 @@ mod tests {
     use crate::protocol::{decode_client, encode_server};
 
     fn session() -> Session {
-        Session::new(FamilyKey::generate().unwrap(), 0, 0)
+        Session::new(GroupKey::generate().unwrap(), 0, 0)
     }
 
     fn wire(message: &ServerMessage) -> Vec<u8> {
@@ -214,18 +214,18 @@ mod tests {
 
     #[test]
     fn hello_carries_the_persisted_cursor() {
-        let key = FamilyKey::generate().unwrap();
+        let key = GroupKey::generate().unwrap();
         let id = key.id();
         let s = Session::new(key, 5, 17);
         match decode_client(&s.hello().unwrap()).unwrap() {
             ClientMessage::Hello {
                 protocol,
-                family,
+                group,
                 epoch,
                 since,
             } => {
                 assert_eq!(protocol, PROTOCOL);
-                assert_eq!(family, id);
+                assert_eq!(group, id);
                 assert_eq!(epoch, 5);
                 assert_eq!(since, 17);
             }
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn a_matching_epoch_keeps_the_cursor() {
-        let key = FamilyKey::generate().unwrap();
+        let key = GroupKey::generate().unwrap();
         let mut s = Session::new(key, 5, 17);
         assert_eq!(
             s.handle(&wire(&ServerMessage::Welcome { epoch: 5 }))
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_new_epoch_resets_the_cursor() {
-        let key = FamilyKey::generate().unwrap();
+        let key = GroupKey::generate().unwrap();
         let mut s = Session::new(key, 5, 17);
         s.handle(&wire(&ServerMessage::Welcome { epoch: 6 }))
             .unwrap();
@@ -264,7 +264,7 @@ mod tests {
     /// cursor had already counted (DECISIONS 0054).
     #[test]
     fn a_replay_starting_underneath_the_cursor_is_a_reset() {
-        let key = FamilyKey::from_phrase(
+        let key = GroupKey::from_phrase(
             "abandon abandon abandon abandon abandon abandon \
              abandon abandon abandon abandon abandon about",
         )
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn an_ordinary_frame_after_the_cursor_is_not_a_reset() {
-        let key = FamilyKey::from_phrase(
+        let key = GroupKey::from_phrase(
             "abandon abandon abandon abandon abandon abandon \
              abandon abandon abandon abandon abandon about",
         )
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn frames_open_advance_and_surface_the_plaintext() {
-        let key = FamilyKey::from_phrase(
+        let key = GroupKey::from_phrase(
             "abandon abandon abandon abandon abandon abandon \
              abandon abandon abandon abandon abandon about",
         )
@@ -361,8 +361,8 @@ mod tests {
 
     #[test]
     fn pushes_seal_and_declare_their_kind() {
-        let key = FamilyKey::generate().unwrap();
-        let opener = FamilyKey::from_phrase(key.phrase()).unwrap();
+        let key = GroupKey::generate().unwrap();
+        let opener = GroupKey::from_phrase(key.phrase()).unwrap();
         let mut s = Session::new(key, 0, 0);
         s.handle(&wire(&ServerMessage::Frame {
             seq: 21,

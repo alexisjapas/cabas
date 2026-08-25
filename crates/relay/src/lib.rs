@@ -10,7 +10,7 @@
 //!
 //! - **It cannot read anything.** Payloads arrive sealed and are stored
 //!   sealed. It holds no key — it depends on `cabas-sync` for the protocol
-//!   types and the family id, never for the cipher (Rule 7).
+//!   types and the group id, never for the cipher (Rule 7).
 //! - **It is stateful, and that is the point.** A pure broadcast relay
 //!   would never reconcile two devices that are never online at the same
 //!   time — the normal case for a phone in a shop and a laptop at home. It
@@ -23,7 +23,7 @@
 //! half, which shares nothing with them but the port. [`admin`] is the fourth
 //! verb and the odd one out: it runs from a shell rather than from the socket,
 //! because the one thing this process cannot judge for itself is which of its
-//! families has been abandoned (DECISIONS 0050).
+//! groups has been abandoned (DECISIONS 0050).
 //!
 //! The convergence test in `tests/convergence.rs` is M5's exit criterion: two
 //! replicas that are never online at the same time still converge through this

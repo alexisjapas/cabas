@@ -27,7 +27,7 @@ pub enum SyncError {
 
     /// Sealing failed. In practice unreachable — the cipher only refuses a
     /// plaintext too large to fit its counter, orders of magnitude beyond a
-    /// family library.
+    /// group library.
     #[error("sealing failed")]
     Seal,
 
