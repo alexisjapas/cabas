@@ -63,7 +63,9 @@ library with a field that filters and the matches under it,
 every list of names on screen is alphabetical in French (0058). The list
 screen took the cart's shape in the same breath — a settled entry folds away
 below what is still missing, and a recipe reaches the list *from* the list
-(0059). `ui-serve` serves the
+(0059). Since 0.4.1 **what was searched for is what gets created**: the
+picker's door carries the query into the form and says so on its label, and
+both shelves offer the same thing under a search that found nothing (0060). `ui-serve` serves the
 built bundle over TLS from a local CA, which is what makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
@@ -553,6 +555,9 @@ Key domain shapes, all settled in DECISIONS:
   **The panel's state belongs to the picker and dies with it**, which is what
   makes closing the list's add form forget a half-typed ingredient, and
   removing a recipe line take its own and leave every other line's.
+  **The door reads the query before `close()` clears it** — that ordering is
+  the whole of 0060, and getting it wrong hands the form an empty string with
+  no error anywhere.
 - **`.picker` in the same document is the recipe editor's "@" mention list.**
   Svelte scopes styles per component but `ui-test` queries the DOM globally, so
   a second component naming its root `.picker` silently changes what

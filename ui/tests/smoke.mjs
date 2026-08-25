@@ -215,13 +215,25 @@ const HELPERS = `
     await __settle();
     return true;
   };
-  /** The last row of a picker's list, when it is a door rather than a value. */
-  window.__door = async (selector, n) => {
+  /**
+   * The last row of a picker's list, when it is a door rather than a value.
+   *
+   * A query goes through it: the door is pressed *because* the search found
+   * nothing, so it must both name what it is about to create and hand it over
+   * (DECISIONS 0060). Both halves are asserted here rather than at the call
+   * sites, because every door in the app owes them.
+   */
+  window.__door = async (selector, n, query = '') => {
     const { input, root } = __picker(selector, n);
     __open(input);
+    if (query !== '') __setNode(input, query);
     await __settle();
     const door = root.querySelector('.options .door');
     if (!door) throw new Error('no door in ' + selector + ' #' + n);
+    const label = door.textContent.replace(/\\s+/g, ' ').trim();
+    if (query !== '' && !label.includes(query)) {
+      throw new Error('the door does not name ' + query + ': ' + label);
+    }
     door.click();
     await __settle();
     return true;
@@ -465,6 +477,21 @@ await evaluate(`__click('[data-field="staple"]')`);
 await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
 await waitFor(`__all('li .name').includes('Sel')`, 'Sel in the library');
 ok('a staple is created');
+
+// Searching the shelf for something absent offers to create it *under that
+// name* — the same continuity the picker's door has, at the other place an
+// ingredient is born (DECISIONS 0060). Cancelled, because the rest of this
+// file depends on the library holding exactly what was put into it.
+await evaluate(`__set('.search-field input', 'Cumin')`);
+await waitFor(`__text('.nothing .empty') !== null`, 'a shelf search that found nothing');
+await evaluate(`__clickText('.nothing button', 'Cumin')`);
+await waitFor(
+  `document.querySelector('[data-field="name"]')?.value === 'Cumin'`,
+  'the searched name, already in the form',
+);
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+await evaluate(`__set('.search-field input', '')`);
+ok('a shelf search that finds nothing creates what was looked for');
 await shot('02-library');
 
 // --- the list --------------------------------------------------------------
@@ -505,9 +532,12 @@ await shot('03-list');
 // paper is bought whole, alone, and never cooked (DECISIONS 0057).
 await evaluate(`__clickText('button', 'Ajouter')`);
 await waitFor('document.querySelector("form .search-picker input")', 'the add form again');
-await evaluate(`__door('input[aria-label="Ingrédient"]', 0)`);
+await evaluate(`__door('input[aria-label="Ingrédient"]', 0, 'Papier toilette')`);
 await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the list');
-await evaluate(`__set('[data-field="name"]', 'Papier toilette')`);
+await waitFor(
+  `document.querySelector('[data-field="name"]')?.value === 'Papier toilette'`,
+  'the searched name, carried through the door (DECISIONS 0060)',
+);
 await evaluate(`__set('[data-field="aisle"]', 'items')`);
 await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
 await waitFor(
@@ -615,9 +645,12 @@ ok('two ingredient lines, each named before the recipe exists');
 // and stays one: what this sends is a `SaveIngredient` and nothing else.
 await evaluate(`__clickText('.adders button', '+ Ingrédient')`);
 await waitFor(`__count('input[aria-label="Ingrédient"]') === 3`, 'the third line');
-await evaluate(`__door('input[aria-label="Ingrédient"]', 2)`);
+await evaluate(`__door('input[aria-label="Ingrédient"]', 2, "Huile d'olive")`);
 await waitFor('document.querySelector(".ingredient-form")', 'the library form, inside the editor');
-await evaluate(`__set('[data-field="name"]', "Huile d'olive")`);
+await waitFor(
+  `document.querySelector('[data-field="name"]')?.value === "Huile d'olive"`,
+  'the searched name, carried through the door of a recipe line',
+);
 await evaluate(`__set('[data-field="density"]', '0,91')`);
 await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
 await waitFor(

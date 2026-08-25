@@ -60,8 +60,13 @@
    */
   let editing = $derived(session.state.ingredients.some((held) => held.id === draft.id));
 
-  function open(ingredient: IngredientView | null): void {
-    draft = ingredient === null ? blankDraft(mintIngredientId()) : draftOf(ingredient);
+  /**
+   * `wanted` is the shelf's search, when the creation starts from one that
+   * found nothing — the same continuity the picker's door has, at the other
+   * place an ingredient is born (DECISIONS 0060).
+   */
+  function open(ingredient: IngredientView | null, wanted = ''): void {
+    draft = ingredient === null ? blankDraft(mintIngredientId(), wanted) : draftOf(ingredient);
     writing = true;
     confirmingDelete = false;
   }
@@ -114,7 +119,12 @@
   {:else if ingredients.length > 0}
     <SearchField bind:value={query} placeholder="Chercher un ingrédient…" />
     {#if shown.length === 0}
-      <p class="empty">Aucun ingrédient ne correspond.</p>
+      <div class="nothing">
+        <p class="empty">Aucun ingrédient ne correspond.</p>
+        <button type="button" class="create" onclick={() => open(null, query)}>
+          + Nouvel ingrédient «&nbsp;{query.trim()}&nbsp;»
+        </button>
+      </div>
     {/if}
   {/if}
 
@@ -167,6 +177,30 @@
   .delete.confirming {
     background: var(--danger);
     color: var(--on-danger);
+  }
+
+  /* A search that found nothing, and the way out of it. */
+  .nothing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-6) 0;
+  }
+
+  .nothing .empty {
+    margin: 0;
+  }
+
+  .create {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--accent);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
   }
 
   .empty {
