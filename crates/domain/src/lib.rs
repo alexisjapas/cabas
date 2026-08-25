@@ -125,6 +125,19 @@ id_type!(
     DeviceId
 );
 
+id_type!(
+    /// A photo of a recipe or of an ingredient. Minted at capture and
+    /// **random**, never derived from the bytes: the relay holds the
+    /// ciphertext, and an id that says something about the plaintext would
+    /// let it confirm a guessed photo (Rule 7, DECISIONS 0062).
+    ///
+    /// The bytes themselves are never in the document — only this. They live
+    /// one record per photo in a store of their own, because every save
+    /// rewrites the whole document and a photo library inside it would be
+    /// rewritten with it.
+    PhotoId
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

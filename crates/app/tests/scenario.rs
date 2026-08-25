@@ -18,13 +18,14 @@
 use cabas_app::command::{
     ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput, StepInput,
 };
+use cabas_app::photos::Photos;
 use cabas_app::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
 use cabas_app::view::{
     CartLineView, ComponentView, ListItemView, ProblemKind, SegmentView, StateView,
 };
 use cabas_app::{App, Command, Identity, Platform};
 use cabas_domain::Timestamp;
-use cabas_store::MemoryStorage;
+use cabas_store::{MemoryPhotoStore, MemoryStorage};
 
 /// A clock that does not tick and a "random" source that counts.
 ///
@@ -78,6 +79,7 @@ fn new_ingredient(name: &str, aisle: AisleTag) -> IngredientInput {
         staple: false,
         density: None,
         unit_weight: None,
+        photo: None,
     }
 }
 
@@ -138,6 +140,7 @@ async fn tart(app: &mut App<MemoryStorage, TestPlatform>, state: &StateView) -> 
         name: "Tomato tart".into(),
         servings: 4,
         yields: None,
+        photo: None,
         components: vec![
             ComponentInput::Ingredient {
                 id: None,
@@ -472,6 +475,7 @@ async fn written_in_one_save() {
                 name: "Pastry".into(),
                 servings: 4,
                 yields: Some(amount("500", UnitTag::G)),
+                photo: None,
                 components: vec![ComponentInput::Ingredient {
                     id: Some(flour_usage.clone()),
                     ingredient: id_of_ingredient(&state, "Flour"),
@@ -555,7 +559,7 @@ async fn created_under_a_host_minted_id() {
     assert_eq!(state.events, Vec::new());
 
     // The same id again is the edit path, not a second ingredient.
-    input.name = "Tomatoes".into();
+    input.name = "Tomato".into();
     input.staple = true;
     let state = app
         .dispatch(Command::SaveIngredient { ingredient: input })
@@ -565,13 +569,98 @@ async fn created_under_a_host_minted_id() {
     assert_eq!(state.ingredients.len(), 1);
     let ingredient = &state.ingredients[0];
     assert_eq!(ingredient.id, chosen);
-    assert_eq!(ingredient.name, "Tomatoes");
+    assert_eq!(ingredient.name, "Tomato");
     assert!(ingredient.staple);
 
     let event = state.events.first().expect("the edit is in the journal");
     assert_eq!(event.action, ActionTag::Edited);
     assert_eq!(event.subject, SubjectTag::Ingredient);
-    assert_eq!(event.label, "Tomatoes");
+    assert_eq!(event.label, "Tomato");
+}
+
+/// A photo, from the bytes to the aisle it is meant to be recognised in
+/// (DECISIONS 0062).
+///
+/// Two steps on purpose, and the test is where that shows: the bytes go to a
+/// store of their own on a call that is awaited, and the id then rides on the
+/// save that would have happened anyway. Nothing about the photo makes
+/// `apply` asynchronous.
+async fn a_photo_from_the_bytes_to_the_cart() {
+    let mut app = open(MemoryStorage::new()).await;
+    let photos = Photos::new(MemoryPhotoStore::new());
+    let state = stocked(&mut app).await;
+
+    // A JPEG, as far as anything here is concerned.
+    let bytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46];
+    let id = photos
+        .put(&TestPlatform::default(), &bytes)
+        .await
+        .expect("the photo is stored");
+
+    let tomatoes = id_of_ingredient(&state, "Tomato");
+    let mut input = new_ingredient("Tomato", AisleTag::Produce);
+    input.id = Some(tomatoes.clone());
+    input.unit_weight = Some("150".into());
+    input.photo = Some(id.to_string());
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: input })
+        .await
+        .expect("the photo is attached");
+
+    // The document names it, on the shelf and on the line a person reads in
+    // an aisle. It never carries the bytes.
+    let shelf = state
+        .ingredients
+        .iter()
+        .find(|i| i.id == tomatoes)
+        .expect("the ingredient");
+    assert_eq!(shelf.photo.as_deref(), Some(id.as_str()));
+
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: tomatoes.clone(),
+            quantity: amount("3", UnitTag::Piece),
+        })
+        .await
+        .expect("on the list");
+    assert_eq!(
+        line(&state.cart.to_buy, "Tomato").photo.as_deref(),
+        Some(id.as_str())
+    );
+
+    // And the bytes are where the document is not.
+    assert_eq!(photos.get(&id).await.expect("read"), Some(bytes.to_vec()));
+
+    // A photo the replica references and this device has not got is what a
+    // second phone sees the instant the two merge: named, absent, and not an
+    // error (Rule 6).
+    let elsewhere = Photos::new(MemoryPhotoStore::new());
+    assert_eq!(
+        elsewhere
+            .missing(&app.referenced_photos().expect("referenced"))
+            .await
+            .expect("missing"),
+        vec![id.clone()]
+    );
+
+    // Detaching it is the same ordinary save. The bytes stay put: only a
+    // sweep deletes them, and only once the relay has its own copy.
+    let mut input = new_ingredient("Tomato", AisleTag::Produce);
+    input.id = Some(tomatoes.clone());
+    input.unit_weight = Some("150".into());
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: input })
+        .await
+        .expect("the photo is detached");
+    assert_eq!(line(&state.cart.to_buy, "Tomato").photo, None);
+    assert!(app.referenced_photos().expect("referenced").is_empty());
+
+    let forgotten = photos
+        .forget_unreferenced(&app.referenced_photos().expect("referenced"))
+        .await
+        .expect("sweep");
+    assert_eq!(forgotten, vec![id.clone()]);
+    assert_eq!(photos.get(&id).await.expect("read"), None);
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -613,6 +702,11 @@ mod native {
     fn an_ingredient_is_creatable_under_an_id_the_host_minted() {
         block_on(created_under_a_host_minted_id());
     }
+
+    #[test]
+    fn a_photo_reaches_the_aisle_it_is_for() {
+        block_on(a_photo_from_the_bytes_to_the_cart());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -640,6 +734,11 @@ mod browser {
     #[wasm_bindgen_test]
     async fn an_ingredient_is_creatable_under_an_id_the_host_minted() {
         created_under_a_host_minted_id().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_photo_reaches_the_aisle_it_is_for() {
+        a_photo_from_the_bytes_to_the_cart().await;
     }
 
     /// The PWA's actual path: a command built as a JS object, through the

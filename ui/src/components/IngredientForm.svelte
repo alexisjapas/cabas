@@ -27,6 +27,8 @@
     staple: boolean;
     density: string;
     unitWeight: string;
+    /** The id of a stored photo, or none. Bytes never travel in a draft. */
+    photo: string | null;
   };
 
   /**
@@ -54,6 +56,7 @@
       staple: false,
       density: '',
       unitWeight: '',
+      photo: null,
     };
   }
 
@@ -66,6 +69,7 @@
       staple: ingredient.staple,
       density: ingredient.density ?? '',
       unitWeight: ingredient.unit_weight ?? '',
+      photo: ingredient.photo,
     };
   }
 
@@ -87,6 +91,7 @@
       staple: draft.staple,
       density: orNull(draft.density),
       unit_weight: orNull(draft.unitWeight),
+      photo: draft.photo,
     };
   }
 </script>
@@ -95,6 +100,8 @@
   import type { Snippet } from 'svelte';
 
   import { AISLE_LABEL, AISLES } from '../lib/labels';
+  import type { Session } from '../lib/session.svelte';
+  import PhotoField from './PhotoField.svelte';
 
   /**
    * # Why this is not a `<form>`
@@ -111,6 +118,7 @@
    * different ingredient.
    */
   let {
+    session,
     draft = $bindable(),
     heading = undefined,
     submitLabel = 'Enregistrer',
@@ -118,6 +126,8 @@
     oncancel,
     extra = undefined,
   }: {
+    /** Only the photo needs it: storing one is a call on the core. */
+    session: Session;
     draft: IngredientDraft;
     /** Titles the panel where it is not obvious what it is — in a picker. */
     heading?: string | undefined;
@@ -182,6 +192,8 @@
     />
     <small>Séparés par des virgules.</small>
   </label>
+
+  <PhotoField {session} bind:photo={draft.photo} />
 
   <label>
     Rayon

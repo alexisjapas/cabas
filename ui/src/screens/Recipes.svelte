@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
@@ -31,7 +32,15 @@
    * nothing: what was looked for is what is about to be written (0060).
    */
   function blank(name = ''): RecipeInput {
-    return { id: null, name: name.trim(), servings: 4, yields: null, components: [], steps: [] };
+    return {
+      id: null,
+      name: name.trim(),
+      servings: 4,
+      yields: null,
+      components: [],
+      steps: [],
+      photo: null,
+    };
   }
 
   /**
@@ -121,6 +130,7 @@
             type="button"
             onclick={() => session.run({ command: 'open_recipe', recipe: recipe.id, servings: null })}
           >
+            <Photo {session} photo={recipe.photo} alt="" />
             <span class="text">
               <span class="name">{recipe.name}</span>
               <span class="meta">

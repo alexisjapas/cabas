@@ -29,16 +29,21 @@ mod codec;
 mod document;
 pub mod error;
 mod mapping;
+pub mod photos;
 pub mod schema;
 pub mod storage;
 
 pub use document::Document;
 pub use error::{Result, StoreError};
+pub use photos::{MemoryPhotoStore, PhotoStore};
 pub use schema::SCHEMA_VERSION;
 pub use storage::{MemoryStorage, Storage};
+
+#[cfg(not(target_family = "wasm"))]
+pub use photos::FilePhotoStore;
 
 #[cfg(not(target_family = "wasm"))]
 pub use storage::FileStorage;
 
 #[cfg(target_family = "wasm")]
-pub use storage::IndexedDbStorage;
+pub use storage::{IndexedDbPhotoStore, IndexedDbStorage};

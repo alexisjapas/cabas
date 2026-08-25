@@ -20,12 +20,14 @@
 
 use std::cell::RefCell;
 
-use cabas_store::{IndexedDbStorage, Storage};
+use cabas_domain::PhotoId;
+use cabas_store::{IndexedDbPhotoStore, IndexedDbStorage, Storage};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::app::App;
 use crate::command::Command;
+use crate::photos::Photos;
 use crate::platform::{Identity, SystemPlatform};
 use crate::sync::{SyncCursor, SyncSession};
 
@@ -47,6 +49,10 @@ pub struct CabasApp {
     /// without borrowing the app across it. It is a database *name*, not a
     /// connection — cloning it costs nothing.
     storage: IndexedDbStorage,
+    /// The photos, in an object store of their own inside the same database.
+    /// Outside the `RefCell` for the same reason `storage` is: every call on
+    /// it is awaited, and the app must not be borrowed across one.
+    photos: Photos<IndexedDbPhotoStore>,
     /// The current connection, or `None` between them. One session per
     /// socket: it is created from the persisted cursor when the socket opens
     /// and dropped when it closes, which is also when the key leaves memory.
@@ -110,6 +116,7 @@ impl CabasApp {
         let app = App::open(storage.clone(), SystemPlatform, identity).await?;
         Ok(Self {
             inner: RefCell::new(app),
+            photos: Photos::new(IndexedDbPhotoStore::new()),
             storage,
             session: RefCell::new(None),
         })
@@ -144,6 +151,58 @@ impl CabasApp {
         self.storage.save(&snapshot).await?;
         self.inner.borrow_mut().mark_saved(revision);
         Ok(true)
+    }
+
+    // --- photos (DECISIONS 0062) --------------------------------------------
+    //
+    // A store of their own, beside the document: the document is rewritten
+    // whole on every save and a photo library inside it would be rewritten
+    // with it. These calls await a browser transaction, so — like `flush` —
+    // they take no borrow of the app across it.
+
+    /// The most a photo may weigh, so the encoder has a number to target.
+    #[wasm_bindgen(js_name = maxPhotoBytes)]
+    pub fn max_photo_bytes() -> usize {
+        crate::photos::MAX_PHOTO_BYTES
+    }
+
+    /// Stores a photo and returns its id, to be put on the ingredient or the
+    /// recipe by the ordinary save that follows.
+    ///
+    /// Two calls rather than one because they belong to different clocks: a
+    /// photo is written once and a form is saved whenever the user is ready,
+    /// and folding them together would make `apply` asynchronous for
+    /// everything else too.
+    #[wasm_bindgen(js_name = putPhoto)]
+    pub async fn put_photo(&self, bytes: Vec<u8>) -> Result<String, JsError> {
+        let id = self.photos.put(&SystemPlatform, &bytes).await?;
+        Ok(id.to_string())
+    }
+
+    /// The bytes of a photo this device holds, or nothing.
+    ///
+    /// Absent is an ordinary answer: a photo taken on the other phone is
+    /// named by the document from the moment the replicas merge, and its
+    /// bytes arrive on their own afterwards. The screen shows a placeholder
+    /// and never an error (Rule 6).
+    pub async fn photo(&self, id: String) -> Result<Option<Vec<u8>>, JsError> {
+        Ok(self.photos.get(&PhotoId::from_raw(id)).await?)
+    }
+
+    /// Ids the replica references and this device does not hold — what the
+    /// transfer half of M10 will ask the relay for, in order.
+    #[wasm_bindgen(js_name = missingPhotos)]
+    pub async fn missing_photos(&self) -> Result<JsValue, JsError> {
+        // The borrow ends with this statement; nothing is awaited under it.
+        let referenced = self.inner.borrow().referenced_photos()?;
+        let missing: Vec<String> = self
+            .photos
+            .missing(&referenced)
+            .await?
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect();
+        to_js(&missing)
     }
 
     // --- sync ---------------------------------------------------------------

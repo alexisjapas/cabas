@@ -261,6 +261,38 @@ const HELPERS = `
     );
     window.visualViewport.dispatchEvent(new Event('resize'));
   };
+  /**
+   * Taking a photo, the way the OS hands one over.
+   *
+   * There is no camera here and there does not need to be: what the component
+   * receives from \`<input type="file" capture>\` is a \`File\`, and a canvas
+   * makes a real JPEG for one. So this exercises the whole path the phone
+   * takes — decode, downscale, encode, \`putPhoto\`, the id on the draft — and
+   * the only thing it stands in for is the hardware (DECISIONS 0062).
+   *
+   * \`input.files\` is read-only; a \`DataTransfer\` is the one way to fill it.
+   */
+  window.__photograph = async (selector = '[data-field="photo"]') => {
+    const input = document.querySelector(selector);
+    if (!input) throw new Error('missing ' + selector);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 60;
+    canvas.height = 40;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#c33';
+    context.fillRect(0, 0, 60, 40);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return blob.size;
+  };
+  /** The photo a row or a panel is showing, once its bytes have been read. */
+  window.__photoSrc = (selector = '.photo img') =>
+    document.querySelector(selector)?.getAttribute('src') ?? null;
   window.__count = (selector) => document.querySelectorAll(selector).length;
   window.__click = (selector) => {
     const el = document.querySelector(selector);
@@ -492,6 +524,24 @@ await waitFor(
 await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
 await evaluate(`__set('.search-field input', '')`);
 ok('a shelf search that finds nothing creates what was looked for');
+
+// A photo, on the one ingredient this file follows all the way to the aisle.
+//
+// The whole path runs here — a `File` from the OS, decode, downscale, JPEG,
+// `putPhoto`, and the id on the draft — and the only thing standing in for the
+// phone is the hardware (DECISIONS 0062). What it proves beyond "an image
+// appears" is where the bytes went: the document carries an id, the store
+// carries the picture, and the two are read back separately.
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Tomates, open for editing');
+const encoded = await evaluate(`__photograph()`);
+await waitFor(
+  `__photoSrc('.photo-field .photo img')?.startsWith('blob:')`,
+  'the photo, read back out of its own store',
+);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+await waitFor(`__count('li .photo img') === 1`, 'the photo on the shelf');
+ok(`a photo is taken and stored beside the document (${encoded} bytes of JPEG)`);
 await shot('02-library');
 
 // --- the list --------------------------------------------------------------
@@ -569,6 +619,11 @@ for (const heading of ['Fruits et légumes', 'Items']) {
 }
 ok(`the cart derives and groups by aisle (${JSON.stringify(aisles)})`);
 await shot('04-cart');
+
+// And it is on the line in the aisle, which is the whole point of putting a
+// photo on an ingredient: recognising a product without reading anything.
+await waitFor(`__count('section li .photo img') === 1`, 'the photo on the cart line');
+ok('the cart line carries it, which is where an ingredient photo is for');
 
 await evaluate(`__clickText('section li button', 'Tomates')`);
 await waitFor(`__text('details summary')?.startsWith('Acheté')`, 'the bought section');
@@ -1037,6 +1092,13 @@ if (!offlineProse.includes('Tomates') || offlineProse.includes('supprimée')) {
   throw new Error(`the recipe did not read back offline: ${JSON.stringify(offlineProse)}`);
 }
 ok('and the library is all there — this is the shop with no signal');
+
+// The photo too, out of the store beside it, with no network anywhere. This
+// is the reason the transfer prefetches everything instead of fetching a
+// photo when it is looked at (DECISIONS 0062).
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__count('li .photo img') === 1`, 'the photo, offline');
+ok('and the photo with it — nothing here waits on a network');
 await shot('11-offline');
 
 await setOffline(false);
@@ -1216,6 +1278,20 @@ await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
 await waitFor(`__all('li .name').includes('Tomates')`, 'the library, back from the relay');
 ok('an empty replica gets the whole library back from the relay alone');
+
+// The photo does **not** come back, and that is correct rather than a
+// failure: the id is in the document and the document is what the relay
+// carries, while the bytes live in a store of their own that this wipe took
+// with it. Until the transfer half of M10 lands, this is what the second
+// phone sees — a frame that says a photo exists, no broken image, and nothing
+// in the console (DECISIONS 0062, Rule 6).
+await waitFor(`__count('li .photo[data-photo]') === 1`, 'the photo, named by the document');
+await evaluate('__settle()');
+const photosBack = await evaluate(`__count('li .photo img')`);
+if (photosBack !== 0) {
+  throw new Error(`the bytes cannot have come back through the log: ${photosBack} rendered`);
+}
+ok('the photo is named but absent — the bytes are not in the log, by design');
 
 await evaluate(`__clickText('nav button', 'Recettes')`);
 await waitFor(`__all('li .name').includes('Salade de tomates au sel')`, 'the recipe, resynced');

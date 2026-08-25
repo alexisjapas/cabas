@@ -3,7 +3,7 @@
 
 use std::num::NonZeroU32;
 
-use crate::{IngredientId, Quantity, Rational, RecipeId, UsageId};
+use crate::{IngredientId, PhotoId, Quantity, Rational, RecipeId, UsageId};
 
 /// One line of a recipe's ingredient list.
 ///
@@ -84,6 +84,9 @@ pub struct Recipe {
     pub yields: Option<Quantity>,
     pub components: Vec<Component>,
     pub steps: Vec<Step>,
+    /// The photo of the finished dish, if one was taken (DECISIONS 0062).
+    /// A reference; the bytes live outside the document.
+    pub photo: Option<PhotoId>,
 }
 
 impl Recipe {
@@ -95,11 +98,17 @@ impl Recipe {
             yields: None,
             components: Vec::new(),
             steps: Vec::new(),
+            photo: None,
         }
     }
 
     pub fn with_yield(mut self, quantity: Quantity) -> Self {
         self.yields = Some(quantity);
+        self
+    }
+
+    pub fn with_photo(mut self, photo: PhotoId) -> Self {
+        self.photo = Some(photo);
         self
     }
 

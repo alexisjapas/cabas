@@ -12,4 +12,9 @@ servings: number,
  * What it produces — "makes 500 g". Required before another recipe can
  * take an amount *of* it (DECISIONS 0017).
  */
-yields: QuantityInput | null, components: Array<ComponentInput>, steps: Array<StepInput>, };
+yields: QuantityInput | null, components: Array<ComponentInput>, steps: Array<StepInput>, 
+/**
+ * The id of the dish's photo, or `null` to detach it. See
+ * [`IngredientInput::photo`].
+ */
+photo: string | null, };

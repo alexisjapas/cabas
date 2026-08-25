@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import type { FocusView } from '../lib/bindings/FocusView';
   import { decimal, formatQuantity } from '../lib/format';
@@ -65,6 +66,8 @@
   {#snippet actions()}
     <button type="button" class="close" onclick={onclose}>Fermer</button>
   {/snippet}
+
+  <Photo {session} photo={recipe.photo} alt={recipe.name} size="full" />
 
   <div class="servings">
     <button type="button" aria-label="Moins" onclick={() => read(recipe.servings - 1)}>−</button>

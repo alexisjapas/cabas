@@ -5,7 +5,7 @@
 //! before it reaches anything here.
 
 use crate::units::{Dimension, MassUnit, Unit, VolumeUnit};
-use crate::{IngredientId, Quantity, Rational};
+use crate::{IngredientId, PhotoId, Quantity, Rational};
 
 /// Where an item is found in the shop. Declaration order **is** the walking
 /// order used to sort the cart — sorting by route is the single largest
@@ -47,6 +47,10 @@ pub struct Ingredient {
     pub density: Option<Rational>,
     /// Grams per piece. Enables count ↔ mass.
     pub unit_weight: Option<Rational>,
+    /// The photo of this ingredient, if one was taken (DECISIONS 0062). A
+    /// reference and never the bytes: those live in a store of their own,
+    /// outside the document, because every save rewrites the whole document.
+    pub photo: Option<PhotoId>,
 }
 
 impl Ingredient {
@@ -60,6 +64,7 @@ impl Ingredient {
             staple: false,
             density: None,
             unit_weight: None,
+            photo: None,
         }
     }
 
@@ -70,6 +75,11 @@ impl Ingredient {
 
     pub fn with_unit_weight(mut self, grams_per_piece: Rational) -> Self {
         self.unit_weight = Some(grams_per_piece);
+        self
+    }
+
+    pub fn with_photo(mut self, photo: PhotoId) -> Self {
+        self.photo = Some(photo);
         self
     }
 

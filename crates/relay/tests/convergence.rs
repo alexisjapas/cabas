@@ -238,6 +238,7 @@ fn save_ingredient(name: &str) -> Command {
             staple: false,
             density: None,
             unit_weight: None,
+            photo: None,
         },
     }
 }

@@ -80,9 +80,23 @@ origin, so moving it later would cost both phones their library. What is left
 of M6 is the backup schedule and the restore drill. Resuming work starts at the
 "Resuming work" section of the [ROADMAP](ROADMAP.md).
 
+**M10 has started, alongside M6: photos.** One per recipe and one per
+ingredient — the dish you recognise before reading its name, the product you
+recognise in an aisle. Taken with the OS's own camera picker, downscaled and
+encoded in the browser, and stored **beside the document rather than in it**
+([0062](docs/DECISIONS.md#0062--a-photo-is-a-blob-beside-the-document-never-in-it)):
+every save rewrites the whole document, so a photo library inside it would turn
+ticking an item off in a shop into a multi-megabyte write. The document carries
+an id; the bytes live one record per photo. Half one ships in 0.5.0 — taken,
+stored and shown on the shelves, in the recipe reader and on the cart line,
+offline. Half two is the socket that carries a photo to the other phone; until
+it lands, a photo taken here is named there and not yet visible.
+
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
-([DECISIONS 0008](docs/DECISIONS.md#0008--serialized-snapshots-not-sqlite)).
+([DECISIONS 0008](docs/DECISIONS.md#0008--serialized-snapshots-not-sqlite)), and
+what decided where photos could not go: twenty of them inside that snapshot
+make it 5.9 MB and 200 make it 58.6 MB, paid on every save.
 
 ## Getting started
 
@@ -418,6 +432,17 @@ on open, so a hot archive can only catch a state the relay already knows how to
 come back from. `backup: cold` would buy a nightly sync outage against a doubt
 the code already answers.
 
+**Photos change the arithmetic, and only the arithmetic.** A family library is
+a few hundred kilobytes; a photo is up to half a megabyte, and there is one per
+recipe and per ingredient
+([0062](docs/DECISIONS.md#0062--a-photo-is-a-blob-beside-the-document-never-in-it)).
+Once M10's transfer half lands, `/data` holds a sealed copy of every one of
+them and each archive carries the lot — a retention counted in weeks starts
+costing gigabytes rather than megabytes. Nothing about the procedure changes;
+the number to check before setting a retention does. **Today the relay holds no
+photo at all**: half one stores them on the device that took them and nowhere
+else, so a backup taken now is the same size it has always been.
+
 ### The restore drill
 
 M6's exit criterion asks two questions, and they are not the same question:
@@ -577,7 +602,7 @@ project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-sh
 | Crate | Role | Boundary |
 |---|---|---|
 | `crates/domain` | Units, conversions, scaling, recipe DAG, cart derivation | pure — no I/O, no async, no CRDT |
-| `crates/store` | Loro schema, snapshots, `Storage` trait | the only crate that names Loro |
+| `crates/store` | Loro schema, snapshots, `Storage` and `PhotoStore` | the only crate that names Loro |
 | `crates/sync` | E2EE, pairing, WebSocket transport | the only crate with cryptography |
 | `crates/app` | Commands and view-models | must build for wasm32 **and** native |
 | `crates/relay` | Sync broker + PWA host (HA add-on) | never sees plaintext |

@@ -128,6 +128,17 @@ export function buildVersion(): string {
 }
 
 /**
+ * The most a photo may weigh, from the core.
+ *
+ * The encoder targets it and the core refuses anything above it, so there is
+ * one number rather than two that drift (DECISIONS 0062). Synchronous for the
+ * same reason `mintUsageId` is.
+ */
+export function maxPhotoBytes(): number {
+  return CabasApp.maxPhotoBytes();
+}
+
+/**
  * A new family's recovery phrase — twelve words, minted once, on the device
  * that starts the family (DECISIONS 0042). Every other device joins with the
  * same words, scanned or typed (0021).
@@ -189,6 +200,36 @@ export class Core {
    */
   openedFresh(): boolean {
     return this.#app.openedFresh();
+  }
+
+  /**
+   * The photo half. The bytes live beside the document, one record per photo,
+   * because the document is rewritten whole on every save (DECISIONS 0062).
+   * Storing and attaching are two steps: this returns an id, and the id then
+   * rides on the ordinary `SaveIngredient` or `SaveRecipe`.
+   */
+  putPhoto(bytes: Uint8Array): Promise<string> {
+    return this.#app.putPhoto(bytes);
+  }
+
+  /**
+   * The bytes of a photo this device holds, or `undefined`.
+   *
+   * Absent is an ordinary answer, not a failure: a photo taken on the other
+   * phone is named by the document from the moment the replicas merge, and
+   * its bytes arrive afterwards. The screen shows a placeholder (Rule 6).
+   */
+  photo(id: string): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    // The one cast this needs, and it belongs here: `wasm-bindgen` declares
+    // `Uint8Array<ArrayBufferLike>`, which `Blob` refuses because a
+    // `SharedArrayBuffer` cannot back one. Nothing shared ever crosses this
+    // boundary, and saying so once keeps every caller cast-free.
+    return this.#app.photo(id) as Promise<Uint8Array<ArrayBuffer> | undefined>;
+  }
+
+  /** What the replica references and this device has not got yet. */
+  missingPhotos(): Promise<string[]> {
+    return this.#app.missingPhotos() as Promise<string[]>;
   }
 
   /**

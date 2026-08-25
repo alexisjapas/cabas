@@ -25,7 +25,8 @@ use cabas_domain::recipe::{
     Component, IngredientUsage, Segment, Step, SubRecipeAmount, SubRecipeUsage,
 };
 use cabas_domain::{
-    Device, Event, Ingredient, IngredientId, ListEntryId, Recipe, RecipeId, UsageId, User, UserId,
+    Device, Event, Ingredient, IngredientId, ListEntryId, PhotoId, Recipe, RecipeId, UsageId, User,
+    UserId,
 };
 use loro::{LoroMap, LoroMovableList, LoroValue, ValueOrContainer};
 
@@ -100,6 +101,11 @@ pub(crate) fn write_ingredient(entry: &LoroMap, ing: &Ingredient) -> Result<()> 
         entry,
         schema::ingredient::UNIT_WEIGHT,
         ing.unit_weight.map(codec::rational_value),
+    )?;
+    set_optional(
+        entry,
+        schema::ingredient::PHOTO,
+        ing.photo.as_ref().map(|p| text(p.as_str())),
     )
 }
 
@@ -127,6 +133,9 @@ pub(crate) fn read_ingredient(id: &str, value: &LoroValue) -> Result<Ingredient>
         unit_weight: codec::optional(map, schema::ingredient::UNIT_WEIGHT)
             .map(|v| codec::rational(v, &path))
             .transpose()?,
+        photo: codec::optional(map, schema::ingredient::PHOTO)
+            .map(|v| codec::string(v, &path).map(PhotoId::from_raw))
+            .transpose()?,
     })
 }
 
@@ -143,6 +152,11 @@ pub(crate) fn write_recipe(entry: &LoroMap, recipe: &Recipe) -> Result<()> {
         entry,
         schema::recipe::YIELDS,
         recipe.yields.as_ref().map(codec::quantity_value),
+    )?;
+    set_optional(
+        entry,
+        schema::recipe::PHOTO,
+        recipe.photo.as_ref().map(|p| text(p.as_str())),
     )?;
 
     let components = sequence(entry, schema::recipe::COMPONENTS)?;
@@ -183,6 +197,9 @@ pub(crate) fn read_recipe(id: &str, value: &LoroValue) -> Result<Recipe> {
             .transpose()?,
         components,
         steps,
+        photo: codec::optional(map, schema::recipe::PHOTO)
+            .map(|v| codec::string(v, &path).map(PhotoId::from_raw))
+            .transpose()?,
     })
 }
 

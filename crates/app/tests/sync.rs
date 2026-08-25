@@ -99,6 +99,7 @@ fn save(name: &str) -> Command {
             staple: false,
             density: None,
             unit_weight: None,
+            photo: None,
         },
     }
 }

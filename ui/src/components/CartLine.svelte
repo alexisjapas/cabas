@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { CartLineView } from '../lib/bindings/CartLineView';
   import { formatAmounts, relativeTime } from '../lib/format';
+  import type { Session } from '../lib/session.svelte';
+  import Photo from './Photo.svelte';
 
   /**
    * One line of the cart, in all three sections.
@@ -8,7 +10,11 @@
    * The whole row is the target: a checkbox-sized hit area is the wrong shape
    * for a thumb holding a phone and a basket at the same time.
    */
-  let { line, ontoggle }: { line: CartLineView; ontoggle: () => void } = $props();
+  let {
+    session,
+    line,
+    ontoggle,
+  }: { session: Session; line: CartLineView; ontoggle: () => void } = $props();
 
   let settled = $derived(line.state !== 'to_buy');
 </script>
@@ -19,6 +25,8 @@
       <svg viewBox="0 0 24 24"><path d="m5 12.5 5 5 9-11" /></svg>
     {/if}
   </span>
+
+  <Photo {session} photo={line.photo} alt="" />
 
   <span class="text">
     <span class="name">{line.name}</span>

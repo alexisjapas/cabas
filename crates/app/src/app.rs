@@ -29,8 +29,8 @@ use cabas_domain::event::{Action, Subject};
 use cabas_domain::list::{ListEntry, ListItem};
 use cabas_domain::recipe::{Component, IngredientUsage, Segment, Step, SubRecipeUsage};
 use cabas_domain::{
-    Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, Quantity, Rational, Recipe,
-    RecipeId, SubRecipeAmount, Timestamp, UsageId, User, finish_shopping,
+    Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, PhotoId, Quantity, Rational,
+    Recipe, RecipeId, SubRecipeAmount, Timestamp, UsageId, User, finish_shopping,
 };
 use cabas_store::{Document, Storage};
 
@@ -211,6 +211,32 @@ impl<S: Storage, P: Platform> App<S, P> {
         &self.identity
     }
 
+    /// Every photo this replica currently references, deduplicated and in
+    /// order.
+    ///
+    /// The document names photos and never carries them (DECISIONS 0062), so
+    /// this is the whole of what the replica has to say about them: what a
+    /// prefetch is owed, and what a local cleanup may keep. Both live in
+    /// [`crate::photos::Photos`], which holds the store this one deliberately
+    /// does not.
+    pub fn referenced_photos(&self) -> Result<Vec<PhotoId>> {
+        let mut ids: Vec<PhotoId> = self
+            .document
+            .ingredients()?
+            .into_iter()
+            .filter_map(|ingredient| ingredient.photo)
+            .collect();
+        ids.extend(
+            self.document
+                .recipes()?
+                .into_iter()
+                .filter_map(|recipe| recipe.photo),
+        );
+        ids.sort();
+        ids.dedup();
+        Ok(ids)
+    }
+
     // --- the sync seam (M5 drives these) ------------------------------------
     //
     // Bytes in, bytes out, no protocol. `sync` will seal and unseal them and
@@ -335,6 +361,7 @@ impl<S: Storage, P: Platform> App<S, P> {
         ingredient.staple = input.staple;
         ingredient.density = coefficient("density", input.density.as_deref())?;
         ingredient.unit_weight = coefficient("unit_weight", input.unit_weight.as_deref())?;
+        ingredient.photo = photo(input.photo.as_deref())?;
 
         self.document.put_ingredient(&ingredient)?;
         if existing.is_some() {
@@ -373,6 +400,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             .as_ref()
             .map(|quantity| self.quantity("yields", quantity))
             .transpose()?;
+        recipe.photo = photo(input.photo.as_deref())?;
         recipe.components = input
             .components
             .iter()
@@ -683,5 +711,18 @@ fn coefficient(field: &'static str, raw: Option<&str>) -> Result<Option<Rational
     match raw.map(str::trim) {
         None | Some("") => Ok(None),
         Some(value) => Ok(Some(number::parse_amount(field, value)?)),
+    }
+}
+
+/// A photo reference as it arrives from a host: an id, an empty string, or
+/// nothing at all — the last two both meaning "no photo" (DECISIONS 0062).
+///
+/// It is not checked against the photo store. The bytes may legitimately not
+/// be here: the id may name a photo the other phone took, whose bytes are
+/// still on their way, and refusing the save would be refusing to merge.
+fn photo(raw: Option<&str>) -> Result<Option<PhotoId>> {
+    match raw.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(id) => Ok(Some(PhotoId::from_raw(id))),
     }
 }

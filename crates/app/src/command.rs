@@ -135,6 +135,15 @@ pub struct IngredientInput {
     /// Grams per piece, as text. Same bargain, for count ↔ mass.
     #[serde(default)]
     pub unit_weight: Option<String>,
+    /// The id of a photo already stored by [`crate::photos::Photos::put`],
+    /// or `null` to detach the one that is there.
+    ///
+    /// An id and never bytes: attaching a photo is this ordinary save, while
+    /// the bytes went to a store of their own on a call that could be awaited
+    /// (DECISIONS 0062). Sending it whole on every save is what makes an edit
+    /// that does not mention the photo keep it.
+    #[serde(default)]
+    pub photo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +162,10 @@ pub struct RecipeInput {
     pub components: Vec<ComponentInput>,
     #[serde(default)]
     pub steps: Vec<StepInput>,
+    /// The id of the dish's photo, or `null` to detach it. See
+    /// [`IngredientInput::photo`].
+    #[serde(default)]
+    pub photo: Option<String>,
 }
 
 /// One line of a recipe's ingredient list.

@@ -23,19 +23,20 @@ buys a false belief instead of no belief.
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
+| **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0): taken, stored and shown on one device; the transfer is left |
 | **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
 Legend: ✅ done · 🚧 in progress · ⬜ not started.
 
-**The numbers are names, not the order.** M9 is scheduled **before** M7 and
-M8, and the table is in schedule order. Renumbering it to M7 would have been
-tidier for exactly one afternoon and wrong afterwards: "M7" means Android in
-half a dozen append-only DECISIONS entries, in `flake.nix`, and in comments
-across `crates/` — and an append-only file cannot be corrected (Rule 14,
-DECISIONS 0025). A milestone number identifies a milestone, the way a decision
-number identifies a decision.
+**The numbers are names, not the order.** M10 and M9 are both scheduled
+**before** M7 and M8, and the table is in schedule order. Renumbering M9 to M7
+would have been tidier for exactly one afternoon and wrong afterwards: "M7"
+means Android in half a dozen append-only DECISIONS entries, in `flake.nix`, and
+in comments across `crates/` — and an append-only file cannot be corrected
+(Rule 14, DECISIONS 0025). A milestone number identifies a milestone, the way
+a decision number identifies a decision.
 
 **Why Android moved behind it.** Both phones already run the PWA, installed
 from the permanent origin, and M7 is a *better wrapper* around the same
@@ -43,6 +44,14 @@ frontend rather than a missing capability — so it is not what v1 is waiting
 for. Remembering what the family actually buys is a thing the app cannot do at
 all, and it only starts accumulating history the day it ships. A feature whose
 value grows with its age is worth starting early; a repackaging is not.
+
+**Why photos run alongside M6.** This file's own rule is that a milestone
+waits for the previous one's criterion, and M10 breaks it knowingly. What is
+left of M6 is a backup schedule and a restore drill: a shell on the Pi and an
+afternoon, on files this repository does not contain. Photos touch `domain`,
+`store`, `app`, `sync`, `relay` and `ui` and touch none of that. The drill
+still gates M6's closure and nothing else — and M10 adds one line to its
+arithmetic, since a backup now carries the photo library too (DECISIONS 0062).
 
 **Why M4 comes before M5.** The PWA is the mandatory target (it is the only
 way onto iOS — DECISIONS 0003), and shipping it single-device first proves
@@ -116,11 +125,12 @@ the Pi, a backup schedule set on it and a backup taken from it, not a change to
 this repository.
 
 **Nothing else is waiting on them except M9 and M7**, which this file's own
-rule keeps shut until M6's criterion holds. The standing cost of leaving them
-is narrower than it looks and worth stating plainly: the app works, both fixes
-are shipped and tested, and what remains unproven is whether Home Assistant's
-backups actually carry `/data` — the recovery point if both phones are ever
-lost. It does not decay while it waits.
+rule keeps shut until M6's criterion holds — and **M10, which is under way
+anyway**, for the reason given under the overview table. The standing cost of
+leaving M6's tail is narrower than it looks and worth stating plainly: the app
+works, both fixes are shipped and tested, and what remains unproven is whether
+Home Assistant's backups actually carry `/data` — the recovery point if both
+phones are ever lost. It does not decay while it waits.
 
 That address is now **the** address (DECISIONS 0012). Both phones install from
 it and never from anything else, and the local certificate authority `ui-serve`
@@ -128,14 +138,23 @@ mints retires with it — it existed only because a LAN address could not be a
 secure context, which is exactly what stopped a phone installing from the Pi
 directly.
 
-**Next action: the restore drill**, which is the last thing between here and
-M6's exit criterion, plus the leftover test family forgotten on the way past —
-that command has never been run against real data, and the drill is the moment
-it should be. The procedure is in the README, "The restore drill", in two
-halves that prove different things: that a wiped device gets its library from
-the log alone, and that Home Assistant's backups really do carry `/data`, which
-is a claim this repository can make about the relay's behaviour and not about
-HA's.
+**Next action, on the Pi: the restore drill**, which is the last thing between
+here and M6's exit criterion, plus the leftover test family forgotten on the
+way past — that command has never been run against real data, and the drill is
+the moment it should be. The procedure is in the README, "The restore drill",
+in two halves that prove different things: that a wiped device gets its library
+from the log alone, and that Home Assistant's backups really do carry `/data`,
+which is a claim this repository can make about the relay's behaviour and not
+about HA's.
+
+**Next action, in this repository: M10 half two** — the transfer. Half one is
+done and in 0.5.0: a photo is taken from an ingredient's form or a recipe's,
+downscaled and encoded by the browser, stored beside the document one record
+per photo, and shown on the shelves, in the recipe reader and **on the cart
+line**, offline. What is left is the socket that carries it to the other
+phone; until it exists, a photo taken on one device is named on the other and
+absent there, which `ui-test` asserts on purpose rather than working around.
+The reasoning is DECISIONS 0062 and the checklist is under "M10 — Photos".
 
 **Read the marker off the relay, not off a phone.** `cabas-relay families`
 before and after is what says whether the restore happened; the planted
@@ -773,6 +792,93 @@ the first time produced 0053 and 0054 before it was ever executed, which is a
 better return than most tests.
 
 **Exit**: reachable from 4G; a backup restore is tested end to end.
+
+## M10 — Photos
+
+Runs **alongside M6**, deliberately and against this file's own rule that a
+milestone waits for the previous one's criterion. What is left of M6 is a
+backup schedule and a restore drill, which need a shell on the Pi and an
+afternoon rather than a change to this repository; the two do not touch the
+same files. The rule is worth bending here and worth stating rather than
+quietly ignoring — and the drill still gates M6's closure, not this.
+
+The choice and its reasoning are [DECISIONS
+0062](docs/DECISIONS.md#0062--a-photo-is-a-blob-beside-the-document-never-in-it),
+which reopens the closed scope on purpose. The measurement that shaped it is
+in that entry: a photo library inside the document turns every tick in a shop
+into a multi-megabyte write, because every save writes the whole document.
+
+Built in two halves, in the order M4 and M5 were: the photo on **one** device
+first, where every bug has one replica and one cause, then the transfer.
+
+### Half one — a photo on this device
+
+- [x] **`domain`**: `PhotoId`, and `photo: Option<PhotoId>` on `Ingredient`
+      and on `Recipe`. A reference is plain data and carries no logic, so it
+      belongs there; the bytes never come near it (Rule 1)
+- [x] **`store`**: the `photo` key in the schema — **no `SCHEMA_VERSION`
+      bump**, because an unknown key is ignored on read and never rewritten on
+      save, which is the argument that let the `Items` aisle ship (0057). Then
+      `PhotoStore`: `load`, `save`, `remove`, `ids` — the last being what a
+      prefetch diffs against. Three backends: memory, a directory (native),
+      and a **second IndexedDB object store**, which moves that database's
+      version to 2 and must create the store without touching `document`
+- [x] **`app`**: `put_photo(bytes) -> id` and `photo(id) -> bytes`, async and
+      beside `flush`, never holding a borrow across an await (0032). The id
+      rides on `IngredientInput` and `RecipeInput`, so attaching a photo is
+      the save command that already exists rather than a new one
+- [x] **The cap lives in Rust**: bytes above it are refused, and the number is
+      exported so the frontend's encoder targets it instead of promising
+      itself something (0062)
+- [x] **The views that show one**: the recipe reader and the recipes shelf,
+      the ingredient form and the ingredients shelf, and **the cart line** —
+      which is the case the whole feature is for, recognising a product in an
+      aisle
+- [x] **`ui`**: `PhotoField.svelte` — the picture or a placeholder, and a
+      `<input type="file" accept="image/*" capture>` behind it (0047's
+      reasoning, restated in 0062). Downscale and JPEG-encode in a canvas,
+      then `putPhoto`. Object URLs are minted and **revoked** in one place
+- [x] **Tests**: the round-trip on all three backends, the IndexedDB one in
+      `wasm-test`, the cap refused in `app`, and `ui-test` attaching a photo
+      through `DOM.setFileInputFiles` and finding it again after a reload
+
+### Half two — the photo reaches the other phone
+
+- [ ] **`sync`**: the photo protocol — a `Hello` naming the family, one round
+      trip reconciling what each side has and wants, one sealed payload per
+      photo, and **its own protocol byte**, so `/sync`'s `PROTOCOL` stays 1
+      and an older phone keeps converging without photos. `seal`/`open`
+      unchanged (Rule 7)
+- [ ] **`app::photos`**: `PhotoSession`, sans-IO exactly like `SyncSession` —
+      it decides what to offer and what to ask for, seals and opens, and
+      returns one event per message. The socket belongs to whoever calls it,
+      which is what lets M7's Tauri host drive the same code
+- [ ] **`relay`**: `/photos`, a per-family directory of sealed blobs, a byte
+      cap that refuses a push rather than filling the SD card Home Assistant
+      runs on, `survey` reporting the count and the weight, and `forget`
+      taking the photos with the log
+- [ ] **`ui`**: the socket is opened when there is work and closed when the
+      queue drains. A photo taken offline is attached immediately and uploaded
+      later (Rule 6); a photo referenced but not here yet renders as a
+      placeholder and **never as an error**
+- [ ] **Local cleanup**: a device deletes its own copy of a photo its replica
+      no longer references. Safe, because the relay hands it back if the
+      reference returns — and the relay itself deletes nothing (0050's
+      reasoning, 0062's decision 8)
+- [ ] **`navigator.storage.persist()`**, asked for once: the photo library is
+      the first thing here big enough for eviction to matter
+- [ ] **The convergence test**, at replica level and in `relay`'s tests: two
+      devices never online at the same time, one takes a photo, the other ends
+      up holding the bytes — the mirror of `crates/relay/tests/convergence.rs`
+
+**One consequence for M6, and it is arithmetic rather than procedure**: Home
+Assistant's backups grow with the photo library. The drill is unchanged — its
+marker is still read off the relay — but a restored `/data` now brings photos
+back alongside the log.
+
+**Exit**: a photo taken on one phone, offline, in an aisle, is attached to the
+ingredient immediately and is readable on the other phone in airplane mode
+once both have been online — and `document_size.rs` still measures 154 kB.
 
 ## M9 — History and statistics
 

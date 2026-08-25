@@ -24,8 +24,8 @@ use cabas_domain::expand::{ExpandError, expand};
 use cabas_domain::list::ListItem;
 use cabas_domain::recipe::{Component, SubRecipeAmount};
 use cabas_domain::{
-    Aisle, CheckState, Ingredient, IngredientId, IngredientIndex, Quantity, Rational, Recipe,
-    RefDisplay, Segment, ShoppingList,
+    Aisle, CheckState, Ingredient, IngredientId, IngredientIndex, PhotoId, Quantity, Rational,
+    Recipe, RefDisplay, Segment, ShoppingList,
 };
 
 use crate::command::{
@@ -264,6 +264,14 @@ fn cart_view(library: &Library, cart: &Cart) -> CartView {
         name: line.name.clone(),
         aisle: line.aisle.into(),
         staple: line.staple,
+        // Looked up here rather than carried through the derivation: a photo
+        // is presentation, and `domain::CartLine` copies only what the
+        // aggregation itself needs (Rule 1).
+        photo: library
+            .ingredients
+            .get(&line.ingredient)
+            .and_then(|ingredient| ingredient.photo.as_ref())
+            .map(PhotoId::to_string),
         amounts: line.amounts.iter().map(QuantityView::of).collect(),
         state: (&line.state).into(),
         checked_by: match &line.state {
@@ -343,6 +351,7 @@ fn recipe_summaries(library: &Library) -> Vec<RecipeSummaryView> {
             yields: recipe.yields.as_ref().map(QuantityView::of),
             ingredients: recipe.ingredient_usages().count(),
             sub_recipes: recipe.sub_recipes().count(),
+            photo: recipe.photo.as_ref().map(PhotoId::to_string),
         })
         .collect();
     summaries.sort_by(|a, b| by_name(&a.name, &a.id, &b.name, &b.id));
@@ -361,6 +370,7 @@ fn ingredient_views(library: &Library) -> Vec<IngredientView> {
             staple: ingredient.staple,
             density: ingredient.density.map(number::render_lossless),
             unit_weight: ingredient.unit_weight.map(number::render_lossless),
+            photo: ingredient.photo.as_ref().map(PhotoId::to_string),
         })
         .collect();
     views.sort_by(|a, b| by_name(&a.name, &a.id, &b.name, &b.id));
@@ -396,6 +406,7 @@ fn focus_view(library: &Library, focus: &Focus) -> Option<FocusView> {
                 .map(|q| QuantityView::of(&q.scaled(factor))),
             components: components_view(library, recipe, factor),
             steps: steps_view(library, recipe, factor),
+            photo: recipe.photo.as_ref().map(PhotoId::to_string),
         },
         edit: edit_input(recipe),
     })
@@ -487,6 +498,7 @@ fn edit_input(recipe: &Recipe) -> RecipeInput {
         name: recipe.name.clone(),
         servings: recipe.servings.get(),
         yields: recipe.yields.as_ref().map(quantity_input),
+        photo: recipe.photo.as_ref().map(PhotoId::to_string),
         components: recipe
             .components
             .iter()

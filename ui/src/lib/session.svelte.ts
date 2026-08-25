@@ -161,6 +161,28 @@ export class Session {
     }
   }
 
+  /**
+   * Stores a photo and returns the id to put on the draft being edited.
+   *
+   * Two steps rather than one, and the split is the core's (DECISIONS 0062):
+   * the bytes go to a store of their own on a call that is awaited, and the
+   * id then rides on the ordinary save. Nothing about a photo makes `run`
+   * asynchronous.
+   */
+  putPhoto(bytes: Uint8Array): Promise<string> {
+    return this.#core.putPhoto(bytes);
+  }
+
+  /**
+   * The bytes of a photo, or `undefined` when this device has not got them.
+   *
+   * Absent is ordinary: a photo taken on the other phone is named by the
+   * document as soon as the replicas merge, and arrives afterwards.
+   */
+  photo(id: string): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    return this.#core.photo(id);
+  }
+
   show(screen: Screen): void {
     // Read here rather than trusted from the last scroll event: this is the
     // last instant at which `window.scrollY` still belongs to the screen being

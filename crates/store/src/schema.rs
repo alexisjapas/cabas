@@ -74,6 +74,14 @@ pub mod ingredient {
     pub const STAPLE: &str = "staple";
     pub const DENSITY: &str = "density";
     pub const UNIT_WEIGHT: &str = "unit_weight";
+    /// The id of this ingredient's photo, or absent. Never the bytes: they
+    /// live one record per photo in a store of their own, because this
+    /// document is rewritten whole on every save (DECISIONS 0062).
+    ///
+    /// A build that predates it ignores this key on read and does not
+    /// rewrite it on save, so adding it costs no `SCHEMA_VERSION` bump —
+    /// the same argument that let the `Items` aisle ship (0057).
+    pub const PHOTO: &str = "photo";
 }
 
 pub mod recipe {
@@ -82,6 +90,8 @@ pub mod recipe {
     pub const YIELDS: &str = "yields";
     pub const COMPONENTS: &str = "components";
     pub const STEPS: &str = "steps";
+    /// The id of the dish's photo, or absent. See `ingredient::PHOTO`.
+    pub const PHOTO: &str = "photo";
 }
 
 /// One line of a recipe: an ingredient usage or a sub-recipe reference,

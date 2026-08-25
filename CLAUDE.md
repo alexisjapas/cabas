@@ -34,7 +34,14 @@ left every device stranded behind a cursor the epoch could not invalidate
 (0.1.1, 0053), and the shadow on the other side left the rolled-back window
 unpushable, stranding any device that had missed it (0.1.2, 0054).
 `ui-serve` and its hand-rolled certificate authority are development-only from
-now on. **M9 — history and statistics — is scheduled before M7**: what the
+now on. **M10 — photos — is under way, alongside M6** (ROADMAP says why that
+rule is bent): one photo per recipe and per ingredient, **beside the document
+and never inside it**, because every save rewrites the whole document and a
+photo library in it turns a tick in a shop into a multi-megabyte write
+(DECISIONS 0062, which carries the measurement). Half one is in **0.5.0** —
+taken, stored, displayed on one device; the transfer to the second phone is
+half two and does not exist yet. **M9 — history and statistics — is scheduled
+before M7**: what the
 family buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.
@@ -42,13 +49,18 @@ The milestone numbers are names, not the order; ROADMAP says why.
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
-IndexedDB; `crates/app` holds the command set, the view-models and the wasm
+IndexedDB — **plus `PhotoStore`, a second trait over one record per photo**,
+which is where photo bytes live because `Storage` is one blob and that blob is
+rewritten on every save (DECISIONS 0062); `crates/app` holds the command set,
+the view-models and the wasm
 binding — **including the sync session** (`app::sync`, and `sync*` on
-`CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
+`CabasApp`) **and the photo library** (`app::photos`, and `putPhoto` / `photo`
+on `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per family **and serving the PWA out of
-its own binary**. 186 native tests plus 11 in
-a real browser — 5 over IndexedDB, 6 through the app — and all of them run
+its own binary**. 201 native tests plus 16 in
+a real browser — 9 over IndexedDB and the photo store, 7 through the app — and
+all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end. The phones then answered for themselves.
@@ -203,7 +215,7 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | Crate | Role |
 |---|---|
 | `crates/domain` | Units, conversions, scaling, recipe DAG, cart derivation |
-| `crates/store` | Loro schema, snapshots, `Storage` trait (file / IndexedDB) |
+| `crates/store` | Loro schema, snapshots, `Storage` (the document) and `PhotoStore` (the photos), each over file / IndexedDB |
 | `crates/sync` | E2EE, pairing, WebSocket transport |
 | `crates/app` | Commands + view-models — the only surface the UI touches |
 | `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
@@ -272,6 +284,7 @@ one file and a compatibility surface (DECISIONS 0029):
 | `mapping` | Domain struct ⇄ document, one pair per entity |
 | `document` | `Document`: lifecycle, reads, writes, snapshots, sync bytes |
 | `storage` | `Storage` trait; `MemoryStorage`, `FileStorage` (native), `IndexedDbStorage` (wasm) |
+| `photos` | `PhotoStore` — one record per photo, beside the document: `MemoryPhotoStore`, `FilePhotoStore`, `IndexedDbPhotoStore` (a second object store in the same database) |
 | `error` | `StoreError` — carries strings, never a `LoroError` (Rule 2) |
 
 `crates/app` (M3) — read `view.rs` first, it is the screen list; then
@@ -288,6 +301,7 @@ one file and a compatibility surface (DECISIONS 0029):
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
 | `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` |
 | `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
+| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, and the two diffs a prefetch and a sweep need (0062) |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
 
 The shape to keep in mind: **`apply` is synchronous and returns the whole new
@@ -317,11 +331,12 @@ file:
 | `lib/session.svelte.ts` | The one `$state.raw`, `run(command)`, the debounced flush, the persisted screen and its scroll offset |
 | `lib/sync.svelte.ts` | The socket and its policy: connect on foreground, backoff, push on change, the cursor and shadow in `localStorage` (0043) |
 | `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
+| `lib/photo.ts` | A picked file into the JPEG the core takes: EXIF orientation, downscale, encode until it fits under `maxPhotoBytes()` (0062) |
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one and `PhotoField.svelte` takes one (0062) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -808,3 +823,31 @@ Key domain shapes, all settled in DECISIONS:
   safe to run while the relay serves, because an abandoned family is by
   definition one nothing connects to; forgetting a *live* one leaves its
   sockets answering "storage failed" until the process restarts.
+- **Every save writes the whole document, so nothing binary may live in it.**
+  `App::pending_snapshot` serialises the entire replica and `Storage::save`
+  replaces it — deliberately, atomically, on a debounce that fires after every
+  tick in a shop. Measured (x86-64 release, against 154 kB and 0.42 ms today):
+  20 photos of 150 kB make a 5.9 MB snapshot exported in 30 ms, 60 make 17.6 MB
+  in 83 ms, 200 make 58.6 MB in 310 ms — paid on **every** save and again on
+  every cold start, times whatever wasm on a phone costs. That is why photos
+  are a `PhotoStore` beside the document and not a field in it (DECISIONS
+  0062), and `document_size.rs`'s 4 MiB ceiling is what catches a regression.
+- **The IndexedDB database is at version 2, and two types open it.**
+  `IndexedDbStorage` and `IndexedDbPhotoStore` share one `open()` and therefore
+  one `VERSION`; giving either its own would make one of them request a
+  downgrade, which the browser refuses outright. The upgrade creates only the
+  object stores that are missing — that is what makes the bump non-destructive
+  for a phone that already holds a document.
+- **A phone photo's rotation lives in EXIF, not in its pixels.** Drawing one
+  to a canvas without `imageOrientation: 'from-image'` puts every landscape
+  shot on its side, and it is invisible on a desktop file that has no EXIF at
+  all. `createImageBitmap` is used precisely because it can apply it; an
+  `<img>` cannot be asked to.
+- **`Photos::forget_unreferenced` is a cleanup only once the relay holds a
+  copy.** Until M10's transfer half exists, a device's copy is the *only* copy,
+  and sweeping unreferenced photos at startup would be deleting them. It is
+  implemented and tested; nothing calls it yet, on purpose.
+- **`input.files` is read-only**, so a test cannot hand a file to a file input
+  by assignment. `__photograph` in `smoke.mjs` builds a real JPEG on a canvas
+  and fills a `DataTransfer` — which is also why the photo path is tested
+  end to end without any camera or any file on disk.

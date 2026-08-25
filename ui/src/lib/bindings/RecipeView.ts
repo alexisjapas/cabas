@@ -8,4 +8,8 @@ export type RecipeView = { id: string, name: string,
  * What the recipe is written for, and what it is being read at. Every
  * quantity below is already scaled by the ratio of the two.
  */
-written_for: number, servings: number, yields: QuantityView | null, components: Array<ComponentView>, steps: Array<StepView>, };
+written_for: number, servings: number, yields: QuantityView | null, components: Array<ComponentView>, steps: Array<StepView>, 
+/**
+ * The dish's photo, if it has one. An id; see `CartLineView::photo`.
+ */
+photo: string | null, };

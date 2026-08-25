@@ -16,6 +16,13 @@ amounts: Array<QuantityView>, state: CheckStateTag,
  */
 checked_by: string | null, checked_at: number | null, 
 /**
+ * The ingredient's photo, if it has one — an id, never bytes. The
+ * frontend asks the core for those separately and may not get them yet
+ * (DECISIONS 0062). This is the line where recognising a product in an
+ * aisle actually happens.
+ */
+photo: string | null, 
+/**
  * Which list entries asked for this. One tap advances every one of them.
  */
 sources: Array<string>, };

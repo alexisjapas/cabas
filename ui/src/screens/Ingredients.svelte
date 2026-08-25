@@ -4,6 +4,7 @@
     draftOf,
     type IngredientDraft,
   } from '../components/IngredientForm.svelte';
+  import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
@@ -97,7 +98,7 @@
 
   {#if writing}
     <div class="panel">
-      <IngredientForm bind:draft onsave={save} oncancel={() => (writing = false)}>
+      <IngredientForm {session} bind:draft onsave={save} oncancel={() => (writing = false)}>
         {#snippet extra()}
           {#if editing}
             <button
@@ -132,6 +133,7 @@
     {#each shown as ingredient (ingredient.id)}
       <li>
         <button type="button" onclick={() => open(ingredient)}>
+          <Photo {session} photo={ingredient.photo} alt="" />
           <span class="text">
             <span class="name">{ingredient.name}</span>
             <span class="meta">

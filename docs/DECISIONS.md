@@ -71,6 +71,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there) | The list shows what is missing, and a recipe joins it from there | Product |
 | [0060](#0060--what-was-searched-for-is-what-gets-created) | What was searched for is what gets created | Product |
 | [0061](#0061--purchases-are-recorded-statistics-are-derived-from-them) | Purchases are recorded; statistics are derived from them | Product |
+| [0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it) | A photo is a blob beside the document, never in it | Storage |
 
 ---
 
@@ -2591,3 +2592,136 @@ retroactively every time a recipe is edited. **A pantry or stock model** —
 still cut (0018); this records what left the shop, never what is in the
 cupboard. **Trimming by age**, at any horizon: chosen against, in favour of
 showing the footprint.
+
+## 0062 — A photo is a blob beside the document, never in it
+
+**Date** 2026-08-25 · **Status** Accepted, scheduled for M10 · **Relates to**
+[0008](#0008--serialized-snapshots-not-sqlite),
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee),
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0047](#0047--the-qr-is-shown-never-scanned-and-the-encoder-is-ours),
+[0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all),
+[0057](#0057--items-an-aisle-for-what-is-bought-whole-and-never-cooked)
+
+**Context.** What is wanted is small to say: take a photo for a recipe, for an
+ingredient, for an item. A dish you recognise before reading its name, and a
+product you recognise in an aisle — which is the case that decides everything
+below, because an aisle is where there is no network.
+
+It reopens the closed scope, so it starts here rather than in code (Rule 14).
+And it is not a small feature, for one reason that is invisible from the
+screen: **every save writes the whole document.** `App::pending_snapshot`
+serialises the entire replica and `Storage::save` replaces it, deliberately —
+one blob in, one blob out (0008), atomic because a half-written snapshot is a
+destroyed library. Put the photos inside it and ticking an item off in the
+shop rewrites the whole photo library.
+
+Measured, x86-64 release, incompressible bytes — a phone in wasm is some
+multiple of this, and today's entire library is 154 kB loading in 0.42 ms:
+
+| Photos in the document | Snapshot | Export, on every save | Import, on every cold start |
+|---|---|---|---|
+| 20 × 150 kB | 5.9 MB | 30 ms | 8 ms |
+| 60 × 150 kB | 17.6 MB | 83 ms | 24 ms |
+| 200 × 150 kB | 58.6 MB | 310 ms | 98 ms |
+| 500 × 80 kB | 78.1 MB | 320 ms | 110 ms |
+
+`crates/store/tests/document_size.rs` already refuses a snapshot above 4 MiB,
+which the first row breaks on its own. This is the case 0008 named in advance:
+"if data volume ever invalidates the premise, the trait is the seam to
+revisit".
+
+**Decision.**
+
+1. **One photo per recipe and one per ingredient** — items included, since an
+   item is an ingredient in the `Items` aisle (0057). The document holds an
+   **id and nothing else**; the bytes are never in it.
+2. **The id is random, minted at capture — not a content hash.** Deduplication
+   between two people is worth nothing, and a hash of the plaintext handed to
+   the party that also holds the ciphertext turns a guessed photo into a
+   confirmed one. Rule 7 is the whole point of the relay's design; an id that
+   says something about the bytes gives a piece of it back for a convenience
+   nobody asked for.
+3. **The bytes live in a store of their own**, one record per photo: a second
+   IndexedDB object store on the phone, a directory natively. `Storage` keeps
+   its shape and its atomic whole-document write; photos get `PhotoStore` —
+   `load`, `save`, `remove`, and `ids`, which is what a prefetch diffs against.
+4. **One format, JPEG, with a cap the core enforces.** The frontend downscales
+   and encodes, because a canvas is the only image encoder a PWA has; the core
+   refuses anything above the cap. The limit is then one number in Rust rather
+   than a promise the UI makes to itself. A second format later is a new key,
+   never a guess at the bytes.
+5. **Capture is `<input type="file" accept="image/*" capture>`, never
+   `getUserMedia`** — the same reasoning that made the QR shown and never
+   scanned (0047): no permission prompt, no video element, nothing that rots
+   quietly in an installed iOS PWA. It also lets an existing photo be chosen,
+   which `getUserMedia` cannot.
+6. **Photos travel on their own socket**, `/photos`, opened when there is work
+   and closed when the queue drains. A `Hello` names the family, one round trip
+   reconciles what each side has and wants, and each photo crosses sealed
+   (Rule 7). Not on `/sync`: a 200 kB transfer must not sit in front of a list
+   edit, and a connection that falls behind the relay's forward buffer is
+   disconnected — which a photo transfer would make ordinary.
+7. **Every device ends up holding every photo.** The transfer is a background
+   prefetch of everything the document references, not a fetch on demand: the
+   photo of a product is wanted in the shop, and the shop is a Faraday cage
+   (Rule 6). Nothing about it blocks a user action — a photo taken offline is
+   attached immediately and uploaded later.
+8. **The relay keeps photos until a person forgets them.** It cannot tell that
+   an id is unreferenced, because it reads nothing; and "unreferenced on my
+   replica" is not "unreferenced" while the other phone has been off for a
+   week. So: devices delete their **local** copy of what their own replica no
+   longer references — safe, because the relay hands it back if the reference
+   returns — and the relay keeps everything, surveyed by `cabas-relay families`
+   and forgotten by hand, exactly like an abandoned log (0050). A per-family
+   byte cap refuses a push rather than filling the SD card Home Assistant runs
+   on.
+9. **Additive on both compatibility surfaces.** A `photo` key is ignored by an
+   older build on read and never rewritten on save — the same argument that let
+   the `Items` aisle ship without a bump (0057) — so `SCHEMA_VERSION` does not
+   move. The photo socket is a separate endpoint carrying its own protocol
+   byte, so `/sync`'s `PROTOCOL` stays 1 and a phone left in a pocket keeps
+   converging, without photos. A feature, therefore: minor.
+
+**Consequences.**
+
+This is the **first content in the app that is not local the moment it
+exists**. A photo taken on one phone reaches the other only once both have been
+online, so the UI owes a state for "referenced, not here yet" that does not
+read as an error — the same discretion the sync indicator has (Rule 6).
+
+The document stays 154 kB and every measurement in ROADMAP M2 stays true. What
+grows instead is a store nothing rewrites: adding a photo costs one record, and
+a save in the shop costs exactly what it costs today.
+
+Storage on the phone stops being a rounding error. `navigator.storage.persist()`
+becomes worth asking for, and the footprint line M9 already owes Settings (0061)
+covers photos too — one number for what cabas occupies here.
+
+Home Assistant's backups grow with the photo library, which changes M6's
+arithmetic and not its procedure: the drill still reads its marker off the
+relay, and a restored `/data` now brings photos back alongside the log.
+
+**Rejected.** **Photos in the document** — measured above; it converts every
+tap in a shop into a multi-megabyte write and every launch into an import.
+**Small thumbnails in the document instead**, ~20 kB each and nothing else to
+build: it is the same curve one order of magnitude to the right, it caps the
+product at a thumbnail, and the migration out of it is owed anyway.
+**Content-addressed ids** — a confirmation oracle for a party that already
+holds the ciphertext (Rule 7), bought for a deduplication two people never hit.
+**`GET`/`PUT /photo/<family>/<id>` over HTTP** — simpler, resumable and
+cacheable, but it puts the family id, which is the only access control the
+relay has, into a URL: request logs, analytics, and every proxy in between.
+0047 refused the same move for the phrase. **A new `FrameKind` on the sync
+log** — the log is truncated by snapshots (`Snapshot { covers }`, 0042), so a
+photo frame would be dropped by the next compaction, and the only way to keep
+it would be re-pushing the whole photo library every time. **Relay-side garbage
+collection driven by a client's "keep" set** — it needs a last-claim timestamp
+per blob and can still delete what a long-offline device references; manual,
+like 0050, and visible in `survey`. **Several photos per entity** — an order,
+a principal, a management screen, for a product whose whole shape is one
+picture per thing. **WebP** — smaller, but canvas encoding of it is the kind of
+thing that is present on the desk and absent on the phone. **Encrypting the
+local photo store at rest** — the document is not encrypted there either; the
+phone's own encryption is that boundary, and a second one here would protect
+the photos of a library sitting in plaintext beside them.

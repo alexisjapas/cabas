@@ -22,8 +22,8 @@ use cabas_domain::recipe::{
 };
 use cabas_domain::units::{MassUnit, Unit, VolumeUnit};
 use cabas_domain::{
-    Aisle, Device, DeviceId, Event, Ingredient, IngredientId, ListEntryId, Quantity, Rational,
-    Recipe, RecipeId, Timestamp, UsageId, User, UserId,
+    Aisle, Device, DeviceId, Event, Ingredient, IngredientId, ListEntryId, PhotoId, Quantity,
+    Rational, Recipe, RecipeId, Timestamp, UsageId, User, UserId,
 };
 use cabas_store::{Document, StoreError};
 
@@ -551,4 +551,88 @@ fn a_compacted_snapshot_keeps_the_state_and_drops_the_history() {
     let reloaded = Document::load(&compacted).expect("load");
     assert_eq!(reloaded.ingredients().expect("read").len(), 2);
     assert_eq!(reloaded.recipes().expect("read"), vec![pastry(), tart()]);
+}
+
+// --- photos (DECISIONS 0062) ------------------------------------------------
+
+#[test]
+fn a_photo_reference_survives_a_snapshot_and_the_bytes_never_enter_it() {
+    let doc = Document::new();
+    let photographed = tomato().with_photo(PhotoId::from_raw("ph_0123456789abcdef"));
+    doc.put_ingredient(&photographed).expect("write");
+    doc.put_recipe(&tart().with_photo(PhotoId::from_raw("ph_fedcba9876543210")))
+        .expect("write");
+
+    let snapshot = doc.snapshot().expect("snapshot");
+    let reloaded = Document::load(&snapshot).expect("load");
+
+    assert_eq!(
+        reloaded.ingredients().expect("read")[0].photo,
+        Some(PhotoId::from_raw("ph_0123456789abcdef"))
+    );
+    assert_eq!(
+        reloaded.recipes().expect("read")[0].photo,
+        Some(PhotoId::from_raw("ph_fedcba9876543210"))
+    );
+
+    // The premise of 0062: what the document gained is an id, not a payload.
+    // A snapshot that grew by more than a couple of hundred bytes per photo
+    // means the bytes found their way in after all.
+    let without = Document::new();
+    without.put_ingredient(&tomato()).expect("write");
+    without.put_recipe(&tart()).expect("write");
+    let baseline = without.snapshot().expect("snapshot").len();
+    assert!(
+        snapshot.len() < baseline + 512,
+        "two photo references cost {} bytes",
+        snapshot.len() - baseline
+    );
+}
+
+#[test]
+fn an_ingredient_with_no_photo_reads_as_having_none() {
+    // What every document written before 0062 looks like from here.
+    let doc = Document::new();
+    doc.put_ingredient(&tomato()).expect("write");
+    let reloaded = Document::load(&doc.snapshot().expect("snapshot")).expect("load");
+    assert_eq!(reloaded.ingredients().expect("read")[0].photo, None);
+}
+
+#[test]
+fn a_photo_taken_on_one_device_and_a_rename_on_the_other_both_survive() {
+    // The field-level merge the schema exists for: an ingredient is a
+    // container, so attaching a photo and renaming are disjoint edits.
+    let (phone, laptop) = paired();
+
+    phone
+        .put_ingredient(&tomato().with_photo(PhotoId::from_raw("ph_00000000000000aa")))
+        .expect("write");
+
+    let mut renamed = tomato();
+    renamed.name = "Tomate grappe".into();
+    laptop.put_ingredient(&renamed).expect("write");
+
+    reconcile(&phone, &laptop);
+    assert_converged(&phone, &laptop);
+
+    let merged = &phone.ingredients().expect("read")[1];
+    assert_eq!(merged.name, "Tomate grappe");
+    assert_eq!(merged.photo, Some(PhotoId::from_raw("ph_00000000000000aa")));
+}
+
+#[test]
+fn removing_a_photo_on_one_device_wins_over_an_older_write() {
+    let (phone, laptop) = paired();
+    phone
+        .put_ingredient(&tomato().with_photo(PhotoId::from_raw("ph_00000000000000bb")))
+        .expect("write");
+    reconcile(&phone, &laptop);
+
+    // Detaching it is an ordinary register write, not a deletion: last one
+    // wins, which is what a cleared field should do.
+    laptop.put_ingredient(&tomato()).expect("write");
+    reconcile(&phone, &laptop);
+
+    assert_converged(&phone, &laptop);
+    assert_eq!(phone.ingredients().expect("read")[1].photo, None);
 }

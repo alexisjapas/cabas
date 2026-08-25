@@ -110,6 +110,7 @@
 
   {#if creating}
     <IngredientForm
+      {session}
       bind:draft
       heading="Nouvel ingrédient"
       submitLabel="Créer"

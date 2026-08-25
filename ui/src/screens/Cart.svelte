@@ -97,7 +97,7 @@
       <ul>
         {#each group.lines as line (line.ingredient)}
           <li animate:flip={{ duration: 180 }}>
-            <CartLine {line} ontoggle={() => toggle(line.ingredient)} />
+            <CartLine {session} {line} ontoggle={() => toggle(line.ingredient)} />
           </li>
         {/each}
       </ul>
@@ -109,7 +109,7 @@
       <summary>{CHECK_STATE_LABEL.checked} ({cart.bought.length})</summary>
       <ul>
         {#each bought as line (line.ingredient)}
-          <li><CartLine {line} ontoggle={() => toggle(line.ingredient)} /></li>
+          <li><CartLine {session} {line} ontoggle={() => toggle(line.ingredient)} /></li>
         {/each}
       </ul>
     </details>
@@ -123,7 +123,7 @@
       </p>
       <ul>
         {#each atHome as line (line.ingredient)}
-          <li><CartLine {line} ontoggle={() => toggle(line.ingredient)} /></li>
+          <li><CartLine {session} {line} ontoggle={() => toggle(line.ingredient)} /></li>
         {/each}
       </ul>
     </details>

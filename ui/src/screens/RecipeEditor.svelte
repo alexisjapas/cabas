@@ -2,6 +2,7 @@
   import { tick } from 'svelte';
 
   import IngredientPicker from '../components/IngredientPicker.svelte';
+  import PhotoField from '../components/PhotoField.svelte';
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchPicker, { type PickerOption } from '../components/SearchPicker.svelte';
@@ -328,6 +329,8 @@
       Nom
       <input bind:value={recipe.name} required placeholder="Tarte aux tomates" autocomplete="off" />
     </label>
+
+    <PhotoField {session} bind:photo={recipe.photo} label="Photo du plat" />
 
     <fieldset class="servings">
       <legend>Pour</legend>

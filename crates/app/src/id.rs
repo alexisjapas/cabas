@@ -23,6 +23,9 @@ pub(crate) const USAGE: &str = "use_";
 pub(crate) const LIST_ENTRY: &str = "ent_";
 pub(crate) const USER: &str = "usr_";
 pub(crate) const DEVICE: &str = "dev_";
+/// A photo of a recipe or an ingredient. Random like every other id and
+/// deliberately unrelated to the bytes (DECISIONS 0062).
+pub(crate) const PHOTO: &str = "pho_";
 
 pub(crate) fn mint(platform: &impl Platform, prefix: &str) -> Result<String> {
     Ok(format!("{prefix}{:016x}", platform.random_u64()?))
@@ -120,7 +123,7 @@ mod tests {
 
     #[test]
     fn every_prefix_is_distinct() {
-        let mut prefixes = [INGREDIENT, RECIPE, USAGE, LIST_ENTRY, USER, DEVICE];
+        let mut prefixes = [INGREDIENT, RECIPE, USAGE, LIST_ENTRY, USER, DEVICE, PHOTO];
         prefixes.sort_unstable();
         let before = prefixes.len();
         let mut unique = prefixes.to_vec();

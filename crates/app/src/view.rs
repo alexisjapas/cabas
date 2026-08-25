@@ -182,6 +182,11 @@ pub struct CartLineView {
     /// label (Rule 7).
     pub checked_by: Option<String>,
     pub checked_at: Option<i64>,
+    /// The ingredient's photo, if it has one — an id, never bytes. The
+    /// frontend asks the core for those separately and may not get them yet
+    /// (DECISIONS 0062). This is the line where recognising a product in an
+    /// aisle actually happens.
+    pub photo: Option<String>,
     /// Which list entries asked for this. One tap advances every one of them.
     pub sources: Vec<String>,
 }
@@ -238,6 +243,8 @@ pub struct RecipeSummaryView {
     pub yields: Option<QuantityView>,
     pub ingredients: usize,
     pub sub_recipes: usize,
+    /// The dish's photo, if it has one. An id; see `CartLineView::photo`.
+    pub photo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -250,6 +257,9 @@ pub struct IngredientView {
     pub staple: bool,
     pub density: Option<String>,
     pub unit_weight: Option<String>,
+    /// The ingredient's photo, if it has one. An id; see
+    /// `CartLineView::photo`.
+    pub photo: Option<String>,
 }
 
 /// The open recipe: what to read, and what to edit.
@@ -278,6 +288,8 @@ pub struct RecipeView {
     pub yields: Option<QuantityView>,
     pub components: Vec<ComponentView>,
     pub steps: Vec<StepView>,
+    /// The dish's photo, if it has one. An id; see `CartLineView::photo`.
+    pub photo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

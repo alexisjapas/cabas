@@ -141,7 +141,7 @@ mod file {
 }
 
 #[cfg(target_family = "wasm")]
-pub use indexed_db::IndexedDbStorage;
+pub use indexed_db::{IndexedDbPhotoStore, IndexedDbStorage};
 
 #[cfg(target_family = "wasm")]
 mod indexed_db {
@@ -159,16 +159,24 @@ mod indexed_db {
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{IdbDatabase, IdbRequest, IdbTransaction, IdbTransactionMode};
 
+    use cabas_domain::PhotoId;
+
     use super::{Storage, StoreError};
     use crate::error::Result;
+    use crate::photos::PhotoStore;
 
     /// Bumping this runs `onupgradeneeded` again. It tracks the *object
-    /// store* layout, which is one blob under one key, and has nothing to do
-    /// with [`crate::SCHEMA_VERSION`] — that one versions the document
-    /// inside the blob.
-    const VERSION: u32 = 1;
+    /// store* layout — the document under one key, and one record per photo
+    /// — and has nothing to do with [`crate::SCHEMA_VERSION`], which versions
+    /// the document inside the blob.
+    ///
+    /// Version 2 added `photos` (DECISIONS 0062). The upgrade creates what is
+    /// missing and touches nothing else: an installed phone runs it on the
+    /// launch that meets this build, with its document already in `document`.
+    const VERSION: u32 = 2;
     const STORE: &str = "document";
     const KEY: &str = "snapshot";
+    const PHOTOS: &str = "photos";
 
     /// The family document in IndexedDB.
     #[derive(Debug, Clone)]
@@ -194,48 +202,61 @@ mod indexed_db {
             }
         }
 
-        /// Opens the database, creating the object store on first use.
-        ///
-        /// Opened per operation rather than cached on the struct. A handle
-        /// would have to survive across awaits in a `!Send` world, and it
-        /// goes stale the moment another tab triggers a version change —
-        /// while `open` on an already-open database is cheap, because the
-        /// browser keeps the connection.
         async fn open(&self) -> Result<IdbDatabase> {
-            let window = web_sys::window().ok_or_else(|| {
-                StoreError::Io("IndexedDB needs a window; none in this context".into())
+            open(&self.database).await
+        }
+    }
+
+    /// Opens the database, creating whichever object stores are missing.
+    ///
+    /// Opened per operation rather than cached on a struct. A handle would
+    /// have to survive across awaits in a `!Send` world, and it goes stale the
+    /// moment another tab triggers a version change — while `open` on an
+    /// already-open database is cheap, because the browser keeps the
+    /// connection.
+    ///
+    /// Free rather than a method because two stores share one database: the
+    /// document and the photos are opened by different types and must agree
+    /// on the version, or one of them would trigger a downgrade the browser
+    /// refuses (DECISIONS 0062).
+    async fn open(database: &str) -> Result<IdbDatabase> {
+        let window = web_sys::window().ok_or_else(|| {
+            StoreError::Io("IndexedDB needs a window; none in this context".into())
+        })?;
+        let factory = window
+            .indexed_db()
+            .map_err(|e| js_error("indexedDB", e))?
+            .ok_or_else(|| {
+                StoreError::Io(
+                    "IndexedDB is unavailable — private browsing, or storage is blocked".into(),
+                )
             })?;
-            let factory = window
-                .indexed_db()
-                .map_err(|e| js_error("indexedDB", e))?
-                .ok_or_else(|| {
-                    StoreError::Io(
-                        "IndexedDB is unavailable — private browsing, or storage is blocked".into(),
-                    )
-                })?;
 
-            let request = factory
-                .open_with_u32(&self.database, VERSION)
-                .map_err(|e| js_error("open", e))?;
+        let request = factory
+            .open_with_u32(database, VERSION)
+            .map_err(|e| js_error("open", e))?;
 
-            let upgrading = request.clone();
-            let on_upgrade = Closure::once_into_js(move || {
-                // Fires before the open request settles, on a brand-new
-                // database or after a version bump.
-                if let Ok(value) = upgrading.result() {
-                    let db: IdbDatabase = value.unchecked_into();
-                    if !db.object_store_names().contains(STORE) {
-                        let _ = db.create_object_store(STORE);
+        let upgrading = request.clone();
+        let on_upgrade = Closure::once_into_js(move || {
+            // Fires before the open request settles, on a brand-new database
+            // or after a version bump. Creating only what is absent is what
+            // makes the bump to 2 non-destructive for a phone that already
+            // holds a document.
+            if let Ok(value) = upgrading.result() {
+                let db: IdbDatabase = value.unchecked_into();
+                for name in [STORE, PHOTOS] {
+                    if !db.object_store_names().contains(name) {
+                        let _ = db.create_object_store(name);
                     }
                 }
-            });
-            request.set_onupgradeneeded(Some(on_upgrade.unchecked_ref()));
+            }
+        });
+        request.set_onupgradeneeded(Some(on_upgrade.unchecked_ref()));
 
-            let db = JsFuture::from(settled(&request))
-                .await
-                .map_err(|e| js_error("open", e))?;
-            Ok(db.unchecked_into())
-        }
+        let db = JsFuture::from(settled(&request))
+            .await
+            .map_err(|e| js_error("open", e))?;
+        Ok(db.unchecked_into())
     }
 
     impl Storage for IndexedDbStorage {
@@ -284,6 +305,126 @@ mod indexed_db {
                 .await
                 .map_err(|e| js_error("commit", e))?;
             Ok(())
+        }
+    }
+
+    /// One record per photo, in the same database as the document.
+    ///
+    /// The same database on purpose: one version, one upgrade, one thing for
+    /// a browser to evict. The point of the separate object store is that
+    /// nothing here is touched when the document is saved — which is every
+    /// keystroke and every tick in a shop (DECISIONS 0062).
+    #[derive(Debug, Clone)]
+    pub struct IndexedDbPhotoStore {
+        database: String,
+    }
+
+    impl Default for IndexedDbPhotoStore {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl IndexedDbPhotoStore {
+        pub fn new() -> Self {
+            Self::with_database("cabas")
+        }
+
+        /// A named database — what the tests use to keep runs from colliding.
+        /// It must be the one the document uses, or the two would race to
+        /// upgrade different databases of the same name.
+        pub fn with_database(name: impl Into<String>) -> Self {
+            Self {
+                database: name.into(),
+            }
+        }
+    }
+
+    impl PhotoStore for IndexedDbPhotoStore {
+        async fn load(&self, id: &PhotoId) -> Result<Option<Vec<u8>>> {
+            let key = JsValue::from_str(crate::photos::checked(id)?);
+            let db = open(&self.database).await?;
+            let transaction = db
+                .transaction_with_str(PHOTOS)
+                .map_err(|e| js_error("read transaction", e))?;
+            let store = transaction
+                .object_store(PHOTOS)
+                .map_err(|e| js_error("object store", e))?;
+            let request = store.get(&key).map_err(|e| js_error("get", e))?;
+
+            let value = JsFuture::from(settled(&request))
+                .await
+                .map_err(|e| js_error("get", e))?;
+
+            // A photo this device does not hold comes back `undefined`, which
+            // is the ordinary answer for one the other phone has just taken.
+            if value.is_undefined() || value.is_null() {
+                return Ok(None);
+            }
+            Ok(Some(Uint8Array::new(&value).to_vec()))
+        }
+
+        async fn save(&self, id: &PhotoId, bytes: &[u8]) -> Result<()> {
+            let key = JsValue::from_str(crate::photos::checked(id)?);
+            let db = open(&self.database).await?;
+            let transaction = db
+                .transaction_with_str_and_mode(PHOTOS, IdbTransactionMode::Readwrite)
+                .map_err(|e| js_error("write transaction", e))?;
+            let store = transaction
+                .object_store(PHOTOS)
+                .map_err(|e| js_error("object store", e))?;
+            store
+                .put_with_key(&Uint8Array::from(bytes), &key)
+                .map_err(|e| js_error("put", e))?;
+
+            // Waits on the transaction for the same reason `save` above does:
+            // a settled request means queued, `oncomplete` means stored.
+            JsFuture::from(committed(&transaction))
+                .await
+                .map_err(|e| js_error("commit", e))?;
+            Ok(())
+        }
+
+        async fn remove(&self, id: &PhotoId) -> Result<()> {
+            let key = JsValue::from_str(crate::photos::checked(id)?);
+            let db = open(&self.database).await?;
+            let transaction = db
+                .transaction_with_str_and_mode(PHOTOS, IdbTransactionMode::Readwrite)
+                .map_err(|e| js_error("write transaction", e))?;
+            let store = transaction
+                .object_store(PHOTOS)
+                .map_err(|e| js_error("object store", e))?;
+            store.delete(&key).map_err(|e| js_error("delete", e))?;
+
+            JsFuture::from(committed(&transaction))
+                .await
+                .map_err(|e| js_error("commit", e))?;
+            Ok(())
+        }
+
+        async fn ids(&self) -> Result<Vec<PhotoId>> {
+            let db = open(&self.database).await?;
+            let transaction = db
+                .transaction_with_str(PHOTOS)
+                .map_err(|e| js_error("read transaction", e))?;
+            let store = transaction
+                .object_store(PHOTOS)
+                .map_err(|e| js_error("object store", e))?;
+            let request = store
+                .get_all_keys()
+                .map_err(|e| js_error("get all keys", e))?;
+
+            let keys = JsFuture::from(settled(&request))
+                .await
+                .map_err(|e| js_error("get all keys", e))?;
+
+            let mut ids: Vec<PhotoId> = js_sys::Array::from(&keys)
+                .iter()
+                .filter_map(|k| k.as_string())
+                .map(PhotoId::from_raw)
+                .collect();
+            ids.sort();
+            Ok(ids)
         }
     }
 
