@@ -12,7 +12,7 @@ verified on each one, and nobody was told, because nobody looked. A red gate
 that goes unread is worse than an absent one: it costs the same to run and it
 buys a false belief instead of no belief.
 
-## Overview (status as of 2026-08-12)
+## Overview (status as of 2026-08-25)
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
@@ -23,10 +23,26 @@ buys a false belief instead of no belief.
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
+| **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
 Legend: ✅ done · 🚧 in progress · ⬜ not started.
+
+**The numbers are names, not the order.** M9 is scheduled **before** M7 and
+M8, and the table is in schedule order. Renumbering it to M7 would have been
+tidier for exactly one afternoon and wrong afterwards: "M7" means Android in
+half a dozen append-only DECISIONS entries, in `flake.nix`, and in comments
+across `crates/` — and an append-only file cannot be corrected (Rule 14,
+DECISIONS 0025). A milestone number identifies a milestone, the way a decision
+number identifies a decision.
+
+**Why Android moved behind it.** Both phones already run the PWA, installed
+from the permanent origin, and M7 is a *better wrapper* around the same
+frontend rather than a missing capability — so it is not what v1 is waiting
+for. Remembering what the family actually buys is a thing the app cannot do at
+all, and it only starts accumulating history the day it ships. A feature whose
+value grows with its age is worth starting early; a repackaging is not.
 
 **Why M4 comes before M5.** The PWA is the mandatory target (it is the only
 way onto iOS — DECISIONS 0003), and shipping it single-device first proves
@@ -95,15 +111,16 @@ it (DECISIONS 0050).
 `https://cabas.cladelabs.com` reaches the relay on the Pi through a Cloudflare
 Tunnel, and **both phones are installed from it** — a new family, twelve new
 words, the old install and its `cabas local CA` profile gone. Eleven of this
-milestone's thirteen items are closed; the two that are left need a shell on
-the Pi and a backup taken on it, not a change to this repository.
+milestone's fourteen items are closed; the three that are left need a shell on
+the Pi, a backup schedule set on it and a backup taken from it, not a change to
+this repository.
 
-**Nothing else is waiting on them except M7**, which this file's own rule keeps
-shut until M6's criterion holds. The standing cost of leaving them is narrower
-than it looks and worth stating plainly: the app works, both fixes are shipped
-and tested, and what remains unproven is whether Home Assistant's backups
-actually carry `/data` — the recovery point if both phones are ever lost. It
-does not decay while it waits.
+**Nothing else is waiting on them except M9 and M7**, which this file's own
+rule keeps shut until M6's criterion holds. The standing cost of leaving them
+is narrower than it looks and worth stating plainly: the app works, both fixes
+are shipped and tested, and what remains unproven is whether Home Assistant's
+backups actually carry `/data` — the recovery point if both phones are ever
+lost. It does not decay while it waits.
 
 That address is now **the** address (DECISIONS 0012). Both phones install from
 it and never from anything else, and the local certificate authority `ui-serve`
@@ -714,6 +731,18 @@ closed could not reach a relay at all.
       finds a log it does not recognise ignores its shadow and pushes the whole
       replica; the ack discharges it. Entirely client-side, so the wire format
       is untouched and a phone on the old bundle still talks to a new relay
+- [ ] **Automatic backups, scheduled and off the Pi.** `/data` sitting inside
+      Home Assistant's backup is what makes the relay the recovery point, and a
+      backup nobody takes is not one. Three settings and no code here: a
+      **schedule**, a **retention** long enough for a mistake to be noticed —
+      the three live copies (both phones and the relay) protect against a
+      device dying and against nothing else, because a recipe deleted by
+      accident reaches all three in seconds, and only a *dated* copy answers
+      that — and at least **one location that is not the Pi's own SD card**,
+      since a backup stored on the disk it exists to replace protects nothing.
+      Then, on paper, beside the twelve words: Home Assistant's **backup
+      encryption key**. A restored `/data` without the words and an archive
+      without the key are the same object, which is a pile of bytes
 - [ ] **Restore drill**, in two halves that answer different questions — README,
       "The restore drill", carries the procedure. **One**: delete the app on one
       phone with the *other one closed*, reinstall from the tunnel, type the
@@ -729,7 +758,67 @@ closed could not reach a relay at all.
       one direction each. This half is the first and only evidence that Home
       Assistant's backups really do carry `/data`
 
+The add-on stays `backup: hot` — the Supervisor keeps it running while the
+archive is taken — and that is a decision rather than a default left alone.
+`log.rs` writes `log` and `meta` through a temporary file and a rename, with
+`sync_all` on every append, and recovers a torn tail on open: a hot archive can
+only catch a state the relay already knows how to come back from. `backup:
+cold` would buy a nightly sync outage and a restart in the logs against a doubt
+the code already answers. It is the drill, not this paragraph, that turns that
+into evidence.
+
+And the standing rule the drill earns: **run it again after anything that
+changes the persisted format** — `log.rs`, `meta`, the frame kinds. Writing it
+the first time produced 0053 and 0054 before it was ever executed, which is a
+better return than most tests.
+
 **Exit**: reachable from 4G; a backup restore is tested end to end.
+
+## M9 — History and statistics
+
+Scheduled **before M7**; see the note under the overview table. The choice and
+its reasoning are [DECISIONS
+0061](docs/DECISIONS.md#0061--purchases-are-recorded-statistics-are-derived-from-them),
+which reopens a piece of the closed scope on purpose — Rule 14 asks for the
+entry before the code, and this is that code.
+
+- [ ] **Settle the one open question first**: does an auto-checked staple
+      count as a purchase? It rides along on a trip without having been bought
+      (0023), so counting it inflates the salt and the flour past any use — and
+      the records *are* the history, so it cannot be decided again later. The
+      recipe half is not in question: a recipe whose salt came from the
+      cupboard was still made
+- [ ] **`domain`**: the purchase record and the recipe record — ingredient,
+      exact quantities (Rule 4), moment, person, and the name as it was (0024's
+      reason for copying a label) — plus the pure statistics over them: last
+      purchase, count, and a rate over a **named** window
+- [ ] **`store`**: a new top-level container, keyed by **deterministic** ids
+      derived from the list entry and the ingredient. Two devices ending the
+      same trip must write the same key; minted ids would union into a
+      permanent double count. An older device ignores the container and records
+      nothing, which is a hole in the history and not a schema break
+- [ ] **`app`**: `FinishShopping` writes them, and nothing else does — it is
+      the only instant the app knows the real world happened, and today it is
+      also the instant the evidence is destroyed (0020, 0028). Plus the
+      view-models the screens read
+- [ ] **`ui`**: where the numbers are read — an ingredient's own sheet, a
+      count in the recipe reader's header, and the monthly/annual toggle. The
+      window is **named** on screen ("14 fois depuis mars 2026"), never
+      extrapolated: there is no retroactive history and a yearly rate says
+      nothing until a year has passed
+- [ ] **Settings says what cabas occupies on this device** —
+      `navigator.storage.estimate()` for the browser's view and the replica's
+      snapshot size from the core. This is the price of keeping everything
+      forever, and 0061 chose to make it visible rather than to trim
+- [ ] **The double-finish test**: two replicas both end the same trip while
+      offline, merge, and the history holds one record per ingredient — the
+      failure this design exists to prevent, and the one nothing on screen
+      would ever reveal
+
+**Exit**: after a finished trip, an ingredient names the day it was last
+bought and how often it is bought; a recipe whose ingredients were all bought
+is counted as made; two devices that both end the same trip produce one
+history and not two; and Settings says how much room the app takes.
 
 ## M7 — Android (Tauri v2)
 

@@ -77,8 +77,8 @@ Home Assistant add-on image, and this repository is the add-on repository
 ([0049](docs/DECISIONS.md#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)).
 That address is **permanent**: an installed web app is identified by its
 origin, so moving it later would cost both phones their library. What is left
-of M6 is the restore drill. Resuming work starts at the "Resuming work"
-section of the [ROADMAP](ROADMAP.md).
+of M6 is the backup schedule and the restore drill. Resuming work starts at the
+"Resuming work" section of the [ROADMAP](ROADMAP.md).
 
 A family library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape
@@ -389,6 +389,34 @@ number of days
 ([0050](docs/DECISIONS.md#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all)).
 Deliberately not an HTTP endpoint: a family id is the only access control the
 relay has, and its port faces the tunnel.
+
+### Backups
+
+There are three live copies of the library — both phones and the relay's log —
+and they answer exactly one question: a device died. They answer nothing else,
+because they are all live. A recipe deleted by accident reaches all three in
+seconds, and only a **dated** copy brings it back.
+
+That copy is Home Assistant's own backup, and `/data` is inside it by
+construction ([0010](docs/DECISIONS.md#0010--the-relay-ships-as-a-home-assistant-os-add-on)).
+Three settings on the appliance, and no code here:
+
+- **a schedule** — a backup nobody takes is not a backup;
+- **a retention** long enough for a mistake to be noticed, which is days
+  rather than hours;
+- **at least one location that is not the Pi's own SD card.** A backup stored
+  on the disk it exists to replace protects against nothing.
+
+Then, on paper, beside the twelve words: **Home Assistant's backup encryption
+key**. A restored `/data` without the words and an archive without the key are
+the same object, and it is a pile of bytes.
+
+The add-on is deliberately left `backup: hot` — the Supervisor keeps it running
+while the archive is taken. `log.rs` writes `log` and `meta` through a
+temporary file and a rename, `sync_all`s every append, and recovers a torn tail
+on open, so a hot archive can only catch a state the relay already knows how to
+come back from. `backup: cold` would buy a nightly sync outage against a doubt
+the code already answers.
 
 ### The restore drill
 

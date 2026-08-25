@@ -24,14 +24,20 @@ installed from. Verified end to end from outside: TLS, the bundle, no `Vary`,
 the service worker registering, and a silent socket held open by the relay's
 keepalive (0051). One cache rule keeps the edge from re-TTLing `/sw.js`
 (0052), and **both phones are installed from that origin**. **Next is the
-restore drill**, which is all that stands between here and M6's exit
-criterion; its procedure is written (README, "The restore drill") and writing
-it found two real bugs, one per direction of the same restore — a restored log
+backup schedule and the restore drill**, which is all that stands between here
+and M6's exit criterion — Home Assistant's own backups, scheduled, retained and
+stored somewhere that is not the Pi's SD card, with its encryption key written
+down beside the twelve words (README, "Backups"). The drill's procedure is
+written too (README, "The restore drill"), and writing it found two real bugs,
+one per direction of the same restore — a restored log
 left every device stranded behind a cursor the epoch could not invalidate
 (0.1.1, 0053), and the shadow on the other side left the rolled-back window
 unpushable, stranding any device that had missed it (0.1.2, 0054).
 `ui-serve` and its hand-rolled certificate authority are development-only from
-now on.
+now on. **M9 — history and statistics — is scheduled before M7**: what the
+family buys and how often, recorded at `FinishShopping` and derived from
+there, kept forever with the footprint shown in Settings (DECISIONS 0061).
+The milestone numbers are names, not the order; ROADMAP says why.
 
 `crates/domain` holds the product logic as pure functions (69 tests);
 `crates/store` holds the Loro schema, the two-way
@@ -65,8 +71,9 @@ screen took the cart's shape in the same breath — a settled entry folds away
 below what is still missing, and a recipe reaches the list *from* the list
 (0059). Since 0.4.1 **what was searched for is what gets created**: the
 picker's door carries the query into the form and says so on its label, and
-both shelves offer the same thing under a search that found nothing (0060). `ui-serve` serves the
-built bundle over TLS from a local CA, which is what makes the app installable
+both shelves offer the same thing under a search that found nothing (0060).
+`ui-serve` serves the built bundle over TLS from a local CA, which is what
+makes the app installable
 on a phone at all (DECISIONS 0041). **It is installed on the iPhone**, it opens
 in airplane mode, its library survives a cold restart, the cold start is
 instantaneous and the keyboard behaves as designed — M4's exit criterion, met on
