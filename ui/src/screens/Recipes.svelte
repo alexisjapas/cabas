@@ -26,8 +26,12 @@
   let query = $state('');
   let shown = $derived(recipes.filter((recipe) => matches(recipe.name, query)));
 
-  function blank(): RecipeInput {
-    return { id: null, name: '', servings: 4, yields: null, components: [], steps: [] };
+  /**
+   * `name` is the shelf's search when the writing starts from one that found
+   * nothing: what was looked for is what is about to be written (0060).
+   */
+  function blank(name = ''): RecipeInput {
+    return { id: null, name: name.trim(), servings: 4, yields: null, components: [], steps: [] };
   }
 
   /**
@@ -101,7 +105,12 @@
     {:else}
       <SearchField bind:value={query} placeholder="Chercher une recette…" />
       {#if shown.length === 0}
-        <p class="empty">Aucune recette ne correspond.</p>
+        <div class="nothing">
+          <p class="empty">Aucune recette ne correspond.</p>
+          <button type="button" class="create" onclick={() => write(blank(query))}>
+            + Nouvelle recette «&nbsp;{query.trim()}&nbsp;»
+          </button>
+        </div>
       {/if}
     {/if}
 
@@ -140,6 +149,30 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-pill);
     background: var(--surface-raised);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+  }
+
+  /* A search that found nothing, and the way out of it. */
+  .nothing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-6) 0;
+  }
+
+  .nothing .empty {
+    margin: 0;
+  }
+
+  .create {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--accent);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     cursor: pointer;

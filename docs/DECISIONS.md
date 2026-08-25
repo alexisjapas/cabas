@@ -69,6 +69,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0057](#0057--items-an-aisle-for-what-is-bought-whole-and-never-cooked) | Items: an aisle for what is bought whole and never cooked | Domain |
 | [0058](#0058--anything-chosen-out-of-a-library-is-searched-for) | Anything chosen out of a library is searched for | Product |
 | [0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there) | The list shows what is missing, and a recipe joins it from there | Product |
+| [0060](#0060--what-was-searched-for-is-what-gets-created) | What was searched for is what gets created | Product |
 
 ---
 
@@ -2436,3 +2437,62 @@ place to add something to one list, and the search is the same search.
 **Sorting completed entries to the bottom of the same list** — it reads as an
 ordering accident rather than as a statement, and the cart had already chosen
 the folded section for the same question.
+
+## 0060 — What was searched for is what gets created
+
+**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+[0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab),
+[0058](#0058--anything-chosen-out-of-a-library-is-searched-for)
+
+**Context.** 0056 put the library form where an ingredient is wanted, so that
+wanting something the library has never heard of no longer meant leaving the
+screen. 0058 then made every library search-first: nothing is scrolled to any
+more, it is typed for.
+
+Between the two there was a gap, and it is the same defect 0056 exists to
+kill, one step further in. Somebody types "poireau", reads "aucun ingrédient
+ne correspond", presses "+ Nouvel ingrédient" — and gets an empty form. The
+word they had just typed, twice on a phone keyboard, is gone. The two shelves
+were worse: a search that finds nothing leaves a "Nouveau" button sitting in
+the header that ignores the search entirely.
+
+**Decision.** **The search is the name.** Whatever was being looked for and
+not found is what the creation starts from, at all three places something is
+born:
+
+- `SearchPicker` hands its door the trimmed query, and the door **says so** —
+  `+ Nouvel ingrédient « poireau »`. The continuity is visible before the
+  press rather than discovered after it.
+- The ingredients shelf and the recipes shelf grow the same offer **under the
+  "nothing matched" message**, seeded with the query, rather than only in the
+  header.
+- `blankDraft(id, name)` and `blank(name)` take it; empty stays the ordinary
+  case, because the header buttons follow no search.
+
+**Consequences.** The query is read **before** `close()`, which clears it.
+That ordering is the whole mechanism and it is invisible: the door would
+otherwise hand over an empty string with no error anywhere.
+
+`__door` in `ui-test` now asserts both halves — the label names the query and
+the form opens carrying it — for every door in the app rather than at each
+call site, because every door owes them.
+
+The shelves keep their query after the form opens, so what gets created
+matches the search and appears in the list behind it instead of vanishing
+into a filter that no longer matches.
+
+Nothing crossed the core. This is the frontend arranging what it already had
+(Rule 9), and it is a `fix:` rather than a `feat:` — 0056 already said losing
+what was being typed is the defect.
+
+**Rejected.** **Binding the picker's field to the draft's name** — the field
+is deliberately not bound (0058), and `required` depends on it showing a real
+option's name when closed. **Prefilling verbatim, untrimmed** — the trim is
+the only normalisation applied; capitalisation is the person's business, not
+ours. **Parameterising the shelves' header button instead** — it is the
+furthest thing on the screen from where the eye is when a search fails, and a
+header button that changes its own label as you type reads as a glitch. **A
+"create" row inside the shelf's result list** — the shelves are not pickers;
+the empty state is where the failure is announced and where its answer
+belongs.
+

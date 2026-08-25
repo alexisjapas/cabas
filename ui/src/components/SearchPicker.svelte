@@ -56,7 +56,13 @@
     empty?: string;
     /** The last row of the panel, when there is somewhere else to go. */
     doorLabel?: string | undefined;
-    ondoor?: (() => void) | undefined;
+    /**
+     * Handed **what was typed**: something looked for and not found is the
+     * thing the door is about to create, and making somebody type it a second
+     * time was the last place in the app where a word was still lost
+     * (DECISIONS 0060).
+     */
+    ondoor?: ((wanted: string) => void) | undefined;
   } = $props();
 
   /** So the field can name the list it controls, once per instance. */
@@ -72,6 +78,9 @@
   let panel = $state<HTMLElement | null>(null);
 
   let chosen = $derived(options.find((option) => option.id === value) ?? null);
+
+  /** What is being looked for, as the door would create it. */
+  let wanted = $derived(query.trim());
 
   let candidates = $derived(
     options.filter((option) => matches([option.name, ...(option.terms ?? [])].join(' '), query)),
@@ -131,9 +140,12 @@
   }
 
   function door(): void {
+    // Read before `close()`, which clears the query: what the door carries
+    // over is the very reason it was pressed (DECISIONS 0060).
+    const asked = wanted;
     close();
     field?.blur();
-    ondoor?.();
+    ondoor?.(asked);
   }
 
   function search(event: Event & { currentTarget: HTMLInputElement }): void {
@@ -277,8 +289,14 @@
         <li class="none">{empty}</li>
       {/if}
 
+      <!-- The door names what it is about to create, so the continuity is
+           visible before the press rather than discovered after it (0060). -->
       {#if doorLabel !== undefined && ondoor !== undefined}
-        <li><button type="button" class="door" onmousedown={hold} onclick={door}>{doorLabel}</button></li>
+        <li>
+          <button type="button" class="door" onmousedown={hold} onclick={door}
+            >{doorLabel}{#if wanted !== ''}&nbsp;« {wanted} »{/if}</button
+          >
+        </li>
       {/if}
     </ul>
   {/if}

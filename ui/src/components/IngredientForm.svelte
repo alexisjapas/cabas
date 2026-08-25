@@ -40,11 +40,15 @@
    * It is an argument rather than a mint of its own so that a caller holding a
    * closed panel can seed a draft without paying for an id it will discard —
    * `IngredientPicker` has one per recipe line.
+   *
+   * `name` is what was being searched for when this form was reached, which
+   * is the name the thing is about to be given (DECISIONS 0060). Empty is the
+   * ordinary case — the "Nouveau" button, which follows no search.
    */
-  export function blankDraft(id: string): IngredientDraft {
+  export function blankDraft(id: string, name = ''): IngredientDraft {
     return {
       id,
-      name: '',
+      name: name.trim(),
       aliases: '',
       aisle: 'grocery',
       staple: false,

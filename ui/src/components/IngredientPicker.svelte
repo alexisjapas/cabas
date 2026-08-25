@@ -73,8 +73,9 @@
   let creating = $state(false);
   let draft = $state<IngredientDraft>(blankDraft(''));
 
-  function open(): void {
-    draft = blankDraft(mintIngredientId());
+  /** Opened by the door, which hands over what was searched for (0060). */
+  function open(wanted: string): void {
+    draft = blankDraft(mintIngredientId(), wanted);
     creating = true;
   }
 
