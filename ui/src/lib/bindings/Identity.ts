@@ -26,11 +26,10 @@
  * `user` and `user_name` are `None` between the twelve words and the moment
  * somebody picks a name off that roster or adds one to it.
  *
- * The two move together — both `Some` or both `None`, which
- * [`Identity::belongs_to`] is the only way to set. `user_name` is not
- * redundant with the document: a device whose replica is lost while
- * `localStorage` survives has to be able to put its own user back, and the
- * name is the part no id can reconstruct.
+ * The two move together — both `Some` or both `None`, which `belongs_to` is
+ * the only way to set. `user_name` is not redundant with the document: a
+ * device whose replica is lost while `localStorage` survives has to be able
+ * to put its own user back, and the name is the part no id can reconstruct.
  *
  * The shape is also what an identity written before 0068 already looks like
  * from here — both fields present, both strings — so a paired device reads

@@ -188,7 +188,9 @@ does.
 
 The last command regenerates `ui/src/lib/bindings/*.ts` from the Rust types.
 It is not part of the everyday loop, but **CI fails if its output is stale**,
-so run it after touching anything in `command.rs`, `view.rs` or `tags.rs`.
+so run it after touching **any of the five files that carry `ts(export)`** —
+`command.rs`, `view.rs`, `tags.rs`, `platform.rs` and `sync.rs`. `grep -rl
+'ts(export)' crates/app/src` is the authoritative list.
 
 CI runs all of these **inside the flake** — deliberately, because Rule 13
 makes nixpkgs authoritative for the `wasm-bindgen-cli` version, and a CI with
@@ -528,8 +530,13 @@ Key domain shapes, all settled in DECISIONS:
   `render` rounds when a value has no tidy form, and a form that displays a
   rounded amount writes it back on the next save.
 - **The `.ts` files under `ui/src/lib/bindings/` are generated and CI
-  checks them.** Touching `command.rs`, `view.rs` or `tags.rs` means
-  rerunning the export command above.
+  checks them.** Touching any of the five files carrying `ts(export)` —
+  `command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs` — means
+  rerunning the export command above. **A doc comment counts**: rustdoc prose
+  is copied into the generated `.ts`, so reflowing a paragraph over a struct
+  that exports is enough to fail the gate while every test still passes. That
+  is how 0.6.0's first tag went red, on `platform.rs` — a file the earlier
+  version of this note did not even list.
 - **`wasm-opt` rejects the features rustc emits by default.** Bulk memory and
   non-trapping float-to-int are on for `wasm32-unknown-unknown`, and the
   target-features section does not survive `wasm-bindgen`, so every one has to
