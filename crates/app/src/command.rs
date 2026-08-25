@@ -54,7 +54,13 @@ pub enum Command {
 
     AddRecipeToList {
         recipe: String,
-        servings: u32,
+        /// Absent means "as the recipe is written". That is how a swiped row
+        /// asks (DECISIONS 0067): a gesture has nowhere to put a number, and
+        /// what to put there instead is the recipe's own business rather than
+        /// something the frontend should read off a view and hand back
+        /// (Rule 9). Cooking it for a different number tonight is what the
+        /// list's own "− 4 pers. +" is for.
+        servings: Option<u32>,
     },
 
     /// Adds a bare ingredient. This also purges the ingredient's overlay

@@ -83,7 +83,7 @@ impl CabasApp {
     /// The host persists this: it holds the only durable copy (0031), and a
     /// device that chose a user and did not write the result down comes back
     /// from the next launch not knowing who it is.
-    #[wasm_bindgen(js_name = identity)]
+    #[wasm_bindgen]
     pub fn identity(&self) -> Result<JsValue, JsError> {
         to_js(self.inner.borrow().identity())
     }

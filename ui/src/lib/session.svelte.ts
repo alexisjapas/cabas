@@ -41,6 +41,24 @@ const SCREEN_KEY = 'cabas.screen';
 const SCROLL_KEY = 'cabas.scroll';
 
 /**
+ * The commands that change who this device says it is (DECISIONS 0068).
+ *
+ * The core's copy of the identity dies with the page; the durable one is the
+ * host's (0031), so every one of these has to be written back to
+ * `localStorage` after it applies. Running one and forgetting that works
+ * perfectly until the next launch, which is the worst shape a bug can have —
+ * so the set is enumerated here, once, and `run` consults it. A door beside
+ * `run` was the earlier answer and it had the flaw every parallel door has:
+ * `rename_user` moves the identity too, and went through `run`.
+ */
+const MOVES_IDENTITY: ReadonlySet<Command['command']> = new Set([
+  'choose_user',
+  'create_user',
+  'name_device',
+  'rename_user',
+]);
+
+/**
  * Long enough that a burst of taps coalesces, short enough that the write has
  * landed before a thumb can background the app. The lifecycle listeners cover
  * the case where it does not.
@@ -152,6 +170,7 @@ export class Session {
     try {
       this.state = this.#core.apply(command);
       this.error = null;
+      if (MOVES_IDENTITY.has(command.command)) rememberIdentity(this.#core.identity());
       this.#scheduleFlush();
       this.sync.localChange();
       return true;
@@ -159,22 +178,6 @@ export class Session {
       this.error = cause instanceof Error ? cause.message : String(cause);
       return false;
     }
-  }
-
-  /**
-   * A command that changes who this device says it is, and the write to
-   * `localStorage` that has to follow it (DECISIONS 0068).
-   *
-   * `choose_user`, `create_user` and `name_device` all move the identity, and
-   * the core's copy dies with the page: the durable one is the host's (0031).
-   * Running them through `run` alone would work perfectly until the next
-   * launch, which is the worst shape a bug can have — so they go through
-   * here instead, and there is one door rather than a rule to remember.
-   */
-  identify(command: Command): boolean {
-    if (!this.run(command)) return false;
-    rememberIdentity(this.#core.identity());
-    return true;
   }
 
   /**

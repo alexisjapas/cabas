@@ -121,36 +121,36 @@
   <main class="first">
     <Pairing onpaired={(group) => void register(group)} />
   </main>
-{:else if phase.session.state.me === null}
-  <!-- The app is open, the replica is loaded and sync is running; what is
-       missing is the one thing only the group's roster can answer, so the
-       question sits over it rather than in front of it (DECISIONS 0068). -->
-  {@const session = phase.session}
-  {#if session.error !== null}
-    <ErrorBanner message={session.error} ondismiss={() => session.dismissError()} />
-  {/if}
-  <Identify {session} />
 {:else}
   {@const session = phase.session}
   {#if session.error !== null}
     <ErrorBanner message={session.error} ondismiss={() => session.dismissError()} />
   {/if}
 
-  <main>
-    {#if session.screen === 'cart'}
-      <Cart {session} />
-    {:else if session.screen === 'list'}
-      <List {session} />
-    {:else if session.screen === 'recipes'}
-      <Recipes {session} />
-    {:else if session.screen === 'ingredients'}
-      <Ingredients {session} />
-    {:else}
-      <Settings {session} />
-    {/if}
-  </main>
+  {#if session.state.me === null}
+    <!-- The app is open, the replica is loaded and sync is running; what is
+         missing is the one thing only the group's roster can answer, so the
+         question sits over it rather than in front of it (DECISIONS 0068). -->
+    <main class="first">
+      <Identify {session} />
+    </main>
+  {:else}
+    <main>
+      {#if session.screen === 'cart'}
+        <Cart {session} />
+      {:else if session.screen === 'list'}
+        <List {session} />
+      {:else if session.screen === 'recipes'}
+        <Recipes {session} />
+      {:else if session.screen === 'ingredients'}
+        <Ingredients {session} />
+      {:else}
+        <Settings {session} />
+      {/if}
+    </main>
 
-  <TabBar current={session.screen} onselect={(screen) => session.show(screen)} />
+    <TabBar current={session.screen} onselect={(screen) => session.show(screen)} />
+  {/if}
 {/if}
 
 <style>
@@ -159,8 +159,9 @@
     margin: 0 auto;
   }
 
-  /* Pairing has no tab bar and the same keyboard as onboarding: one field, on
-     the first screen the phone ever shows. */
+  /* The screens before the app proper — pairing, then "qui êtes-vous ?" —
+     have no tab bar and a keyboard in front of the one field that matters
+     (DECISIONS 0040). */
   .first {
     padding: var(--space-6) var(--space-4);
     padding-top: calc(var(--safe-top) + var(--space-7));

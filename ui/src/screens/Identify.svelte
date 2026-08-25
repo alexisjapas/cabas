@@ -29,6 +29,7 @@
    */
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
+  import type { Command } from '../lib/bindings/Command';
   import { byName, matches } from '../lib/format';
   import type { Session } from '../lib/session.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
@@ -45,10 +46,16 @@
   /** Naming the device is only asked on the way in, not on a handover. */
   let arriving = $derived(session.state.me === null);
 
+  /**
+   * The two ways to answer "qui êtes-vous ?", carried as the command each one
+   * is rather than as a shape to be turned into one later.
+   */
+  type Chosen = Extract<Command, { command: 'choose_user' | 'create_user' }>;
+
   type Step =
     | { at: 'who' }
     /** Somebody was chosen; the device still needs a name. */
-    | { at: 'device'; user: { id: string } | { name: string } };
+    | { at: 'device'; user: Chosen };
 
   let step = $state<Step>({ at: 'who' });
   let query = $state('');
@@ -81,7 +88,7 @@
   }
 
   /** Chosen off the roster, or typed into the field under it. */
-  function pick(user: { id: string } | { name: string }): void {
+  function pick(user: Chosen): void {
     // On a device that is already in the group, the name is the only question
     // — its record is written and keeps the name it has.
     if (!arriving) {
@@ -101,16 +108,13 @@
    * The device's name first, then the person: that is what writes the device
    * record once, with its name already on it.
    *
-   * Both go through `identify` rather than `run`, because both move an
-   * identity whose only durable copy is the host's (DECISIONS 0031).
+   * Both move an identity whose only durable copy is the host's (DECISIONS
+   * 0031); `run` writes it back for exactly these commands, which is why
+   * neither call has to remember to.
    */
-  function apply(user: { id: string } | { name: string }, device: string | null): void {
-    if (device !== null && !session.identify({ command: 'name_device', name: device })) return;
-    const chosen =
-      'id' in user
-        ? session.identify({ command: 'choose_user', user: user.id })
-        : session.identify({ command: 'create_user', name: user.name });
-    if (!chosen) {
+  function apply(user: Chosen, device: string | null): void {
+    if (device !== null && !session.run({ command: 'name_device', name: device })) return;
+    if (!session.run(user)) {
       // The core refused — the person was deleted from another device between
       // the render and the tap. Back to a roster that no longer has them.
       step = { at: 'who' };
@@ -122,7 +126,7 @@
   function create(event: SubmitEvent): void {
     event.preventDefault();
     if (newName.trim() === '') return;
-    pick({ name: newName.trim() });
+    pick({ command: 'create_user', name: newName.trim() });
   }
 </script>
 
@@ -144,7 +148,7 @@
     <ul class="people">
       {#each shown as person (person.id)}
         <li>
-          <button type="button" class:current={person.is_me} onclick={() => pick({ id: person.id })}>
+          <button type="button" class:current={person.is_me} onclick={() => pick({ command: 'choose_user', user: person.id })}>
             <span class="name">{person.name}</span>
             {#if person.is_me}<span class="tag">vous</span>{/if}
           </button>
@@ -208,30 +212,17 @@
 {/snippet}
 
 {#if arriving}
-  <main>
-    <h1>{step.at === 'who' ? 'Qui êtes-vous ?' : 'Cet appareil'}</h1>
-    {#if step.at === 'who'}{@render who()}{:else}{@render device()}{/if}
-  </main>
+  <!-- No frame of its own: the first launch renders this inside `main.first`,
+       which is the same page shape pairing has (App.svelte). -->
+  <h1>{step.at === 'who' ? 'Qui êtes-vous ?' : 'Cet appareil'}</h1>
+  {#if step.at === 'who'}{@render who()}{:else}{@render device()}{/if}
 {:else}
-  <Screen title="Changer d'utilisateur">
-    {#snippet actions()}
-      <button type="button" class="back" onclick={() => oncancel?.()}>Retour</button>
-    {/snippet}
+  <Screen title="Changer d'utilisateur" onback={() => oncancel?.()}>
     {@render who()}
   </Screen>
 {/if}
 
 <style>
-  main {
-    max-width: var(--content-width);
-    margin: 0 auto;
-    padding: var(--space-6) var(--space-4);
-    padding-top: calc(var(--safe-top) + var(--space-7));
-    /* No tab bar here, and a keyboard in front of the one field that matters
-       — the same shape the first launch has always had (DECISIONS 0040). */
-    padding-bottom: max(var(--space-6), var(--keyboard-inset));
-  }
-
   h1 {
     font-size: var(--text-2xl);
   }
@@ -239,16 +230,6 @@
   .lead {
     margin: var(--space-2) 0 var(--space-5);
     color: var(--text-muted);
-  }
-
-  .back {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-size: var(--text-sm);
-    cursor: pointer;
   }
 
   ul {

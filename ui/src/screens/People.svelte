@@ -55,11 +55,7 @@
   }
 </script>
 
-<Screen title="Personnes et appareils">
-  {#snippet actions()}
-    <button type="button" class="back" onclick={onback}>Retour</button>
-  {/snippet}
-
+<Screen title="Personnes et appareils" {onback}>
   <ul class="people">
     {#each people as person (person.id)}
       <li>
@@ -146,16 +142,6 @@
 </Screen>
 
 <style>
-  .back {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-size: var(--text-sm);
-    cursor: pointer;
-  }
-
   ul {
     margin: 0;
     padding: 0;

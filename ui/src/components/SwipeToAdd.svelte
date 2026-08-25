@@ -1,3 +1,37 @@
+<script module lang="ts">
+  /**
+   * The two distances the gesture is made of live in `app.css` like every
+   * other measurement (Rule 10), and are read back here because the pointer
+   * maths needs numbers. Custom properties are not resolved by
+   * `getComputedStyle`, so they are written in `px` and parsed as such —
+   * anything else would come back as the literal text.
+   *
+   * They are declared on `:root`, so they are the same two numbers for every
+   * row, and they are read once for the whole app rather than once per
+   * instance: a shelf mounts one of these per ingredient, and narrowing a
+   * search remounts every row that comes back into it.
+   *
+   * The fallbacks are what the tokens say today, and are never the only copy.
+   */
+  let measured: { reach: number; rest: number } | null = null;
+
+  function lengths(): { reach: number; rest: number } {
+    if (measured === null) {
+      const styles = getComputedStyle(document.documentElement);
+      measured = {
+        reach: distance(styles.getPropertyValue('--swipe-reach'), 168),
+        rest: distance(styles.getPropertyValue('--swipe-rest'), 92),
+      };
+    }
+    return measured;
+  }
+
+  function distance(token: string, fallback: number): number {
+    const value = Number.parseFloat(token);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+</script>
+
 <script lang="ts">
   /**
    * A row that goes on the list by being pushed there (DECISIONS 0067).
@@ -61,31 +95,7 @@
    */
   const SLOP = 8;
 
-  /**
-   * The two distances the gesture is made of live in `app.css` like every
-   * other measurement (Rule 10), and are read back here because the pointer
-   * maths needs numbers. Custom properties are not resolved by
-   * `getComputedStyle`, so they are written in `px` and parsed as such —
-   * anything else would come back as the literal text.
-   *
-   * The fallbacks are what the tokens say today: they are used for the frame
-   * between mount and the effect, and are never the only copy.
-   */
-  let root = $state<HTMLElement | null>(null);
-  let reach = $state(168);
-  let rest = $state(92);
-
-  $effect(() => {
-    if (root === null) return;
-    const styles = getComputedStyle(root);
-    reach = distance(styles.getPropertyValue('--swipe-reach')) ?? reach;
-    rest = distance(styles.getPropertyValue('--swipe-rest')) ?? rest;
-  });
-
-  function distance(token: string): number | null {
-    const value = Number.parseFloat(token);
-    return Number.isFinite(value) && value > 0 ? value : null;
-  }
+  const { reach, rest } = lengths();
 
   type Phase =
     /** Nothing is happening; the row sits at its resting offset. */
@@ -95,7 +105,7 @@
     /** Committed to the horizontal; the row follows the finger. */
     | { at: 'dragging'; x: number; from: number; offset: number };
 
-  let phase = $state<Phase>({ at: 'rest' });
+  let phase = $state.raw<Phase>({ at: 'rest' });
   /** Set for as long as it takes the click after a real drag to arrive. */
   let moved = $state(false);
 
@@ -160,7 +170,7 @@
       phase = { at: 'rest' };
       return;
     }
-    const reached = phase.offset >= reach;
+    const reached = armed;
     phase = { at: 'rest' };
     // Only ever an add. Undoing is the button, not the gesture: a list entry
     // is worth one deliberate tap to remove, and a leftward flick over a row
@@ -177,7 +187,7 @@
   }
 </script>
 
-<div class="swipe" bind:this={root}>
+<div class="swipe">
   <div class="behind" class:done={entry !== null}>
     {#if entry !== null}
       <button type="button" class="undo" onclick={() => onundo(entry)}>Annuler</button>

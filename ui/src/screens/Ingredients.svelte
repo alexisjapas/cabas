@@ -12,6 +12,7 @@
   import type { IngredientView } from '../lib/bindings/IngredientView';
   import { mintIngredientId } from '../lib/core';
   import { byName, matches } from '../lib/format';
+  import { entriesBySource } from '../lib/list';
   import { AISLE_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
 
@@ -43,23 +44,8 @@
     ),
   );
 
-  /**
-   * The list entry each ingredient already has, if it has one (DECISIONS
-   * 0067).
-   *
-   * Derived from the core's own list rather than remembered from the
-   * gesture, which is what makes a swiped row still offer its way out after
-   * a reload — and makes it stop offering one the moment the other phone
-   * takes the entry off the list. The newest entry wins, because it is the
-   * one an undo means.
-   */
-  let onList = $derived.by(() => {
-    const found = new Map<string, string>();
-    for (const entry of session.state.list) {
-      if (entry.item.kind === 'ingredient') found.set(entry.item.ingredient, entry.id);
-    }
-    return found;
-  });
+  /** The list entry each row already has, if it has one (DECISIONS 0067). */
+  let onList = $derived(entriesBySource(session.state.list));
 
   /**
    * The draft is always a whole one and `writing` says whether it is on

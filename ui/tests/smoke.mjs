@@ -310,10 +310,7 @@ const HELPERS = `
    * the component does is what keeps this from testing the slop by accident.
    */
   window.__swipe = async (selector, text, distance) => {
-    const front = [...document.querySelectorAll(selector)]
-      .find((node) => node.textContent.trim().includes(text));
-    if (!front) throw new Error('no ' + selector + ' containing ' + text);
-
+    const front = window.__find(selector, text);
     const box = front.getBoundingClientRect();
     const y = box.top + box.height / 2;
     const from = box.left + 8;
@@ -346,11 +343,18 @@ const HELPERS = `
     if (!el) throw new Error('missing ' + selector);
     el.click();
   };
-  window.__clickText = (selector, text) => {
+  window.__find = (selector, text) => {
     const el = [...document.querySelectorAll(selector)].find((n) => n.textContent.trim().includes(text));
     if (!el) throw new Error('no ' + selector + ' containing ' + text);
-    el.click();
+    return el;
   };
+  window.__clickText = (selector, text) => window.__find(selector, text).click();
+  /** The roster as People.svelte renders it — one place that knows its shape. */
+  window.__roster = () =>
+    [...document.querySelectorAll('.people > li')].map((person) => ({
+      name: person.querySelector('.name').textContent.trim(),
+      devices: [...person.querySelectorAll('.devices .device-name')].map((d) => d.textContent.trim()),
+    }));
   window.__text = (selector) => document.querySelector(selector)?.textContent.trim() ?? null;
   window.__all = (selector) => [...document.querySelectorAll(selector)].map((n) => n.textContent.trim());
   true;
@@ -1565,14 +1569,7 @@ await evaluate(`__clickText('button', 'Personnes et appareils')`);
 await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster');
 await waitFor(`__all('.people > li .name').includes('Alexis')`, 'the person who started it');
 
-const roster = JSON.parse(
-  await evaluate(`
-    JSON.stringify([...document.querySelectorAll('.people > li')].map((person) => ({
-      name: person.querySelector('.name').textContent.trim(),
-      devices: [...person.querySelectorAll('.devices .device-name')].map((d) => d.textContent.trim()),
-    })))
-  `),
-);
+const roster = JSON.parse(await evaluate('JSON.stringify(__roster())'));
 const camille = roster.find((person) => person.name.startsWith('Camille'));
 const alexis = roster.find((person) => person.name.startsWith('Alexis'));
 if (roster.length !== 2 || !camille || !alexis) {
@@ -1636,14 +1633,7 @@ await waitFor(
 );
 await evaluate(`__clickText('button', 'Personnes et appareils')`);
 await waitFor(`__text('h1') === 'Personnes et appareils'`, 'the roster, after the round trip');
-const rosterAfter = JSON.parse(
-  await evaluate(`
-    JSON.stringify([...document.querySelectorAll('.people > li')].map((person) => ({
-      name: person.querySelector('.name').textContent.trim(),
-      devices: [...person.querySelectorAll('.devices .device-name')].map((d) => d.textContent.trim()),
-    })))
-  `),
-);
+const rosterAfter = JSON.parse(await evaluate('JSON.stringify(__roster())'));
 if (rosterAfter.length !== 2) {
   throw failed(`changing user created or removed somebody: ${JSON.stringify(rosterAfter)}`);
 }

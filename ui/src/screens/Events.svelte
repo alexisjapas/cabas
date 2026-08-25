@@ -26,11 +26,7 @@
   let events = $derived(session.state.events);
 </script>
 
-<Screen title="Journal">
-  {#snippet actions()}
-    <button type="button" class="back" onclick={onback}>Retour</button>
-  {/snippet}
-
+<Screen title="Journal" {onback}>
   {#if events.length === 0}
     <p class="empty">
       Rien pour l'instant. Les modifications et les suppressions apparaîtront ici.
@@ -63,16 +59,6 @@
 </Screen>
 
 <style>
-  .back {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-size: var(--text-sm);
-    cursor: pointer;
-  }
-
   ul {
     margin: 0;
     padding: 0;

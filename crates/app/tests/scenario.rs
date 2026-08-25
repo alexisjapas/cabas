@@ -258,7 +258,7 @@ async fn scenario() {
     let state = app
         .dispatch(Command::AddRecipeToList {
             recipe: recipe.clone(),
-            servings: 6,
+            servings: Some(6),
         })
         .await
         .expect("the recipe goes on the list");
@@ -404,7 +404,7 @@ async fn broken_reference() {
     let state = app
         .dispatch(Command::AddRecipeToList {
             recipe: recipe.clone(),
-            servings: 4,
+            servings: Some(4),
         })
         .await
         .expect("on the list");
@@ -435,7 +435,7 @@ async fn broken_reference() {
     let state = app
         .dispatch(Command::AddRecipeToList {
             recipe,
-            servings: 4,
+            servings: None,
         })
         .await
         .expect("on the list");

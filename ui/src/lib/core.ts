@@ -211,10 +211,11 @@ export class Core {
   /**
    * Who the core now thinks this device is.
    *
-   * `choose_user`, `create_user` and `name_device` change it, and
-   * `localStorage` holds the only durable copy (DECISIONS 0031) — so a
-   * caller that runs one of those reads this back and remembers it, or the
-   * next launch is a device that has forgotten (0068).
+   * Several commands change it and `localStorage` holds the only durable
+   * copy (DECISIONS 0031), so a caller that runs one reads this back and
+   * remembers it, or the next launch is a device that has forgotten (0068).
+   * `Session` names that set once, in `MOVES_IDENTITY`, rather than leaving
+   * it to be remembered per call site.
    */
   identity(): Identity {
     return this.#app.identity() as Identity;

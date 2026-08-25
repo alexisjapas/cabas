@@ -128,12 +128,7 @@ impl<S: Storage, P: Platform> App<S, P> {
         }
 
         let device = self.identity.device_id();
-        let known = self
-            .document
-            .devices()?
-            .into_iter()
-            .find(|d| d.id == device);
-        match known {
+        match self.device_record()? {
             // Already here and pointing at the right person: nothing to say.
             Some(held) if held.owner == user => {}
             // Here, pointing elsewhere: somebody handed the phone over
@@ -156,6 +151,15 @@ impl<S: Storage, P: Platform> App<S, P> {
             }
         }
         Ok(())
+    }
+
+    /// This device's own row in the roster, if the document holds one yet.
+    ///
+    /// It does not until somebody is carrying the device: a record needs an
+    /// owner, so the joining window has an identity with no row (0068).
+    fn device_record(&self) -> Result<Option<Device>> {
+        let id = self.identity.device_id();
+        Ok(self.document.devices()?.into_iter().find(|d| d.id == id))
     }
 
     /// The person this device belongs to, or a refusal (DECISIONS 0068).
@@ -184,12 +188,6 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(true)
     }
 
-    /// A person the group did not have yet, and this device is them.
-    ///
-    /// The same command whether it is the first member of a brand-new group
-    /// or a third person joining an old one — there is no difference to make,
-    /// and inventing one would be inventing a notion of ownership the key
-    /// model does not have (Rule 7).
     /// Names this device (DECISIONS 0068).
     ///
     /// Before there is an owner it is only the host's copy that changes,
@@ -201,7 +199,7 @@ impl<S: Storage, P: Platform> App<S, P> {
         self.identity.device_name = name.clone();
 
         let id = self.identity.device_id();
-        let Some(held) = self.document.devices()?.into_iter().find(|d| d.id == id) else {
+        let Some(held) = self.device_record()? else {
             // Nothing in the document yet, and nothing to say about it: the
             // host's copy is the only place this lives until somebody is
             // chosen. No document change, so no state push is owed either.
@@ -212,10 +210,19 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(true)
     }
 
+    /// A person the group did not have yet, and this device is them.
+    ///
+    /// The same command whether it is the first member of a brand-new group
+    /// or a third person joining an old one — there is no difference to make,
+    /// and inventing one would be inventing a notion of ownership the key
+    /// model does not have (Rule 7).
+    ///
+    /// The record itself is left to `enrol`, which writes a user the document
+    /// does not hold and is called here the moment the identity moves — so a
+    /// person is minted in one place whether they were chosen or invented.
     fn create_user(&mut self, name: &str) -> Result<bool> {
         let name = text("name", name)?.to_owned();
         let id = UserId::from_raw(self.mint(id::USER)?);
-        self.document.put_user(&User::new(id.clone(), &name))?;
         self.identity.belongs_to(&id, &name);
         self.enrol()?;
         Ok(true)
@@ -598,20 +605,27 @@ impl<S: Storage, P: Platform> App<S, P> {
 
     // --- the list -----------------------------------------------------------
 
+    /// Puts a recipe on the list.
+    ///
+    /// No `servings` means "as it is written": the recipe's own count, read
+    /// off the recipe rather than decided by the caller, for the same reason
+    /// a missing quantity is (DECISIONS 0066, 0067).
     fn add_recipe_to_list(
         &mut self,
         recipe: &str,
-        servings: u32,
+        servings: Option<u32>,
         library: &Library,
     ) -> Result<bool> {
         let recipe = RecipeId::from_raw(recipe);
-        if !library.recipes.contains_key(&recipe) {
-            return Err(AppError::not_found("recipe", recipe.as_str()));
-        }
-        let entry = self.entry(ListItem::Recipe {
-            recipe,
-            servings: servings_count(servings)?,
-        })?;
+        let held = library
+            .recipes
+            .get(&recipe)
+            .ok_or_else(|| AppError::not_found("recipe", recipe.as_str()))?;
+        let servings = match servings {
+            Some(servings) => servings_count(servings)?,
+            None => held.servings,
+        };
+        let entry = self.entry(ListItem::Recipe { recipe, servings })?;
         self.add_entry(entry, library)
     }
 

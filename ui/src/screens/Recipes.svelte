@@ -5,6 +5,7 @@
   import SwipeToAdd from '../components/SwipeToAdd.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
   import { byName, formatQuantity, matches } from '../lib/format';
+  import { entriesBySource } from '../lib/list';
   import type { Session } from '../lib/session.svelte';
   import RecipeEditor from './RecipeEditor.svelte';
   import RecipeReader from './RecipeReader.svelte';
@@ -24,19 +25,8 @@
   let recipes = $derived([...session.state.recipes].sort(byName));
   let focus = $derived(session.state.focus);
 
-  /**
-   * The list entry each recipe already has, if it has one — the same
-   * derivation the ingredient shelf makes, and for the same reason
-   * (DECISIONS 0067): the way out of a swipe belongs to the list, not to a
-   * memory of the gesture.
-   */
-  let onList = $derived.by(() => {
-    const found = new Map<string, string>();
-    for (const entry of session.state.list) {
-      if (entry.item.kind === 'recipe') found.set(entry.item.recipe, entry.id);
-    }
-    return found;
-  });
+  /** The list entry each row already has, if it has one (DECISIONS 0067). */
+  let onList = $derived(entriesBySource(session.state.list));
 
   /** The shelf narrows the same way every other list of names does (0058). */
   let query = $state('');
@@ -148,9 +138,9 @@
               session.run({
                 command: 'add_recipe_to_list',
                 recipe: recipe.id,
-                // As written. Changing it for tonight is what the list's own
-                // "− 4 pers. +" is for, and a gesture cannot ask.
-                servings: recipe.servings,
+                // As written: a gesture cannot ask, and what to use instead
+                // is the core's rule, not this screen's (DECISIONS 0067).
+                servings: null,
               })}
             onundo={(entry) => session.run({ command: 'remove_list_entry', entry })}
           >

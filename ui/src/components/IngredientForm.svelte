@@ -94,6 +94,7 @@
   }
 
   export function toInput(draft: IngredientDraft): IngredientInput {
+    const amount = orNull(draft.defaultAmount);
     return {
       id: draft.id,
       name: draft.name.trim(),
@@ -107,10 +108,7 @@
       unit_weight: orNull(draft.unitWeight),
       // The unit alone says nothing: a dropdown left on "pièce" over an empty
       // amount is the absence of an answer, not an answer of one piece.
-      default_quantity:
-        draft.defaultAmount.trim() === ''
-          ? null
-          : { amount: draft.defaultAmount.trim(), unit: draft.defaultUnit },
+      default_quantity: amount === null ? null : { amount, unit: draft.defaultUnit },
       photo: draft.photo,
     };
   }

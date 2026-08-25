@@ -9,11 +9,19 @@
   let {
     title,
     subtitle,
+    onback,
     actions,
     children,
   }: {
     title: string;
     subtitle?: string;
+    /**
+     * Given by a screen that sits over another one. Rendered here rather than
+     * passed in through `actions`, because Svelte scopes a snippet's styles
+     * to the component that wrote it — a shared look for a button the caller
+     * supplies is a rule that cannot match it.
+     */
+    onback?: () => void;
     actions?: Snippet;
     children: Snippet;
   } = $props();
@@ -24,8 +32,11 @@
     <h1>{title}</h1>
     {#if subtitle}<p>{subtitle}</p>{/if}
   </div>
-  {#if actions}
-    <div class="actions">{@render actions()}</div>
+  {#if onback || actions}
+    <div class="actions">
+      {#if onback}<button type="button" class="back" onclick={onback}>Retour</button>{/if}
+      {#if actions}{@render actions()}{/if}
+    </div>
   {/if}
 </header>
 
@@ -65,6 +76,16 @@
   .actions {
     display: flex;
     gap: var(--space-2);
+  }
+
+  .back {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-size: var(--text-sm);
+    cursor: pointer;
   }
 
   .body {

@@ -3,7 +3,16 @@ import type { IngredientInput } from "./IngredientInput";
 import type { QuantityInput } from "./QuantityInput";
 import type { RecipeInput } from "./RecipeInput";
 
-export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, servings: number, } | { "command": "add_ingredient_to_list", ingredient: string, 
+export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, 
+/**
+ * Absent means "as the recipe is written". That is how a swiped row
+ * asks (DECISIONS 0067): a gesture has nowhere to put a number, and
+ * what to put there instead is the recipe's own business rather than
+ * something the frontend should read off a view and hand back
+ * (Rule 9). Cooking it for a different number tonight is what the
+ * list's own "− 4 pers. +" is for.
+ */
+servings: number | null, } | { "command": "add_ingredient_to_list", ingredient: string, 
 /**
  * Absent means "as much of it as one usually buys": the
  * ingredient's own default quantity, or one piece if it has none
