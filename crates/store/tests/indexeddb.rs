@@ -58,7 +58,7 @@ async fn a_real_document_survives_a_save_and_a_reload() {
 
     let doc = Document::new();
     doc.put_ingredient(
-        &Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Grocery)
+        &Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Pantry)
             .with_density(Rational::new(55, 100))
             .as_staple(),
     )

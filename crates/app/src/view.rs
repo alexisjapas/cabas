@@ -25,7 +25,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{QuantityInput, RecipeInput};
 use crate::number;
-use crate::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
+use crate::tags::{
+    ActionTag, AisleTag, CheckStateTag, KeepingTag, RefDisplayTag, SubjectTag, UnitTag,
+};
 use cabas_domain::Quantity;
 
 /// Everything on screen, after the last thing that happened.
@@ -54,6 +56,9 @@ pub struct StateView {
     pub list: Vec<ListEntryView>,
     pub recipes: Vec<RecipeSummaryView>,
     pub ingredients: Vec<IngredientView>,
+    /// The shops the group buys from (DECISIONS 0071), in document order.
+    /// Sorting is the screen's business, like every other list here.
+    pub shops: Vec<ShopView>,
     /// The open recipe, if any. Device-local, never synced.
     pub focus: Option<FocusView>,
     /// What could not be made sense of, usually because another device
@@ -65,6 +70,15 @@ pub struct StateView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct UserView {
+    pub id: String,
+    pub name: String,
+}
+
+/// One shop. A name and nothing else, which is the whole of DECISIONS 0071:
+/// what a shop is for is answering "can I get this here".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub struct ShopView {
     pub id: String,
     pub name: String,
 }
@@ -178,6 +192,23 @@ pub struct CartLineView {
     pub ingredient: String,
     pub name: String,
     pub aisle: AisleTag,
+    /// The trips this line appears on — **already resolved** (DECISIONS
+    /// 0071).
+    ///
+    /// Not a copy of the ingredient's own list: an ingredient nobody has
+    /// placed, and one whose named shops have all been forgotten since, both
+    /// arrive here naming *every* shop, because hiding such a line from the
+    /// screen that would have prompted somebody to place it is how it stops
+    /// being bought. `domain::sold_at` decides that, so the frontend filters
+    /// by plain membership and holds no rule (Rule 9).
+    ///
+    /// The ingredient's own answer — what the form edits — is
+    /// [`IngredientView::shops`].
+    pub shops: Vec<String>,
+    /// Where it goes once it is home (DECISIONS 0070). On the cart line
+    /// because that is the row still on screen when the bags are being
+    /// emptied.
+    pub keeping: KeepingTag,
     pub staple: bool,
     /// Usually one. More than one when the contributions could not be merged
     /// — "300 g + 2 tbsp" is the honest rendering when no density is known
@@ -227,6 +258,14 @@ pub enum ListItemView {
         ingredient: String,
         name: String,
         quantity: QuantityView,
+        /// The same amount, losslessly, in the shape the field that edits it
+        /// hands back (DECISIONS 0072).
+        ///
+        /// Two renderings of one value for the reason
+        /// [`IngredientView::default_quantity`] gives: `quantity` is rounded
+        /// so it reads well on a row, and a form seeded from a rounded amount
+        /// writes the rounding back on the next save.
+        edit: QuantityInput,
     },
 }
 
@@ -260,6 +299,12 @@ pub struct IngredientView {
     pub name: String,
     pub aliases: Vec<String>,
     pub aisle: AisleTag,
+    /// The ids of the shops it can be bought at, in the order they were
+    /// listed (DECISIONS 0071). Ids rather than names, because this is what
+    /// the form hands back — the names are in `StateView::shops`.
+    pub shops: Vec<String>,
+    /// Where it goes once it is home (DECISIONS 0070).
+    pub keeping: KeepingTag,
     pub staple: bool,
     pub density: Option<String>,
     pub unit_weight: Option<String>,

@@ -10,7 +10,7 @@
 //! `cabas_sync::Session` keeps the two honest about doing it identically.
 
 use cabas_app::command::{IngredientInput, QuantityInput};
-use cabas_app::tags::{AisleTag, CheckStateTag, UnitTag};
+use cabas_app::tags::{AisleTag, CheckStateTag, KeepingTag, UnitTag};
 use cabas_app::view::StateView;
 use cabas_app::{App, Command, Identity, Platform};
 use cabas_domain::Timestamp;
@@ -235,6 +235,8 @@ fn save_ingredient(name: &str) -> Command {
             name: name.into(),
             aliases: Vec::new(),
             aisle: AisleTag::Produce,
+            shops: Vec::new(),
+            keeping: KeepingTag::Ambient,
             staple: false,
             density: None,
             unit_weight: None,

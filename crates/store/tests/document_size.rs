@@ -37,9 +37,9 @@ fn nz(n: u32) -> NonZeroU32 {
 fn ingredient(i: usize) -> Ingredient {
     let aisles = [
         Aisle::Produce,
-        Aisle::Butcher,
+        Aisle::Bakery,
         Aisle::Dairy,
-        Aisle::Grocery,
+        Aisle::Pantry,
         Aisle::Frozen,
     ];
     let mut ing = Ingredient::new(

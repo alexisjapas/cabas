@@ -57,13 +57,41 @@ is carrying it** (0068) — the one that fixed a defect rather than adding
 anything: joining used to mint a *new* user, so two phones belonging to one
 person put two of that person in the roster, for good.
 
+**0.7.0 is six more of the same**, all off-milestone, all about the shape of
+the app rather than its plumbing — and the first three change the domain:
+
+- **The aisles are this group's shop** (0069). Twelve again, chosen by the
+  people who walk them: no butcher, no fishmonger, and `Items` retired into
+  `Foyer · Soin & santé · Artisanat & jardin`. `SCHEMA_VERSION` does not move,
+  but **`store::codec` still reads the five retired spellings** — without that
+  mapping every existing ingredient would silently decode to `Autres` and the
+  discovery would happen in a shop.
+- **An ingredient says where it is kept** (0070) — frigo, congélateur, or
+  neither, on the ingredient and not on its aisle, and shown on the cart line
+  because that is the row on screen when the bags are emptied.
+- **A shop is a name, and the cart is one trip per shop** (0071). Ingredients
+  name the shops they are sold at, `Courses` offers a chip per shop and folds
+  the rest under "Ailleurs", and **an ingredient with no shop belongs to every
+  shop** — the half that keeps an unclassified line from being lost. Shops are
+  created in the field that needs them, on the ingredient's own form.
+- **The gesture keeps counting** (0072): the parked row shows what it asks
+  for, right adds a notch and left removes one, left past the last one takes
+  the row off the list — and **holding a row opens the exact amount**, which
+  reverses 0067's rejection of long-press for reasons that entry gives. What a
+  notch is worth is `domain::list`'s: the usual shopping quantity, or one whole
+  recipe as written (a tart for four goes 4 → 8 → 12).
+- **An ingredient's editor opens under its own row** (0073), one at a time.
+- **A tab opens cold** (0074) — nothing selected, no search, at the top. The
+  persisted *screen* stays (0003); the scroll offset within it is gone, and so
+  is the machinery that kept it.
+
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.
 
-`crates/domain` holds the product logic as pure functions (72 tests);
+`crates/domain` holds the product logic as pure functions (83 tests);
 `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB — **plus `PhotoStore`, a second trait over one record per photo**,
@@ -75,9 +103,9 @@ binding — **including the sync session** (`app::sync`, and `sync*` on
 on `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
 wire protocol, the sans-IO client `Session`); `crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 209 native tests plus 18 in
-a real browser — 9 over IndexedDB and the photo store, 9 through the app — and
-all of them run
+its own binary**. 228 native tests plus 20 in
+a real browser — 9 over IndexedDB and the photo store, 11 through the app —
+and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end. The phones then answered for themselves.
@@ -286,11 +314,12 @@ clippy --workspace` working in a fresh checkout; the release image sets
 |---|---|
 | `units` | `Dimension`, `Unit`, exact conversion factors, `convert` |
 | `quantity` | `Quantity`, scaling, addition, `ceil_to_whole`, `humanized` |
-| `ingredient` | `Ingredient`, `Aisle`, cross-dimension conversion, `resolve`, `shopping_quantity` (0066) |
+| `ingredient` | `Ingredient`, `Aisle` (0069), `Keeping` (0070), cross-dimension conversion, `resolve`, `shopping_quantity` (0066) |
+| `shop` | `Shop` — a name and nothing else; `resolve` over it, and `sold_at`, the one place "an unplaced ingredient is on every trip" is written (0071). Named `Shop` and not `Store` because `cabas-store` is a crate |
 | `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs` |
 | `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
-| `list` | `ShoppingList`, `ListEntry`, add-purges-overlay |
+| `list` | `ShoppingList`, `ListEntry`, add-purges-overlay, and what one notch of the swipe is worth — `nudge_quantity` / `nudge_servings` (0072) |
 | `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
 | `people` | `User`, `Device` — attribution names, not access control |
 | `event` | `Event`, `EventLog` — deletions and edits, capped |
@@ -304,7 +333,7 @@ one file and a compatibility surface (DECISIONS 0029):
 
 | Module | Holds |
 |---|---|
-| `schema` | Container and key names, `SCHEMA_VERSION`, the layout diagram |
+| `schema` | Container and key names, `SCHEMA_VERSION`, the layout diagram — plus `shops`, additive like every key since (0071) |
 | `codec` | `LoroValue` ⇄ primitives: rationals, units, aisles, timestamps |
 | `mapping` | Domain struct ⇄ document, one pair per entity |
 | `document` | `Document`: lifecycle, reads, writes, snapshots, sync bytes |
@@ -355,14 +384,14 @@ file:
 | `lib/core.ts` | The typed edge — the only place a cast meets the wasm `any`, plus the identity in `localStorage` (0031) |
 | `lib/session.svelte.ts` | The one `$state.raw`, `run(command)` — which also writes back the identity for the commands `MOVES_IDENTITY` names (0068) — the debounced flush, the persisted screen and its scroll offset |
 | `lib/sync.svelte.ts` | The socket and its policy: connect on foreground, backoff, push on change, the cursor and shadow in `localStorage` (0043) |
-| `lib/list.ts` | What the list already holds, keyed by the ingredient or recipe it came from — the one answer every swipeable shelf needs (0067) |
+| `lib/list.ts` | What the list already holds, keyed by the ingredient or recipe it came from — the whole entry since 0072, because a swipeable shelf now asks how much as well as whether |
 | `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
 | `lib/photo.ts` | A picked file into the JPEG the core takes: EXIF orientation, downscale, encode until it fits under `maxPhotoBytes()` (0062) |
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row and puts it on the list (0067); `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press; `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -370,9 +399,9 @@ file:
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
 
-`screens/Settings.svelte` is four views behind one tab — itself, the roster,
-the log and the user switch — and it is also where the running build names
-itself (0055), and
+`screens/Settings.svelte` is five views behind one tab — itself, the roster,
+the shops, the log and the user switch — and it is also where the running
+build names itself (0055), and
 `screens/Recipes.svelte` is three behind another — the shelf, the one being
 read, and the one being written — and the shape is worth knowing before
 touching it. Which recipe is *open* is core state (`OpenRecipe`, never
@@ -387,11 +416,10 @@ because every command returns a whole new tree and a deep proxy would track
 mutations that never happen. `run()` returns a boolean, so a form can stay
 open when a command is refused. The flush is debounced *and* hooked to
 `visibilitychange`/`pagehide`, because a pending timer dies with the page and
-iOS backgrounds a PWA whenever it likes. And the scroll offsets are a plain
-field rather than `$state`: they are written on every scroll event and read once
-per screen change, so tracking them would invalidate a render per frame to no
-end — `App.svelte` restores one after a `tick()`, which is when the screen it
-belongs to finally has something to scroll.
+iOS backgrounds a PWA whenever it likes. And **`show()` is where a tab is
+opened cold** (0074): it closes the open recipe — core state, so nothing else
+would — and scrolls to the top. Everything else a screen was in the middle of
+dies with the component, because each one sits in an `{#if}` in `App.svelte`.
 
 Key domain shapes, all settled in DECISIONS:
 
@@ -410,6 +438,15 @@ Key domain shapes, all settled in DECISIONS:
 - When coefficients allow a choice, merging prefers **count over mass over
   volume** (`Dimension::MERGE_PREFERENCE`): "5 tomatoes" is what you can act
   on in a shop, "680 g of tomatoes" is not.
+- An ingredient carries **three orthogonal placements**: its `Aisle` (where it
+  is found, and the cart's walking order — 0069), its `shops` (which trips it
+  belongs to, empty meaning all of them — 0071) and its `Keeping` (where it
+  goes at home — 0070). Collapsing any two of them was rejected in each entry
+  for the same reason: they answer questions asked in three different places.
+- One **notch** of the swipe is the ingredient's `shopping_quantity` or the
+  recipe's own `servings` (0072). Nudging down past the last one returns
+  `Nudged::Off` and the entry leaves the list; a step that cannot be expressed
+  in the line's dimension returns `Refused` rather than a guess (Rule 5).
 
 ## Conventions
 
@@ -486,6 +523,25 @@ Key domain shapes, all settled in DECISIONS:
   the line at the end of the cart — but it does need widening the two
   hand-written arrays that list every variant, one in `store::codec` and one in
   `app::tags`, plus the total `Record` in `labels.ts`.
+- **Retiring an aisle is not cheap, and it fails silently.** The graceful
+  degradation above cuts the other way: drop a tag and every ingredient
+  already filed under it decodes to `Other` on the next launch. The document
+  opens, every test passes, and the whole library is at the end of the cart —
+  which is discovered in a shop. `codec::aisle` therefore keeps a read-only
+  mapping for the five spellings 0069 retired (`grocery`, `items`, `butcher`,
+  `fish`, `deli`), and `a_retired_aisle_still_reads_as_the_shelf_it_became`
+  is what stops it being deleted as dead code. The same applies to any tag set
+  the codec degrades rather than refuses.
+- **An ingredient with no shop is sold *everywhere*, not nowhere** — and so is
+  one whose shops have all been forgotten since. `domain::sold_at` is the only
+  place that rule is written (DECISIONS 0071); it needs the shop library to
+  answer at all, which is what makes the orphaned case decidable, and it is
+  why `CartLineView.shops` carries the **resolved** trips rather than a copy
+  of the ingredient's own list. The frontend filters by plain membership and
+  holds no rule. Re-deriving it on the Svelte side — `shops.length === 0 ||
+  shops.includes(…)` — is the tempting one-liner, and it is a second copy of a
+  business rule that will drift; reading it as "nowhere" instead is a
+  one-character change that loses an item off a shopping list.
 - **`LoroValue` has no exact numeric type**, only `I64` and `Double`. Every
   rational is encoded as a `"numer/denom"` string; the guard that keeps it
   that way is `no_float_ever_reaches_the_document` in `document.rs`.
@@ -663,12 +719,18 @@ Key domain shapes, all settled in DECISIONS:
   reaches the network on a cache miss; and the emulation does not survive a
   navigation. `smoke.mjs` attaches to the worker target and re-applies after
   every load — before it did, the offline test passed against a live server.
-- **A `scroll` event arrives a frame after the scrolling.** Recording
-  `window.scrollY` against `session.screen` at event time therefore attributes
-  the outgoing screen's last scroll to the incoming one, wiping the offset that
-  was about to be restored — switching tabs and back landed at the top about
-  half the time. `show()` reads the outgoing offset synchronously and
-  `#settling` suppresses the listener until `restoreScroll` has run.
+- **A tab opens cold, and two of the three things that has to reset are not
+  free.** Component-local state dies on its own — each screen sits in an
+  `{#if}` in `App.svelte`, so switching away destroys it. The open recipe is
+  *core* state and has to be closed with a command, and the scroll offset
+  belongs to the window (DECISIONS 0074). `Session.show` does both; anything
+  new that a screen remembers outside its own component has to be added there.
+- **A duration token has a unit, and `parseFloat` drops it.** `--press-delay`
+  is authored `500ms` and the CSS minifier ships it as `.5s`, so a bare
+  `parseFloat` gives 0.5 — in `SwipeToAdd` that is a long press firing
+  instantly, and in the test that drives it, it looked exactly like a press
+  that never fired at all. Both ends read the unit back. The distance tokens
+  are safe only because `px` survives minification unchanged.
 - **iOS does not resize the page for the keyboard.** The layout viewport keeps
   its height and the keys are drawn over it, so `100dvh`, `position: fixed` and
   `env(safe-area-inset-bottom)` all describe a viewport whose bottom third is

@@ -7,6 +7,7 @@ import type { ListEntryView } from "./ListEntryView";
 import type { PersonView } from "./PersonView";
 import type { ProblemView } from "./ProblemView";
 import type { RecipeSummaryView } from "./RecipeSummaryView";
+import type { ShopView } from "./ShopView";
 import type { UserView } from "./UserView";
 
 /**
@@ -39,6 +40,11 @@ people: Array<PersonView>,
  * (DECISIONS 0024).
  */
 events: Array<EventView>, cart: CartView, list: Array<ListEntryView>, recipes: Array<RecipeSummaryView>, ingredients: Array<IngredientView>, 
+/**
+ * The shops the group buys from (DECISIONS 0071), in document order.
+ * Sorting is the screen's business, like every other list here.
+ */
+shops: Array<ShopView>, 
 /**
  * The open recipe, if any. Device-local, never synced.
  */

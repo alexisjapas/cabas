@@ -14,7 +14,7 @@
 
 use cabas_app::command::{IngredientInput, QuantityInput};
 use cabas_app::sync::{SyncCursor, SyncEvent, SyncSession, mint_phrase, read_phrase};
-use cabas_app::tags::{AisleTag, UnitTag};
+use cabas_app::tags::{AisleTag, KeepingTag, UnitTag};
 use cabas_app::{App, Command, Identity, Platform};
 use cabas_domain::Timestamp;
 use cabas_store::MemoryStorage;
@@ -96,6 +96,8 @@ fn save(name: &str) -> Command {
             name: name.into(),
             aliases: Vec::new(),
             aisle: AisleTag::Produce,
+            shops: Vec::new(),
+            keeping: KeepingTag::Ambient,
             staple: false,
             density: None,
             unit_weight: None,

@@ -2,6 +2,7 @@
   import type { AisleTag } from '../lib/bindings/AisleTag';
   import type { IngredientInput } from '../lib/bindings/IngredientInput';
   import type { IngredientView } from '../lib/bindings/IngredientView';
+  import type { KeepingTag } from '../lib/bindings/KeepingTag';
   import type { UnitTag } from '../lib/bindings/UnitTag';
 
   /**
@@ -25,6 +26,14 @@
     name: string;
     aliases: string;
     aisle: AisleTag;
+    /**
+     * The ids of the shops it can be bought at, in the order they are read
+     * (DECISIONS 0071). Empty means "nobody has said", which the cart reads
+     * as every shop rather than none.
+     */
+    shops: string[];
+    /** Fridge, freezer or a cupboard (DECISIONS 0070). */
+    keeping: KeepingTag;
     staple: boolean;
     density: string;
     unitWeight: string;
@@ -62,7 +71,9 @@
       id,
       name: name.trim(),
       aliases: '',
-      aisle: 'grocery',
+      aisle: 'pantry',
+      shops: [],
+      keeping: 'ambient',
       staple: false,
       density: '',
       unitWeight: '',
@@ -78,6 +89,8 @@
       name: ingredient.name,
       aliases: ingredient.aliases.join(', '),
       aisle: ingredient.aisle,
+      shops: [...ingredient.shops],
+      keeping: ingredient.keeping,
       staple: ingredient.staple,
       density: ingredient.density ?? '',
       unitWeight: ingredient.unit_weight ?? '',
@@ -103,6 +116,8 @@
         .map((alias) => alias.trim())
         .filter((alias) => alias !== ''),
       aisle: draft.aisle,
+      shops: [...draft.shops],
+      keeping: draft.keeping,
       staple: draft.staple,
       density: orNull(draft.density),
       unit_weight: orNull(draft.unitWeight),
@@ -117,10 +132,11 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import { AISLE_LABEL, AISLES } from '../lib/labels';
+  import { AISLE_LABEL, AISLES, KEEPING_LABEL, KEEPINGS } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
   import PhotoField from './PhotoField.svelte';
   import QuantityField from './QuantityField.svelte';
+  import ShopPicker from './ShopPicker.svelte';
 
   /**
    * # Why this is not a `<form>`
@@ -221,6 +237,18 @@
         <option value={aisle}>{AISLE_LABEL[aisle]}</option>
       {/each}
     </select>
+  </label>
+
+  <ShopPicker {session} bind:selected={draft.shops} {onkeydown} />
+
+  <label>
+    Conservation
+    <select bind:value={draft.keeping} data-field="keeping" {onkeydown}>
+      {#each KEEPINGS as keeping (keeping)}
+        <option value={keeping}>{KEEPING_LABEL[keeping]}</option>
+      {/each}
+    </select>
+    <small>Où ça va une fois rentré.</small>
   </label>
 
   <label class="check">

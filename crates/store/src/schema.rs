@@ -13,6 +13,7 @@
 //! meta        map     { schema: i64 }
 //! ingredients map     IngredientId -> map   (container per ingredient)
 //! recipes     map     RecipeId     -> map   (container per recipe)
+//! shops       map     ShopId       -> map   (container per shop)
 //! list        movable list of maps          (the single shopping list)
 //! overlay     map     IngredientId -> value map  (explicit actions only)
 //! users       map     UserId       -> map
@@ -44,6 +45,10 @@ pub mod root {
     pub const META: &str = "meta";
     pub const INGREDIENTS: &str = "ingredients";
     pub const RECIPES: &str = "recipes";
+    /// The shops the group buys from (DECISIONS 0071). Additive: a build
+    /// that predates it never reads this container and never writes to it, so
+    /// its ingredients simply carry no shop.
+    pub const SHOPS: &str = "shops";
     pub const LIST: &str = "list";
     pub const OVERLAY: &str = "overlay";
     pub const USERS: &str = "users";
@@ -90,6 +95,26 @@ pub mod ingredient {
     /// rewrite it on save, so adding it costs no `SCHEMA_VERSION` bump —
     /// the same argument that let the `Items` aisle ship (0057).
     pub const PHOTO: &str = "photo";
+    /// The shops this can be bought at, as a list of `ShopId` strings, in the
+    /// order somebody listed them (DECISIONS 0071). Absent means "nobody has
+    /// said", which the domain reads as *every* shop rather than none.
+    ///
+    /// Additive like the two keys above, and for the same reason.
+    pub const SHOPS: &str = "shops";
+    /// Fridge, freezer or neither (DECISIONS 0070). Absent decodes as
+    /// `ambient`, which is both the default and what every ingredient written
+    /// before this key existed means.
+    pub const KEEPING: &str = "keeping";
+}
+
+/// A shop: a name, and nothing else (DECISIONS 0071).
+///
+/// A container per shop rather than a plain value map, like an ingredient and
+/// unlike a list entry, because a shop is a thing two people can be editing
+/// at once — one renaming it while the other is only reading — and because a
+/// value map keyed by id would make renaming and creating the same operation.
+pub mod shop {
+    pub const NAME: &str = "name";
 }
 
 pub mod recipe {

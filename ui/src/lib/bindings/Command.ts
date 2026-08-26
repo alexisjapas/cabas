@@ -2,8 +2,9 @@
 import type { IngredientInput } from "./IngredientInput";
 import type { QuantityInput } from "./QuantityInput";
 import type { RecipeInput } from "./RecipeInput";
+import type { ShopInput } from "./ShopInput";
 
-export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, 
+export type Command = { "command": "save_ingredient", ingredient: IngredientInput, } | { "command": "delete_ingredient", ingredient: string, } | { "command": "save_shop", shop: ShopInput, } | { "command": "delete_shop", shop: string, } | { "command": "save_recipe", recipe: RecipeInput, } | { "command": "delete_recipe", recipe: string, } | { "command": "add_recipe_to_list", recipe: string, 
 /**
  * Absent means "as the recipe is written". That is how a swiped row
  * asks (DECISIONS 0067): a gesture has nowhere to put a number, and
@@ -21,4 +22,4 @@ servings: number | null, } | { "command": "add_ingredient_to_list", ingredient: 
  * business logic rather than something the frontend should hold
  * (Rule 9).
  */
-quantity: QuantityInput | null, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, } | { "command": "choose_user", user: string, } | { "command": "create_user", name: string, } | { "command": "name_device", name: string, };
+quantity: QuantityInput | null, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "set_entry_quantity", entry: string, quantity: QuantityInput, } | { "command": "nudge_list_entry", entry: string, steps: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, } | { "command": "choose_user", user: string, } | { "command": "create_user", name: string, } | { "command": "name_device", name: string, };

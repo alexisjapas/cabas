@@ -26,6 +26,47 @@
   let cart = $derived(session.state.cart);
   let picked = $derived(cart.total - cart.remaining);
 
+  /**
+   * Which shop this trip is (DECISIONS 0071). `null` is "Tous" — one list,
+   * the way it was before shops existed.
+   *
+   * Device-local and deliberately not remembered: a tab opens cold (0074),
+   * and "which shop am I standing in" is the most perishable fact this app
+   * holds. It dies with the component, which is what switching tabs does to
+   * it.
+   */
+  let shop = $state<string | null>(null);
+
+  /**
+   * The shops worth offering: the ones something in the cart names. A shop
+   * nothing on the list belongs to is a chip that filters to an empty screen.
+   *
+   * Read across the whole cart rather than only what is left to buy, so the
+   * chips do not rearrange themselves under a thumb as things are ticked off.
+   */
+  let offered = $derived.by(() => {
+    const named = new Set(
+      [...cart.to_buy, ...cart.bought, ...cart.at_home].flatMap((line) => line.shops),
+    );
+    return session.state.shops.filter((held) => named.has(held.id)).sort(byName);
+  });
+
+  /**
+   * Whether a line belongs to the trip being shown.
+   *
+   * Plain membership, and deliberately nothing more: `line.shops` arrives
+   * already resolved, so an ingredient nobody has placed already names every
+   * shop by the time it gets here (DECISIONS 0071). Writing the "empty means
+   * everywhere" rule out again on this side would be a second copy of it, and
+   * the two would drift.
+   */
+  function here(line: CartLineView): boolean {
+    return shop === null || line.shops.includes(shop);
+  }
+
+  let inThisShop = $derived(cart.to_buy.filter(here));
+  let elsewhere = $derived(cart.to_buy.filter((line) => !here(line)));
+
   type Group = { aisle: AisleTag; lines: CartLineView[] };
 
   /**
@@ -39,7 +80,7 @@
    */
   let groups = $derived.by(() => {
     const built: Group[] = [];
-    for (const line of cart.to_buy) {
+    for (const line of inThisShop) {
       const last = built[built.length - 1];
       if (last !== undefined && last.aisle === line.aisle) {
         last.lines.push(line);
@@ -85,10 +126,23 @@
     </div>
   {/if}
 
+  {#if offered.length > 0}
+    <div class="shops" role="group" aria-label="Magasin">
+      <button type="button" class:on={shop === null} onclick={() => (shop = null)}>Tous</button>
+      {#each offered as held (held.id)}
+        <button type="button" class:on={shop === held.id} onclick={() => (shop = held.id)}>
+          {held.name}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   {#if cart.total === 0}
     <p class="empty">
       Ajoutez une recette ou un ingrédient à la liste : le panier se remplit tout seul.
     </p>
+  {:else if inThisShop.length === 0 && elsewhere.length > 0}
+    <p class="empty">Rien à prendre ici. Le reste est plus bas.</p>
   {/if}
 
   {#each groups as group (group.aisle)}
@@ -103,6 +157,18 @@
       </ul>
     </section>
   {/each}
+
+  {#if elsewhere.length > 0}
+    <details>
+      <summary>Ailleurs ({elsewhere.length})</summary>
+      <p class="hint">Ce que ce magasin ne vend pas. Toujours à prendre, mais pas ici.</p>
+      <ul>
+        {#each elsewhere as line (line.ingredient)}
+          <li><CartLine {session} {line} ontoggle={() => toggle(line.ingredient)} /></li>
+        {/each}
+      </ul>
+    </details>
+  {/if}
 
   {#if cart.bought.length > 0}
     <details>
@@ -163,6 +229,37 @@
     margin: var(--space-6) 0;
     color: var(--text-muted);
     text-align: center;
+  }
+
+  /* One row of chips, scrolled sideways rather than wrapped: the number of
+     shops is small but not bounded, and a second row would push the first
+     aisle off a phone screen. */
+  .shops {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    overflow-x: auto;
+    /* The scroll is inside this strip; the page itself never moves sideways. */
+    scrollbar-width: none;
+  }
+
+  .shops button {
+    flex: none;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: inherit;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .shops button.on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: var(--weight-medium);
   }
 
   section {

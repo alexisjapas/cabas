@@ -31,6 +31,10 @@
   --danger: #a83c2b;
   --danger-soft: #fbeae7;
   --on-danger: #ffffff;
+  /* What dims the app behind a panel that has to be answered. Dark in both
+     themes on purpose: a scrim says "this is on top of that", and a light one
+     over a dark app says the opposite. */
+  --scrim: rgb(0 0 0 / 40%);
 
   /* --- Spacing -------------------------------------------------------- */
   --space-1: 0.25rem;
@@ -80,14 +84,20 @@
   --duration-spring: 420ms;
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
-  /* --- The swipe that puts a row on the list (DECISIONS 0067) ---------- */
+  /* --- The swipe that puts a row on the list (DECISIONS 0067, 0072) ----- */
   /* How far a row travels before it hits its stop. Long on purpose: this
      gesture edits a list that is not on screen, and a short one would fire
-     on every scroll that started slightly sideways. */
+     on every scroll that started slightly sideways. It is also the distance
+     of a *second* notch in either direction, measured from where the row
+     parked — one gesture, one notch, whichever way it goes. */
   --swipe-reach: 168px;
-  /* Where the row parks afterwards — exactly the width of the way out, so
-     "Annuler" ends up uncovered and nothing else does. */
-  --swipe-rest: 92px;
+  /* Where the row parks afterwards — the width of the way out, which since
+     0072 carries the amount as well as the word "Annuler". */
+  --swipe-rest: 104px;
+  /* How long a finger has to stay still on a row before it is a press and
+     not a swipe. Short enough to feel deliberate rather than slow; longer
+     than the two hundred milliseconds a scroll takes to get going. */
+  --press-delay: 500ms;
 
   /* --- Layout --------------------------------------------------------- */
   /* Phone first; on a wide screen the column stays a column rather than
@@ -132,6 +142,7 @@
     --danger: #e08375;
     --danger-soft: #33211f;
     --on-danger: #2a100b;
+    --scrim: rgb(0 0 0 / 60%);
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
     --shadow-md: 0 6px 20px rgb(0 0 0 / 50%);

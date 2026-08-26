@@ -35,7 +35,7 @@ fn nz(n: u32) -> NonZeroU32 {
 }
 
 fn flour() -> Ingredient {
-    Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Grocery)
+    Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Pantry)
         .with_density(Rational::new(55, 100))
         .as_staple()
 }
@@ -372,7 +372,7 @@ fn the_same_ingredient_created_twice_offline_becomes_one_ingredient() {
     let (phone, laptop) = paired();
     let id = IngredientId::from_raw("saffron");
 
-    let mut mine = Ingredient::new(id.clone(), "Saffron", Aisle::Grocery);
+    let mut mine = Ingredient::new(id.clone(), "Saffron", Aisle::Pantry);
     mine.aliases.push("Safran".into());
     phone.put_ingredient(&mine).expect("write");
 
@@ -393,7 +393,7 @@ fn the_same_ingredient_created_twice_offline_becomes_one_ingredient() {
     // mixture with holes in it.
     let merged = &saffron[0];
     assert_eq!(merged.name, "Saffron");
-    assert!(matches!(merged.aisle, Aisle::Grocery | Aisle::Other));
+    assert!(matches!(merged.aisle, Aisle::Pantry | Aisle::Other));
 }
 
 #[test]

@@ -5,4 +5,4 @@
  * order the cart sorts by — that ordering lives in `domain`, and this is
  * only its name on the wire.
  */
-export type AisleTag = "produce" | "butcher" | "fish" | "deli" | "dairy" | "bakery" | "grocery" | "frozen" | "beverages" | "household" | "items" | "other";
+export type AisleTag = "produce" | "bakery" | "dairy" | "pantry" | "frozen" | "staples" | "snacks" | "beverages" | "household" | "care" | "crafts" | "other";

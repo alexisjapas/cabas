@@ -135,6 +135,18 @@ export function mintIngredientId(): string {
 }
 
 /**
+ * The id of a shop the ingredient form is about to create.
+ *
+ * The third of the same shape, for the same reason one layer up (DECISIONS
+ * 0071): the field where a shop's name is typed has to put the new shop on
+ * the draft it is sitting in the instant it exists, and `SaveShop` hands back
+ * a whole state rather than the id it minted.
+ */
+export function mintShopId(): string {
+  return CabasApp.mintShopId();
+}
+
+/**
  * Which build is running, from the core — the workspace version, which is
  * also the add-on's (Rule 15).
  *

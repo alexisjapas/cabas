@@ -1,11 +1,16 @@
 <script lang="ts">
+  import AmountDialog, {
+    servingsDraft,
+    type AmountDraft,
+  } from '../components/AmountDialog.svelte';
   import Photo from '../components/Photo.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchField from '../components/SearchField.svelte';
   import SwipeToAdd from '../components/SwipeToAdd.svelte';
   import type { RecipeInput } from '../lib/bindings/RecipeInput';
+  import type { RecipeSummaryView } from '../lib/bindings/RecipeSummaryView';
   import { byName, formatQuantity, matches } from '../lib/format';
-  import { entriesBySource } from '../lib/list';
+  import { badgeOf, entriesBySource } from '../lib/list';
   import type { Session } from '../lib/session.svelte';
   import RecipeEditor from './RecipeEditor.svelte';
   import RecipeReader from './RecipeReader.svelte';
@@ -92,6 +97,41 @@
   function count(n: number, one: string, many: string): string {
     return `${n} ${n > 1 ? many : one}`;
   }
+
+  // --- how many people, from the shelf (DECISIONS 0072) ---------------------
+
+  /**
+   * Holding a recipe row asks how many people, which is what a recipe's
+   * amount *is*. The swipe counts whole recipes and cannot say "for five".
+   */
+  let pressed = $state<RecipeSummaryView | null>(null);
+  let people = $state<AmountDraft>(servingsDraft(4));
+
+  function press(recipe: RecipeSummaryView): void {
+    const entry = onList.get(recipe.id);
+    people = servingsDraft(
+      entry !== undefined && entry.item.kind === 'recipe' ? entry.item.servings : recipe.servings,
+    );
+    pressed = recipe;
+  }
+
+  function confirm(chosen: AmountDraft): void {
+    if (pressed === null) return;
+    const entry = onList.get(pressed.id);
+    const accepted =
+      entry === undefined
+        ? session.run({
+            command: 'add_recipe_to_list',
+            recipe: pressed.id,
+            servings: chosen.servings,
+          })
+        : session.run({
+            command: 'set_entry_servings',
+            entry: entry.id,
+            servings: chosen.servings,
+          });
+    if (accepted) pressed = null;
+  }
 </script>
 
 {#if writing}
@@ -130,10 +170,12 @@
 
     <ul>
       {#each shown as recipe (recipe.id)}
+        {@const entry = onList.get(recipe.id)}
         <li>
           <SwipeToAdd
             label={recipe.name}
-            entry={onList.get(recipe.id) ?? null}
+            entry={entry?.id ?? null}
+            badge={badgeOf(entry)}
             onadd={() =>
               session.run({
                 command: 'add_recipe_to_list',
@@ -142,7 +184,11 @@
                 // is the core's rule, not this screen's (DECISIONS 0067).
                 servings: null,
               })}
-            onundo={(entry) => session.run({ command: 'remove_list_entry', entry })}
+            onnudge={(steps) =>
+              entry !== undefined &&
+              session.run({ command: 'nudge_list_entry', entry: entry.id, steps })}
+            onundo={(id) => session.run({ command: 'remove_list_entry', entry: id })}
+            onpress={() => press(recipe)}
           >
           <button
             type="button"
@@ -170,6 +216,16 @@
       {/each}
     </ul>
   </Screen>
+
+  {#if pressed !== null}
+    {@const row = pressed}
+    <AmountDialog
+      title={row.name}
+      bind:draft={people}
+      onconfirm={confirm}
+      oncancel={() => (pressed = null)}
+    />
+  {/if}
 {/if}
 
 <style>

@@ -124,6 +124,16 @@ impl CabasApp {
         Ok(crate::mint_ingredient_id(&SystemPlatform)?)
     }
 
+    /// Mints the id of a shop the ingredient form is about to create.
+    ///
+    /// The third of the same shape, for the same reason (DECISIONS 0071): the
+    /// field that creates a shop has to add it to the draft it is sitting in,
+    /// the instant it exists.
+    #[wasm_bindgen(js_name = mintShopId)]
+    pub fn mint_shop_id() -> Result<String, JsError> {
+        Ok(crate::mint_shop_id(&SystemPlatform)?)
+    }
+
     /// Opens the replica stored in IndexedDB, or starts a new one.
     pub async fn open(identity: JsValue) -> Result<CabasApp, JsError> {
         let identity: Identity = serde_wasm_bindgen::from_value(identity)?;

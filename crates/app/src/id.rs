@@ -19,6 +19,8 @@ use crate::platform::Platform;
 
 pub(crate) const INGREDIENT: &str = "ing_";
 pub(crate) const RECIPE: &str = "rec_";
+/// A shop the group buys from (DECISIONS 0071).
+pub(crate) const SHOP: &str = "shp_";
 pub(crate) const USAGE: &str = "use_";
 pub(crate) const LIST_ENTRY: &str = "ent_";
 pub(crate) const USER: &str = "usr_";
@@ -66,6 +68,16 @@ pub fn mint_usage_id(platform: &impl Platform) -> Result<String> {
 /// merging into one.
 pub fn mint_ingredient_id(platform: &impl Platform) -> Result<String> {
     mint(platform, INGREDIENT)
+}
+
+/// Mints the id of a shop, for the field that creates one while an ingredient
+/// is being filled in (DECISIONS 0071).
+///
+/// The third instance of the same bargain, and the reasoning is
+/// [`mint_ingredient_id`]'s exactly: the field has to *select* the shop it
+/// just created, and a command hands back a whole state rather than an id.
+pub fn mint_shop_id(platform: &impl Platform) -> Result<String> {
+    mint(platform, SHOP)
 }
 
 #[cfg(test)]
@@ -123,7 +135,9 @@ mod tests {
 
     #[test]
     fn every_prefix_is_distinct() {
-        let mut prefixes = [INGREDIENT, RECIPE, USAGE, LIST_ENTRY, USER, DEVICE, PHOTO];
+        let mut prefixes = [
+            INGREDIENT, RECIPE, SHOP, USAGE, LIST_ENTRY, USER, DEVICE, PHOTO,
+        ];
         prefixes.sort_unstable();
         let before = prefixes.len();
         let mut unique = prefixes.to_vec();

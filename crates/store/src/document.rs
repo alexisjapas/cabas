@@ -28,7 +28,7 @@ use cabas_domain::list::ListEntry;
 use cabas_domain::overlay::Explicit;
 use cabas_domain::{
     Device, Event, EventLog, Ingredient, IngredientId, ListEntryId, Overlay, Recipe, RecipeId,
-    ShoppingList, User,
+    Shop, ShopId, ShoppingList, User,
 };
 use loro::{ExportMode, LoroDoc, LoroList, LoroMap, LoroMovableList, LoroValue, VersionVector};
 
@@ -193,6 +193,12 @@ impl Document {
         self.keyed(schema::root::RECIPES, mapping::read_recipe)
     }
 
+    /// The shops the group buys from, ordered by id like every other keyed
+    /// read here — for the reason [`Document::ingredients`] gives.
+    pub fn shops(&self) -> Result<Vec<Shop>> {
+        self.keyed(schema::root::SHOPS, mapping::read_shop)
+    }
+
     pub fn users(&self) -> Result<Vec<User>> {
         self.keyed(schema::root::USERS, mapping::read_user)
     }
@@ -272,6 +278,24 @@ impl Document {
     /// references instead of preventing them (DECISIONS 0022).
     pub fn remove_ingredient(&self, id: &IngredientId) -> Result<()> {
         self.remove(schema::root::INGREDIENTS, id.as_str())
+    }
+
+    pub fn put_shop(&self, shop: &Shop) -> Result<()> {
+        let entry = self.entry(schema::root::SHOPS, shop.id.as_str())?;
+        mapping::write_shop(&entry, shop)?;
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Forgets a shop.
+    ///
+    /// Ingredients that still point at it are left alone, for the reason
+    /// [`Document::remove_ingredient`] gives at greater length: referential
+    /// integrity is not enforceable under a CRDT. A dangling shop id is
+    /// harmless here — it matches no shop, so it filters nothing, and the
+    /// ingredient keeps whatever other shops it names (DECISIONS 0071).
+    pub fn remove_shop(&self, id: &ShopId) -> Result<()> {
+        self.remove(schema::root::SHOPS, id.as_str())
     }
 
     pub fn put_recipe(&self, recipe: &Recipe) -> Result<()> {
@@ -423,7 +447,7 @@ mod tests {
     use super::*;
     use cabas_domain::event::{Action, Subject};
     use cabas_domain::units::{MassUnit, Unit};
-    use cabas_domain::{Aisle, Quantity, Rational, Timestamp, UserId};
+    use cabas_domain::{Aisle, Keeping, Quantity, Rational, Timestamp, UserId};
 
     /// Walks every value in the document, containers included.
     fn walk(value: &LoroValue, visit: &mut impl FnMut(&LoroValue)) {
@@ -441,6 +465,7 @@ mod tests {
             schema::root::META,
             schema::root::INGREDIENTS,
             schema::root::RECIPES,
+            schema::root::SHOPS,
             schema::root::OVERLAY,
             schema::root::USERS,
             schema::root::DEVICES,
@@ -469,7 +494,7 @@ mod tests {
         // sure quantities stay exact is to assert that variant never appears.
         let doc = Document::new();
         doc.put_ingredient(
-            &Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Grocery)
+            &Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Pantry)
                 .with_density(Rational::new(55, 100)),
         )
         .expect("write");
@@ -547,7 +572,7 @@ mod tests {
         doc.put_ingredient(&Ingredient::new(
             IngredientId::from_raw("salt"),
             "Salt",
-            Aisle::Grocery,
+            Aisle::Pantry,
         ))
         .expect("write");
 
@@ -560,6 +585,68 @@ mod tests {
             doc.changes_since(&replica.version()).expect("export"),
             doc.changes_since(&doc.version()).expect("export")
         );
+    }
+
+    #[test]
+    fn a_shop_round_trips_and_can_be_forgotten() {
+        let doc = Document::new();
+        doc.put_shop(&Shop::new(ShopId::from_raw("s1"), "Biocoop"))
+            .expect("write");
+        doc.put_shop(&Shop::new(ShopId::from_raw("s2"), "Marché"))
+            .expect("write");
+        assert_eq!(
+            doc.shops().expect("read"),
+            vec![
+                Shop::new(ShopId::from_raw("s1"), "Biocoop"),
+                Shop::new(ShopId::from_raw("s2"), "Marché"),
+            ]
+        );
+
+        doc.put_shop(&Shop::new(ShopId::from_raw("s1"), "Biocoop Centre"))
+            .expect("rename");
+        assert_eq!(doc.shops().expect("read")[0].name, "Biocoop Centre");
+
+        doc.remove_shop(&ShopId::from_raw("s1")).expect("forget");
+        assert_eq!(doc.shops().expect("read").len(), 1);
+    }
+
+    #[test]
+    fn an_ingredient_carries_its_shops_and_where_it_is_kept() {
+        let doc = Document::new();
+        let placed = Ingredient::new(IngredientId::from_raw("butter"), "Beurre", Aisle::Dairy)
+            .sold_at([ShopId::from_raw("s2"), ShopId::from_raw("s1")])
+            .kept(Keeping::Fridge);
+        doc.put_ingredient(&placed).expect("write");
+
+        let read = &doc.ingredients().expect("read")[0];
+        // The order is the one somebody typed, not the sorted one: the first
+        // shop is what the cart files the line under (DECISIONS 0071).
+        assert_eq!(
+            read.shops,
+            vec![ShopId::from_raw("s2"), ShopId::from_raw("s1")]
+        );
+        assert_eq!(read.keeping, Keeping::Fridge);
+    }
+
+    #[test]
+    fn an_ingredient_written_before_either_key_existed_still_reads() {
+        // Both keys are additive (DECISIONS 0070, 0071), and this is what
+        // that claim means: a document a three-week-old phone wrote has
+        // neither, and must open with the defaults rather than fail.
+        let doc = Document::new();
+        let entry = doc
+            .entry(schema::root::INGREDIENTS, "flour")
+            .expect("container");
+        mapping::set(&entry, schema::ingredient::NAME, codec::text("Farine")).expect("write");
+        mapping::set(&entry, schema::ingredient::AISLE, codec::text("grocery")).expect("write");
+        mapping::set(&entry, schema::ingredient::STAPLE, false.into()).expect("write");
+        doc.doc.commit();
+
+        let read = &doc.ingredients().expect("read")[0];
+        assert!(read.shops.is_empty());
+        assert_eq!(read.keeping, Keeping::Ambient);
+        // And the retired aisle keeps the shelf it became (DECISIONS 0069).
+        assert_eq!(read.aisle, Aisle::Pantry);
     }
 
     #[test]

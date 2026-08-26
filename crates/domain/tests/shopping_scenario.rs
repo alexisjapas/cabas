@@ -55,10 +55,10 @@ fn uses(usage: &str, ingredient: &str, quantity: Quantity) -> Component {
 
 fn ingredients() -> IngredientIndex {
     let all = vec![
-        Ingredient::new(iid("flour"), "Flour", Aisle::Grocery)
+        Ingredient::new(iid("flour"), "Flour", Aisle::Pantry)
             .with_density(rat(55, 100))
             .as_staple(),
-        Ingredient::new(iid("salt"), "Salt", Aisle::Grocery).as_staple(),
+        Ingredient::new(iid("salt"), "Salt", Aisle::Pantry).as_staple(),
         Ingredient::new(iid("butter"), "Butter", Aisle::Dairy).with_density(rat(911, 1000)),
         Ingredient::new(iid("milk"), "Milk", Aisle::Dairy).with_density(rat(103, 100)),
         Ingredient::new(iid("egg"), "Egg", Aisle::Dairy).with_unit_weight(rat(60, 1)),
@@ -287,7 +287,7 @@ fn amounts_stay_on_separate_lines_without_a_coefficient() {
     let mut index = ingredients();
     index.insert(
         iid("sugar"),
-        Ingredient::new(iid("sugar"), "Sugar", Aisle::Grocery),
+        Ingredient::new(iid("sugar"), "Sugar", Aisle::Pantry),
     );
     let recipe = Recipe::new(rid("mix"), "Mix", nz(1))
         .with_component(uses("u1", "sugar", Quantity::whole(200, G)))

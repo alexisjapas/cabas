@@ -14,8 +14,8 @@
 //! the other reason for putting it behind one.
 
 use cabas_domain::{
-    Device, EventLog, IngredientId, IngredientIndex, Overlay, RecipeIndex, ShoppingList, User,
-    UserId,
+    Device, EventLog, IngredientId, IngredientIndex, Overlay, RecipeIndex, Shop, ShopId,
+    ShoppingList, User, UserId,
 };
 use cabas_store::Document;
 
@@ -24,6 +24,9 @@ use crate::error::Result;
 pub(crate) struct Library {
     pub recipes: RecipeIndex,
     pub ingredients: IngredientIndex,
+    /// The shops the group buys from (DECISIONS 0071). A flat list rather
+    /// than an index: there are a handful of them and every use is a scan.
+    pub shops: Vec<Shop>,
     pub list: ShoppingList,
     pub overlay: Overlay,
     pub users: Vec<User>,
@@ -48,6 +51,7 @@ impl Library {
                 .into_iter()
                 .map(|ingredient| (ingredient.id.clone(), ingredient))
                 .collect(),
+            shops: document.shops()?,
             list: document.list()?,
             overlay: document.overlay()?,
             users: document.users()?,
@@ -69,5 +73,9 @@ impl Library {
         self.ingredients
             .get(id)
             .map(|ingredient| ingredient.name.as_str())
+    }
+
+    pub(crate) fn shop(&self, id: &ShopId) -> Option<&Shop> {
+        self.shops.iter().find(|shop| &shop.id == id)
     }
 }

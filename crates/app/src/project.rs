@@ -202,6 +202,14 @@ pub(crate) fn state(
         list: list_view(library, &projection.cart),
         recipes: recipe_summaries(library),
         ingredients: ingredient_views(library),
+        shops: library
+            .shops
+            .iter()
+            .map(|shop| ShopView {
+                id: shop.id.to_string(),
+                name: shop.name.clone(),
+            })
+            .collect(),
         focus: focus.and_then(|focus| focus_view(library, focus)),
         problems: projection.problems.clone(),
     }
@@ -266,6 +274,30 @@ fn cart_view(library: &Library, cart: &Cart) -> CartView {
         ingredient: line.ingredient.to_string(),
         name: line.name.clone(),
         aisle: line.aisle.into(),
+        // Both looked up off the library rather than carried through the
+        // derivation, for the reason the photo below is: neither shops nor
+        // keeping take any part in aggregating the cart, and
+        // `domain::CartLine` copies only what the aggregation needs (Rule 1).
+        //
+        // **Resolved, not copied**: what travels is the trips this line
+        // appears on, which for an unplaced or orphaned ingredient is every
+        // shop (DECISIONS 0071). The rule is `domain::sold_at`'s, so the
+        // screen that filters by it holds no rule of its own (Rule 9).
+        shops: library
+            .ingredients
+            .get(&line.ingredient)
+            .map(|ingredient| {
+                cabas_domain::sold_at(ingredient, &library.shops)
+                    .into_iter()
+                    .map(|shop| shop.id.to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        keeping: library
+            .ingredients
+            .get(&line.ingredient)
+            .map(|ingredient| ingredient.keeping.into())
+            .unwrap_or_default(),
         staple: line.staple,
         // Looked up here rather than carried through the derivation: a photo
         // is presentation, and `domain::CartLine` copies only what the
@@ -330,6 +362,7 @@ fn list_view(library: &Library, cart: &Cart) -> Vec<ListEntryView> {
                         .unwrap_or_default()
                         .to_owned(),
                     quantity: QuantityView::of(quantity),
+                    edit: quantity_input(quantity),
                 },
             },
             progress: ProgressView {
@@ -370,6 +403,8 @@ fn ingredient_views(library: &Library) -> Vec<IngredientView> {
             name: ingredient.name.clone(),
             aliases: ingredient.aliases.clone(),
             aisle: ingredient.aisle.into(),
+            shops: ingredient.shops.iter().map(ToString::to_string).collect(),
+            keeping: ingredient.keeping.into(),
             staple: ingredient.staple,
             density: ingredient.density.map(number::render_lossless),
             unit_weight: ingredient.unit_weight.map(number::render_lossless),

@@ -5,29 +5,63 @@
 //! before it reaches anything here.
 
 use crate::units::{Dimension, MassUnit, Unit, VolumeUnit};
-use crate::{IngredientId, PhotoId, Quantity, Rational};
+use crate::{IngredientId, PhotoId, Quantity, Rational, ShopId};
 
 /// Where an item is found in the shop. Declaration order **is** the walking
 /// order used to sort the cart — sorting by route is the single largest
 /// usability win available to a shopping list, and it costs one `derive(Ord)`.
+///
+/// The set is this group's shop, not a supermarket's taxonomy (DECISIONS
+/// 0069): nobody here eats meat, so there is no butcher and no fishmonger,
+/// and what used to be one `Items` aisle for everything inedible is the three
+/// aisles a trolley actually stops at. Adding one stays cheap — an older
+/// build reads an unknown tag as [`Aisle::Other`] and puts the line at the
+/// end of the walk — while *retiring* one is what costs a read mapping, which
+/// is why `store::codec` still answers to the old spellings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Aisle {
+    /// Fruits & légumes.
     Produce,
-    Butcher,
-    Fish,
-    Deli,
-    Dairy,
+    /// Pains & pâtisseries.
     Bakery,
-    Grocery,
+    /// Produits laitiers, and the eggs beside them.
+    Dairy,
+    /// Ingrédients & épices: what a recipe reaches for by the spoonful.
+    Pantry,
+    /// Surgelés & plats cuisinés.
     Frozen,
+    /// Pâtes, riz & céréales — the dry bulk of a cupboard.
+    Staples,
+    /// Snacks & friandises.
+    Snacks,
     Beverages,
+    /// Foyer: cleaning, paper, bin bags — what was bought whole and never
+    /// cooked (DECISIONS 0057), now sitting in the aisle it is actually found
+    /// in rather than in one that only said it was not food.
     Household,
-    /// What is bought whole and never cooked: toilet paper, soap, bin bags
-    /// (DECISIONS 0057). An aisle like any other — it decides where the line
-    /// falls in the walking order and nothing else. Nothing here forbids one
-    /// in a recipe; the classification is the shopper's word, not a rule.
-    Items,
+    /// Soin & santé.
+    Care,
+    /// Artisanat & jardin.
+    Crafts,
     Other,
+}
+
+/// Where a thing lives once it is home: the fridge, the freezer, or neither
+/// (DECISIONS 0070).
+///
+/// Not a shopping attribute — it says nothing about where the item is found
+/// or how much of it to buy — but the one thing worth knowing at the moment a
+/// bag is emptied onto a counter. It belongs to the ingredient and not to its
+/// aisle, because crème fraîche and UHT milk share an aisle and not a shelf.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Keeping {
+    /// A cupboard, a shelf, the fruit bowl. The default, because most things
+    /// are one of those, and because it is the honest reading of an
+    /// ingredient nobody has said anything about.
+    #[default]
+    Ambient,
+    Fridge,
+    Freezer,
 }
 
 /// An elementary component. Quantities of the same ingredient sum; quantities
@@ -39,6 +73,19 @@ pub struct Ingredient {
     /// Alternative spellings that resolve to this ingredient.
     pub aliases: Vec<String>,
     pub aisle: Aisle,
+    /// Where this can be bought, in the order somebody listed them
+    /// (DECISIONS 0071). Empty is the ordinary state and means "nobody has
+    /// said", never "nowhere" — the cart shows such a line under every shop,
+    /// because a thing whose shop is unknown is a thing you might as well
+    /// pick up while you are out.
+    ///
+    /// A list rather than a set, and the order is load-bearing: the first
+    /// shop is the one the cart files the line under when several are
+    /// possible.
+    pub shops: Vec<ShopId>,
+    /// Fridge, freezer or neither (DECISIONS 0070). Read when the bags are
+    /// unpacked, never when they are filled.
+    pub keeping: Keeping,
     /// Salt, pepper, oil, flour: excluded from the cart by default when it is
     /// only recipes that asked for them (DECISIONS 0023). Not stock tracking —
     /// there is no quantity to keep up to date.
@@ -70,6 +117,8 @@ impl Ingredient {
             name: name.into(),
             aliases: Vec::new(),
             aisle,
+            shops: Vec::new(),
+            keeping: Keeping::default(),
             staple: false,
             density: None,
             unit_weight: None,
@@ -95,6 +144,16 @@ impl Ingredient {
 
     pub fn with_photo(mut self, photo: PhotoId) -> Self {
         self.photo = Some(photo);
+        self
+    }
+
+    pub fn kept(mut self, keeping: Keeping) -> Self {
+        self.keeping = keeping;
+        self
+    }
+
+    pub fn sold_at(mut self, shops: impl IntoIterator<Item = ShopId>) -> Self {
+        self.shops = shops.into_iter().collect();
         self
     }
 
@@ -214,7 +273,7 @@ mod tests {
 
     fn flour() -> Ingredient {
         // ~0.55 g/ml
-        Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Grocery)
+        Ingredient::new(IngredientId::from_raw("flour"), "Flour", Aisle::Pantry)
             .with_density(rat(55, 100))
             .as_staple()
     }
@@ -339,12 +398,19 @@ mod tests {
 
     #[test]
     fn aisles_sort_in_walking_order() {
-        let mut aisles = [Aisle::Frozen, Aisle::Produce, Aisle::Grocery, Aisle::Dairy];
+        let mut aisles = [Aisle::Frozen, Aisle::Produce, Aisle::Pantry, Aisle::Dairy];
         aisles.sort();
         assert_eq!(
             aisles,
-            [Aisle::Produce, Aisle::Dairy, Aisle::Grocery, Aisle::Frozen]
+            [Aisle::Produce, Aisle::Dairy, Aisle::Pantry, Aisle::Frozen]
         );
+    }
+
+    #[test]
+    fn an_ingredient_nobody_has_placed_is_kept_in_a_cupboard() {
+        // The default is the honest reading of silence, and it is what every
+        // ingredient written before the field existed decodes to.
+        assert_eq!(tomato().keeping, Keeping::Ambient);
     }
 
     #[test]

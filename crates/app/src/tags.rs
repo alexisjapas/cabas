@@ -19,7 +19,7 @@
 //! it fails at deserialisation, before any command runs.
 
 use cabas_domain::units::{MassUnit, Unit, VolumeUnit};
-use cabas_domain::{Action, Aisle, CheckState, RefDisplay, Subject};
+use cabas_domain::{Action, Aisle, CheckState, Keeping, RefDisplay, Subject};
 use serde::{Deserialize, Serialize};
 
 /// A unit, as the frontend names it. The UI owns the *label* ("c. à s.") —
@@ -110,16 +110,16 @@ impl From<UnitTag> for Unit {
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub enum AisleTag {
     Produce,
-    Butcher,
-    Fish,
-    Deli,
-    Dairy,
     Bakery,
-    Grocery,
+    Dairy,
+    Pantry,
     Frozen,
+    Staples,
+    Snacks,
     Beverages,
     Household,
-    Items,
+    Care,
+    Crafts,
     Other,
 }
 
@@ -127,16 +127,16 @@ impl From<Aisle> for AisleTag {
     fn from(aisle: Aisle) -> Self {
         match aisle {
             Aisle::Produce => AisleTag::Produce,
-            Aisle::Butcher => AisleTag::Butcher,
-            Aisle::Fish => AisleTag::Fish,
-            Aisle::Deli => AisleTag::Deli,
-            Aisle::Dairy => AisleTag::Dairy,
             Aisle::Bakery => AisleTag::Bakery,
-            Aisle::Grocery => AisleTag::Grocery,
+            Aisle::Dairy => AisleTag::Dairy,
+            Aisle::Pantry => AisleTag::Pantry,
             Aisle::Frozen => AisleTag::Frozen,
+            Aisle::Staples => AisleTag::Staples,
+            Aisle::Snacks => AisleTag::Snacks,
             Aisle::Beverages => AisleTag::Beverages,
             Aisle::Household => AisleTag::Household,
-            Aisle::Items => AisleTag::Items,
+            Aisle::Care => AisleTag::Care,
+            Aisle::Crafts => AisleTag::Crafts,
             Aisle::Other => AisleTag::Other,
         }
     }
@@ -146,17 +146,50 @@ impl From<AisleTag> for Aisle {
     fn from(tag: AisleTag) -> Self {
         match tag {
             AisleTag::Produce => Aisle::Produce,
-            AisleTag::Butcher => Aisle::Butcher,
-            AisleTag::Fish => Aisle::Fish,
-            AisleTag::Deli => Aisle::Deli,
-            AisleTag::Dairy => Aisle::Dairy,
             AisleTag::Bakery => Aisle::Bakery,
-            AisleTag::Grocery => Aisle::Grocery,
+            AisleTag::Dairy => Aisle::Dairy,
+            AisleTag::Pantry => Aisle::Pantry,
             AisleTag::Frozen => Aisle::Frozen,
+            AisleTag::Staples => Aisle::Staples,
+            AisleTag::Snacks => Aisle::Snacks,
             AisleTag::Beverages => Aisle::Beverages,
             AisleTag::Household => Aisle::Household,
-            AisleTag::Items => Aisle::Items,
+            AisleTag::Care => Aisle::Care,
+            AisleTag::Crafts => Aisle::Crafts,
             AisleTag::Other => Aisle::Other,
+        }
+    }
+}
+
+/// Where a thing is kept once it is home (DECISIONS 0070). Not a shopping
+/// attribute: it is read while the bags are emptied, not while they are
+/// filled.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub enum KeepingTag {
+    #[default]
+    Ambient,
+    Fridge,
+    Freezer,
+}
+
+impl From<Keeping> for KeepingTag {
+    fn from(keeping: Keeping) -> Self {
+        match keeping {
+            Keeping::Ambient => KeepingTag::Ambient,
+            Keeping::Fridge => KeepingTag::Fridge,
+            Keeping::Freezer => KeepingTag::Freezer,
+        }
+    }
+}
+
+impl From<KeepingTag> for Keeping {
+    fn from(tag: KeepingTag) -> Self {
+        match tag {
+            KeepingTag::Ambient => Keeping::Ambient,
+            KeepingTag::Fridge => Keeping::Fridge,
+            KeepingTag::Freezer => Keeping::Freezer,
         }
     }
 }
@@ -286,16 +319,16 @@ mod tests {
 
     const ALL_AISLES: [Aisle; 12] = [
         Aisle::Produce,
-        Aisle::Butcher,
-        Aisle::Fish,
-        Aisle::Deli,
-        Aisle::Dairy,
         Aisle::Bakery,
-        Aisle::Grocery,
+        Aisle::Dairy,
+        Aisle::Pantry,
         Aisle::Frozen,
+        Aisle::Staples,
+        Aisle::Snacks,
         Aisle::Beverages,
         Aisle::Household,
-        Aisle::Items,
+        Aisle::Care,
+        Aisle::Crafts,
         Aisle::Other,
     ];
 
@@ -310,6 +343,13 @@ mod tests {
     fn every_aisle_survives_the_round_trip() {
         for aisle in ALL_AISLES {
             assert_eq!(Aisle::from(AisleTag::from(aisle)), aisle);
+        }
+    }
+
+    #[test]
+    fn every_keeping_survives_the_round_trip() {
+        for keeping in [Keeping::Ambient, Keeping::Fridge, Keeping::Freezer] {
+            assert_eq!(Keeping::from(KeepingTag::from(keeping)), keeping);
         }
     }
 

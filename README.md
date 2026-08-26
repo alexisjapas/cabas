@@ -2,7 +2,8 @@
 
 Offline-first shopping list and recipe manager for two people and their
 phones. Recipes compose from ingredients and sub-recipes, scale by servings,
-and aggregate into a single cart sorted by supermarket aisle. Everything is
+and aggregate into a single cart sorted into the order the shop is walked —
+one trip per shop, since 0.7.0. Everything is
 edited locally and converges through a self-hosted, **zero-knowledge** relay
 — no cloud service, no account, no subscription.
 
@@ -91,6 +92,22 @@ an id; the bytes live one record per photo. Half one ships in 0.5.0 — taken,
 stored and shown on the shelves, in the recipe reader and on the cart line,
 offline. Half two is the socket that carries a photo to the other phone; until
 it lands, a photo taken here is named there and not yet visible.
+
+**0.7.0 is about the shape of the app rather than its plumbing.** The aisles
+are this group's shop rather than a supermarket's
+([0069](docs/DECISIONS.md#0069--the-aisles-are-this-groups-shop-not-a-supermarkets));
+an ingredient says which shops sell it and the cart splits one list into the
+errands it is made of
+([0071](docs/DECISIONS.md#0071--a-shop-is-a-name-and-the-cart-is-one-trip-per-shop)),
+and says where it goes once it is home
+([0070](docs/DECISIONS.md#0070--an-ingredient-says-where-it-is-kept)). The
+swipe that puts a row on the list now keeps counting it — right for one more,
+left for one less, held for the exact amount
+([0072](docs/DECISIONS.md#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount)).
+An ingredient's editor opens under its own row
+([0073](docs/DECISIONS.md#0073--an-ingredients-editor-opens-under-the-ingredient)),
+and a tab opens cold
+([0074](docs/DECISIONS.md#0074--a-tab-opens-cold)).
 
 A group library of 200 recipes is a **154 kB** snapshot that loads in
 **0.4 ms** — which is what makes a plain serialized blob the right shape

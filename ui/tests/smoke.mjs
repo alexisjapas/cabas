@@ -337,6 +337,48 @@ const HELPERS = `
     at('pointerup', anchor + distance);
     await window.__settle();
   };
+  /**
+   * Holds a finger on a row without moving it — the gesture that opens the
+   * amount (DECISIONS 0072).
+   *
+   * The wait is the component's own \`--press-delay\` plus a margin, read from
+   * the same token rather than written down twice: a test that hard-codes a
+   * duration is a test that starts failing the day the token is tuned.
+   *
+   * **The unit has to be read as well as the number.** The token is authored
+   * as \`500ms\` and the CSS minifier ships it as \`.5s\`, so a bare
+   * \`parseFloat\` yields 0.5 — a press that lets go after half a millisecond
+   * and looks exactly like a component that never fired. \`SwipeToAdd\` reads
+   * it the same way, for the same reason.
+   */
+  window.__press = async (selector, text) => {
+    const front = window.__find(selector, text);
+    const box = front.getBoundingClientRect();
+    const at = (type) =>
+      front.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 7,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          clientX: box.left + 8,
+          clientY: box.top + box.height / 2,
+        }),
+      );
+
+    const token = getComputedStyle(document.documentElement).getPropertyValue('--press-delay').trim();
+    const value = Number.parseFloat(token);
+    const delay =
+      !Number.isFinite(value) || value <= 0 ? 500
+      : token.endsWith('ms') ? value
+      : value * 1000;
+    at('pointerdown');
+    await new Promise((resolve) => setTimeout(resolve, delay + 200));
+    at('pointerup');
+    await window.__settle();
+  };
   window.__count = (selector) => document.querySelectorAll(selector).length;
   window.__click = (selector) => {
     const el = document.querySelector(selector);
@@ -703,6 +745,39 @@ await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__count('.swipe .undo') === 1`, 'the way out, after a remount');
 ok('and it survives leaving the screen — it is the list that says so, not the row');
 
+// --- and the gesture keeps working from there (DECISIONS 0072) --------------
+//
+// What is on the list is written next to the way out, and the same drag
+// counts it up and down. A notch is the amount the ingredient is usually
+// bought by — six here — so the numbers below are the core's rule and not
+// this screen's arithmetic.
+await waitFor(`__text('.swipe .undo small')?.includes('6')`, 'the amount, beside "Annuler"');
+ok('a row on the list says how much of it is on there');
+
+await evaluate(`__swipe('.swipe .front', 'Tomates', 200)`);
+await waitFor(`__text('.swipe .undo small')?.includes('12')`, 'one more notch');
+ok('dragging it again adds another of what one usually buys');
+
+await evaluate(`__swipe('.swipe .front', 'Tomates', -200)`);
+await waitFor(`__text('.swipe .undo small')?.includes('6')`, 'one notch back');
+ok('and dragging it the other way takes one off');
+
+// The exact amount, which no number of notches can express.
+await evaluate(`__press('.swipe .front', 'Tomates')`);
+await waitFor('document.querySelector(".amount-dialog")', 'the amount, opened by holding the row');
+await evaluate(`__set('[data-field="entry-amount"]', '3')`);
+await evaluate(`__set('[data-field="entry-amount-unit"]', 'piece')`);
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__count('.amount-dialog') === 0`, 'the dialog, closed');
+await waitFor(`__text('.swipe .undo small')?.includes('3')`, 'the typed amount, on the row');
+ok('holding a row opens what it asks for, and typing replaces it');
+
+// And the row is still a row: holding it must not also have opened the
+// editor underneath, which is what the swallowed click is for.
+if ((await evaluate(`__count('.ingredient-form')`)) !== 0) {
+  throw failed('the press opened the editor as well as the amount');
+}
+
 await evaluate(`__click('.swipe .undo')`);
 await waitFor(`__count('.swipe .undo') === 0`, 'the row, back where it was');
 await evaluate(`__clickText('nav button', 'Liste')`);
@@ -745,8 +820,9 @@ await shot('03-list');
 // last option is the whole library form, and what it creates is selected in
 // the picker it was created from (DECISIONS 0056).
 //
-// It is an item rather than a food, which is what the aisle is for: toilet
-// paper is bought whole, alone, and never cooked (DECISIONS 0057).
+// It goes in "Foyer" rather than in any food aisle, which is what the
+// non-food half of the aisle set is for: toilet paper is bought whole, alone,
+// and never cooked (DECISIONS 0057, 0069).
 await evaluate(`__clickText('button', 'Ajouter')`);
 await waitFor('document.querySelector("form .search-picker input")', 'the add form again');
 await evaluate(`__door('input[aria-label="Ingrédient"]', 0, 'Papier toilette')`);
@@ -755,7 +831,7 @@ await waitFor(
   `document.querySelector('[data-field="name"]')?.value === 'Papier toilette'`,
   'the searched name, carried through the door (DECISIONS 0060)',
 );
-await evaluate(`__set('[data-field="aisle"]', 'items')`);
+await evaluate(`__set('[data-field="aisle"]', 'household')`);
 await evaluate(`__clickText('.ingredient-form button', 'Créer')`);
 await waitFor(
   `document.querySelector('input[aria-label="Ingrédient"]')?.value === 'Papier toilette'`,
@@ -775,11 +851,11 @@ await evaluate(`__clickText('nav button', 'Courses')`);
 await waitFor(`__text('h1') === 'Courses'`, 'cart screen');
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates in the cart');
 
-// Both aisles, and "Items" is the one that has to be there: it is the newest
-// one in the domain, and an aisle nothing ever renders is an aisle nobody can
-// shop by (DECISIONS 0057).
+// Both aisles, and "Foyer" is the one that has to be there: it is the far end
+// of the walking order, and an aisle nothing ever renders is an aisle nobody
+// can shop by (DECISIONS 0057, 0069).
 const aisles = await evaluate(`__all('section h2')`);
-for (const heading of ['Fruits et légumes', 'Items']) {
+for (const heading of ['Fruits & légumes', 'Foyer']) {
   if (!aisles.includes(heading)) {
     throw new Error(`expected the ${heading} aisle, got ${JSON.stringify(aisles)}`);
   }
@@ -791,6 +867,84 @@ await shot('04-cart');
 // photo on an ingredient: recognising a product without reading anything.
 await waitFor(`__count('section li .photo img') === 1`, 'the photo on the cart line');
 ok('the cart line carries it, which is where an ingredient photo is for');
+
+// --- one trip per shop (DECISIONS 0071) -------------------------------------
+//
+// A shop is born in the field that needs it, on an ingredient's own form, and
+// the cart then splits one list into the errands it is actually made of. The
+// half that matters is the last assertion: an ingredient nobody has placed
+// stays visible in every shop, because hiding it is how it stops being
+// bought.
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the shelf');
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Tomates, open under its row');
+await evaluate(`__set('[data-field="shops"]', 'Biocoop')`);
+await evaluate(`__click('[data-field="create-shop"]')`);
+await waitFor(`__all('.ingredient-form .chosen span').includes('Biocoop')`, 'the new shop, chosen');
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+ok('a shop is created from the ingredient that is sold there, and selected at once');
+
+await evaluate(`__clickText('li button', 'Papier toilette')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the item, open under its row');
+await evaluate(`__set('[data-field="shops"]', 'Supermarché')`);
+await evaluate(`__click('[data-field="create-shop"]')`);
+await waitFor(
+  `__all('.ingredient-form .chosen span').includes('Supermarché')`,
+  'the second shop',
+);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+
+// Typing one that already exists offers it rather than making a second: the
+// whole reason shops are a library and not a free-text field.
+await evaluate(`__clickText('li button', 'Sel')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the staple, open');
+await evaluate(`__set('[data-field="shops"]', 'bioco')`);
+await waitFor(
+  `__all('.ingredient-form .offered button').includes('Biocoop')`,
+  'the shop that already exists, offered',
+);
+await evaluate(`__clickText('.ingredient-form .offered button', 'Biocoop')`);
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+ok('and typing one that exists offers it instead of making a second');
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart');
+await waitFor(`__count('.shops button') === 3`, 'one chip per shop, plus "Tous"');
+await evaluate(`__clickText('.shops button', 'Biocoop')`);
+await waitFor(`__text('details summary')?.startsWith('Ailleurs')`, 'what this shop does not sell');
+const inShop = await evaluate(`__all('section li .name')`);
+if (!inShop.includes('Tomates') || inShop.includes('Papier toilette')) {
+  throw failed(`the shop filter kept ${JSON.stringify(inShop)}`);
+}
+ok(`choosing a shop keeps what it sells and folds the rest away (${JSON.stringify(inShop)})`);
+await shot('04-shops');
+
+// The other way round, so that "Ailleurs" is not simply everything.
+await evaluate(`__clickText('.shops button', 'Supermarché')`);
+await waitFor(`__all('section li .name').includes('Papier toilette')`, 'the other shop');
+const otherShop = await evaluate(`__all('section li .name')`);
+if (otherShop.includes('Tomates')) {
+  throw failed(`an ingredient sold elsewhere stayed in view: ${JSON.stringify(otherShop)}`);
+}
+
+// And the line nobody has placed: it belongs to every trip, because hiding it
+// is how it stops being bought (DECISIONS 0071). Tomates loses its shop and
+// comes straight back into a shop that never sold it.
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form .chosen")', 'the shop it carries');
+await evaluate(`__click('.ingredient-form .chosen button')`);
+await waitFor(`__count('.ingredient-form .chosen') === 0`, 'the shop, taken off');
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await evaluate(`__clickText('.shops button', 'Supermarché')`);
+await waitFor(`__all('section li .name').includes('Tomates')`, 'the unplaced line, in every shop');
+ok('and an ingredient nobody has placed is on every trip, which is why it is never lost');
+
+await evaluate(`__clickText('.shops button', 'Tous')`);
+await waitFor(`__all('section li .name').includes('Tomates')`, 'the whole cart again');
 
 await evaluate(`__clickText('section li button', 'Tomates')`);
 await waitFor(`__text('details summary')?.startsWith('Acheté')`, 'the bought section');
@@ -1270,11 +1424,12 @@ await shot('11-offline');
 
 await setOffline(false);
 
-// --- and it comes back where it was left ------------------------------------
+// --- and a tab opens cold ---------------------------------------------------
 //
-// The screen is already persisted; this is the offset within it. Same reason
-// (DECISIONS 0003): an iOS cold reload mid-shop otherwise drops you at the top
-// of a list you were halfway down.
+// *Which* screen is remembered; nothing about what it was showing is
+// (DECISIONS 0074). Coming back to a tab lands at the top with nothing open,
+// and so does a cold reload — the app remembers where you were, not what you
+// were in the middle of.
 //
 // The viewport is squeezed rather than the library grown — two ingredients do
 // not fill a phone, and a hundred would cost a minute of form filling to prove
@@ -1296,19 +1451,31 @@ if (left === 0) {
 
 await evaluate(`__clickText('nav button', 'Courses')`);
 await waitFor(`__text('h1') === 'Courses'`, 'the cart screen');
-await waitFor('window.scrollY === 0', 'the cart, at its own offset');
+await waitFor('window.scrollY === 0', 'the cart, at the top');
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
-await waitFor(`window.scrollY === ${left}`, 'the offset the ingredients screen was left at');
-ok(`coming back to a screen returns to where it was (${left}px)`);
+await waitFor('window.scrollY === 0', 'the shelf, back at the top');
+ok(`coming back to a screen opens it cold (it was ${left}px down)`);
 
 await load(APP);
 await waitFor('document.querySelector("nav")', 'the app after a cold reload');
 await waitFor(`__text('h1') === 'Ingrédients'`, 'the screen it was left on');
-await waitFor(`window.scrollY === ${left}`, 'the offset, after a cold reload');
-ok('and a cold reload comes back to the same place, not the top');
-await shot('12-scroll-restored');
+await waitFor('window.scrollY === 0', 'the top of it');
+ok('and a cold reload comes back to the same screen, at the top of it');
+await shot('12-cold-start');
 
 await send('Emulation.clearDeviceMetricsOverride');
+
+// The other half of cold: an open recipe is core state, so leaving the tab has
+// to close it — nothing else would.
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the recipe shelf');
+await evaluate(`__clickText('li button', 'Salade de tomates au sel')`);
+await waitFor(`__text('h1') === 'Salade de tomates au sel'`, 'the recipe, open');
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart');
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the shelf again, not the recipe');
+ok('and an open recipe is closed by leaving the tab, not carried back into it');
 
 // --- and the same library, through a real relay ------------------------------
 //

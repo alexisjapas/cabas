@@ -29,13 +29,14 @@ use cabas_domain::event::{Action, Subject};
 use cabas_domain::list::{ListEntry, ListItem};
 use cabas_domain::recipe::{Component, IngredientUsage, Segment, Step, SubRecipeUsage};
 use cabas_domain::{
-    Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, PhotoId, Quantity, Rational,
-    Recipe, RecipeId, SubRecipeAmount, Timestamp, UsageId, User, UserId, finish_shopping,
+    Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, Nudged, PhotoId, Quantity,
+    Rational, Recipe, RecipeId, Shop, ShopId, SubRecipeAmount, Timestamp, UsageId, User, UserId,
+    finish_shopping, nudge_quantity, nudge_servings,
 };
 use cabas_store::{Document, Storage};
 
 use crate::command::{
-    Command, ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput,
+    Command, ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput, ShopInput,
     SubRecipeAmountInput,
 };
 use crate::error::{AppError, Result};
@@ -409,6 +410,8 @@ impl<S: Storage, P: Platform> App<S, P> {
             Command::DeleteIngredient { ingredient } => {
                 self.delete_ingredient(&ingredient, library)
             }
+            Command::SaveShop { shop } => self.save_shop(shop),
+            Command::DeleteShop { shop } => self.delete_shop(&shop, library),
             Command::SaveRecipe { recipe } => self.save_recipe(recipe, library),
             Command::DeleteRecipe { recipe } => self.delete_recipe(&recipe, library),
             Command::AddRecipeToList { recipe, servings } => {
@@ -420,6 +423,12 @@ impl<S: Storage, P: Platform> App<S, P> {
             } => self.add_ingredient_to_list(&ingredient, quantity.as_ref(), library),
             Command::SetEntryServings { entry, servings } => {
                 self.set_entry_servings(&entry, servings, library)
+            }
+            Command::SetEntryQuantity { entry, quantity } => {
+                self.set_entry_quantity(&entry, &quantity, library)
+            }
+            Command::NudgeListEntry { entry, steps } => {
+                self.nudge_list_entry(&entry, steps, library)
             }
             Command::RemoveListEntry { entry } => self.remove_list_entry(&entry, library),
             Command::ToggleCartItem { ingredient } => self.toggle_cart_item(&ingredient, library),
@@ -471,6 +480,15 @@ impl<S: Storage, P: Platform> App<S, P> {
             .map(|alias| alias.trim().to_owned())
             .filter(|alias| !alias.is_empty())
             .collect();
+        // Ids, and not checked against the shop library: a shop the *other*
+        // device deleted a second ago must not make this save fail, and a
+        // dangling id filters nothing (DECISIONS 0022, 0071).
+        ingredient.shops = input
+            .shops
+            .iter()
+            .map(|shop| ShopId::from_raw(shop.clone()))
+            .collect();
+        ingredient.keeping = input.keeping.into();
         ingredient.staple = input.staple;
         ingredient.density = coefficient("density", input.density.as_deref())?;
         ingredient.unit_weight = coefficient("unit_weight", input.unit_weight.as_deref())?;
@@ -501,6 +519,39 @@ impl<S: Storage, P: Platform> App<S, P> {
         // by the domain and rendered as a warning (DECISIONS 0022).
         self.document.remove_ingredient(&id)?;
         self.record(Action::Deleted, Subject::Ingredient(id), &label)?;
+        Ok(true)
+    }
+
+    /// Creates or renames a shop (DECISIONS 0071).
+    ///
+    /// Nothing is recorded in the event log, unlike every other library
+    /// write. The log exists for what the data cannot remember — a deleted
+    /// recipe leaves no field behind to hold "and Alexis did this" (0024) —
+    /// and a shop is a label on a handful of ingredients: forgetting one
+    /// changes no amount, breaks no line, and is undone by typing the name
+    /// again. Recording it would also mean widening the log's persisted
+    /// `subject_kind`, which is a schema change bought for a row nobody
+    /// would read.
+    fn save_shop(&mut self, input: ShopInput) -> Result<bool> {
+        let name = text("name", &input.name)?.to_owned();
+        let id = match &input.id {
+            Some(id) => ShopId::from_raw(id.clone()),
+            None => ShopId::from_raw(self.mint(id::SHOP)?),
+        };
+        self.document.put_shop(&Shop::new(id, name))?;
+        Ok(true)
+    }
+
+    fn delete_shop(&mut self, id: &str, library: &Library) -> Result<bool> {
+        let id = ShopId::from_raw(id);
+        if library.shop(&id).is_none() {
+            return Err(AppError::not_found("shop", id.as_str()));
+        }
+        // Ingredients still naming it are left alone, for the reason
+        // `delete_ingredient` gives: referential integrity is not enforceable
+        // under a CRDT. Here the dangling id is harmless — it matches no
+        // shop, so it filters nothing.
+        self.document.remove_shop(&id)?;
         Ok(true)
     }
 
@@ -708,6 +759,98 @@ impl<S: Storage, P: Platform> App<S, P> {
             },
             ..existing.clone()
         })?;
+        Ok(true)
+    }
+
+    /// Sets exactly what a bare ingredient on the list asks for — what the
+    /// long press opens (DECISIONS 0072).
+    fn set_entry_quantity(
+        &mut self,
+        entry: &str,
+        quantity: &QuantityInput,
+        library: &Library,
+    ) -> Result<bool> {
+        let id = ListEntryId::from_raw(entry);
+        let existing = library
+            .list
+            .entry(&id)
+            .ok_or_else(|| AppError::not_found("list entry", id.as_str()))?;
+        let ListItem::Ingredient { ingredient, .. } = &existing.item else {
+            return Err(AppError::invalid(
+                "quantity",
+                "a recipe on the list is measured in people",
+            ));
+        };
+
+        self.document.update_list_entry(&ListEntry {
+            item: ListItem::Ingredient {
+                ingredient: ingredient.clone(),
+                quantity: self.quantity("quantity", quantity)?,
+            },
+            ..existing.clone()
+        })?;
+        Ok(true)
+    }
+
+    /// One more of this, or one less (DECISIONS 0072).
+    ///
+    /// What a notch is worth is the domain's, and it differs by what is on
+    /// the line: the ingredient's usual shopping quantity, or one whole
+    /// recipe as written. Nudging the last one down removes the entry
+    /// **through the ordinary path**, so it is recorded in the log and reads
+    /// the same as pressing "Annuler" — which is what it is.
+    fn nudge_list_entry(&mut self, entry: &str, steps: i32, library: &Library) -> Result<bool> {
+        let id = ListEntryId::from_raw(entry);
+        let existing = library
+            .list
+            .entry(&id)
+            .ok_or_else(|| AppError::not_found("list entry", id.as_str()))?
+            .clone();
+
+        let item = match &existing.item {
+            ListItem::Ingredient {
+                ingredient,
+                quantity,
+            } => {
+                let known = library
+                    .ingredients
+                    .get(ingredient)
+                    .ok_or_else(|| AppError::not_found("ingredient", ingredient.as_str()))?;
+                match nudge_quantity(quantity, known, steps) {
+                    Nudged::To(quantity) => ListItem::Ingredient {
+                        ingredient: ingredient.clone(),
+                        quantity,
+                    },
+                    Nudged::Off => return self.remove_list_entry(entry, library),
+                    // Refused rather than guessed: the notch and the line do
+                    // not share a dimension and this ingredient has no
+                    // coefficient to cross it (Rule 5), or the line is an
+                    // amount nobody measured.
+                    Nudged::Refused => {
+                        return Err(AppError::invalid(
+                            "steps",
+                            "this amount cannot be counted up or down",
+                        ));
+                    }
+                }
+            }
+            ListItem::Recipe { recipe, servings } => {
+                let written_for = library
+                    .recipes
+                    .get(recipe)
+                    .map_or(*servings, |held| held.servings);
+                match nudge_servings(*servings, written_for, steps) {
+                    Some(servings) => ListItem::Recipe {
+                        recipe: recipe.clone(),
+                        servings,
+                    },
+                    None => return self.remove_list_entry(entry, library),
+                }
+            }
+        };
+
+        self.document
+            .update_list_entry(&ListEntry { item, ..existing })?;
         Ok(true)
     }
 

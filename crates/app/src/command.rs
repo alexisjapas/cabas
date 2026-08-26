@@ -25,7 +25,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::tags::{AisleTag, RefDisplayTag, UnitTag};
+use crate::tags::{AisleTag, KeepingTag, RefDisplayTag, UnitTag};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
@@ -43,6 +43,27 @@ pub enum Command {
     /// is reported by the domain and rendered as a warning (DECISIONS 0022).
     DeleteIngredient {
         ingredient: String,
+    },
+
+    /// Creates the shop when `id` is absent, renames it otherwise
+    /// (DECISIONS 0071).
+    ///
+    /// Sent by the field where a shop is typed onto an ingredient: a name
+    /// that matches nothing offers to become one, and the ingredient is saved
+    /// referring to the id this minted. Two commands rather than a shop name
+    /// travelling on [`IngredientInput`], because creating a shop is a thing
+    /// a person did and not a side effect of saving something else.
+    SaveShop {
+        shop: ShopInput,
+    },
+
+    /// Forgets a shop.
+    ///
+    /// Ingredients still naming it are **not** rewritten, like every other
+    /// delete here (DECISIONS 0022): the dangling id matches no shop, so it
+    /// filters nothing and the ingredient keeps its other shops.
+    DeleteShop {
+        shop: String,
     },
 
     SaveRecipe {
@@ -83,6 +104,31 @@ pub enum Command {
     SetEntryServings {
         entry: String,
         servings: u32,
+    },
+
+    /// Sets what a bare ingredient on the list asks for, exactly
+    /// (DECISIONS 0072). What the long press on a shelf row opens, and the
+    /// only way an amount and a unit are both chosen at once.
+    ///
+    /// Refused on a recipe entry, which is measured in people and has
+    /// [`Command::SetEntryServings`] for that.
+    SetEntryQuantity {
+        entry: String,
+        quantity: QuantityInput,
+    },
+
+    /// One more of this, or one less — the gesture continued (DECISIONS
+    /// 0072).
+    ///
+    /// `steps` is a count of notches and never an amount: what a notch is
+    /// worth is the core's rule and differs by what is on the line — the
+    /// ingredient's usual shopping quantity, or one whole recipe as written
+    /// (Rule 9). Nudging the last one down takes the entry off the list,
+    /// which is why this is not [`Command::SetEntryQuantity`] with the
+    /// arithmetic done in the frontend.
+    NudgeListEntry {
+        entry: String,
+        steps: i32,
     },
 
     RemoveListEntry {
@@ -160,6 +206,20 @@ pub struct QuantityInput {
     pub unit: UnitTag,
 }
 
+/// A shop, as the field that creates one sends it: a name and nothing else
+/// (DECISIONS 0071).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+pub struct ShopInput {
+    /// Absent on creation. Minted by the frontend in practice, for the reason
+    /// [`IngredientInput::id`] is: the field that creates a shop has to
+    /// *select* it the moment it exists, and a command hands back a whole
+    /// state rather than an id (DECISIONS 0056).
+    #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct IngredientInput {
@@ -170,6 +230,19 @@ pub struct IngredientInput {
     #[serde(default)]
     pub aliases: Vec<String>,
     pub aisle: AisleTag,
+    /// The ids of the shops this can be bought at, in the order they are to
+    /// be read (DECISIONS 0071). Ids and never names: a shop is created by
+    /// [`Command::SaveShop`] before it is referred to here, so that "Biocoop"
+    /// typed twice is one shop and not two.
+    ///
+    /// Empty means "nobody has said", which the cart reads as every shop.
+    #[serde(default)]
+    pub shops: Vec<String>,
+    /// Fridge, freezer or neither (DECISIONS 0070). Defaulted rather than
+    /// optional: every ingredient is kept somewhere, and "a cupboard" is the
+    /// honest answer for one nobody has thought about.
+    #[serde(default)]
+    pub keeping: KeepingTag,
     #[serde(default)]
     pub staple: bool,
     /// Grams per millilitre, as text. What makes mass ↔ volume possible for

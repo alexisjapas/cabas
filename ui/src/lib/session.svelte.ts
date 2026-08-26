@@ -33,12 +33,14 @@ import { Sync } from './sync.svelte';
  * The screens that exist. The current one is persisted, because an iOS cold
  * reload otherwise drops you on the home screen mid-shop — the most visible
  * flaw of an installed PWA, and the cheapest one to fix (DECISIONS 0003).
+ *
+ * *Which* screen is remembered; nothing about what it was showing is
+ * (DECISIONS 0074). A tab opens cold.
  */
 export type Screen = 'cart' | 'list' | 'recipes' | 'ingredients' | 'settings';
 
 const SCREENS: readonly Screen[] = ['cart', 'list', 'recipes', 'ingredients', 'settings'];
 const SCREEN_KEY = 'cabas.screen';
-const SCROLL_KEY = 'cabas.scroll';
 
 /**
  * The commands that change who this device says it is (DECISIONS 0068).
@@ -70,30 +72,6 @@ function readScreen(): Screen {
   return SCREENS.find((screen) => screen === stored) ?? 'cart';
 }
 
-/**
- * How far down each screen was left.
- *
- * Validated key by key rather than trusted: this is the one thing the app reads
- * back that no schema covers, and a hand-edited or half-written entry must cost
- * a screen its offset, not the launch.
- */
-function readOffsets(): Partial<Record<Screen, number>> {
-  const offsets: Partial<Record<Screen, number>> = {};
-  try {
-    const stored: unknown = JSON.parse(localStorage.getItem(SCROLL_KEY) ?? '{}');
-    if (stored === null || typeof stored !== 'object') return offsets;
-    for (const screen of SCREENS) {
-      const offset: unknown = (stored as Record<string, unknown>)[screen];
-      if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
-        offsets[screen] = offset;
-      }
-    }
-  } catch {
-    // Not JSON. Every screen starts at the top, which is where it started
-    // before any of this existed.
-  }
-  return offsets;
-}
 
 export class Session {
   readonly #core: Core;
@@ -112,25 +90,6 @@ export class Session {
   /** Which screen is showing. Device-local, and never synced. */
   screen = $state<Screen>('cart');
 
-  /**
-   * How far down each screen was left. Device-local like the screen itself, and
-   * deliberately not reactive: it is written on every scroll event and read
-   * once per screen change, so tracking it would invalidate a render per frame
-   * to no end.
-   */
-  #offsets: Partial<Record<Screen, number>> = readOffsets();
-
-  /**
-   * Set from the moment a screen changes until its offset has been put back.
-   *
-   * A `scroll` event is delivered a frame after the scrolling, so the ones left
-   * over from the outgoing screen arrive when `screen` already names the
-   * incoming one — and recording those would overwrite the very offset about to
-   * be restored with the outgoing screen's last position. Which is exactly what
-   * happened: switching tabs and switching straight back landed at the top,
-   * about half the time.
-   */
-  #settling = true;
 
   /**
    * The last command that was refused, in the app's own words. English, and
@@ -202,34 +161,27 @@ export class Session {
     return this.#core.photo(id);
   }
 
+  /**
+   * Goes to a tab, and opens it cold (DECISIONS 0074).
+   *
+   * Everything a screen was in the middle of is dropped: the open recipe, the
+   * editor under an ingredient, the search that narrowed the shelf, and how
+   * far down it had been scrolled. Most of that is free — each screen lives
+   * inside an `{#if}` in `App.svelte`, so switching away destroys the
+   * component and its local state with it. The two that are not are here: the
+   * open recipe is *core* state (`OpenRecipe`, device-local but persisted),
+   * and the scroll offset belongs to the window.
+   *
+   * Tapping the tab you are already on does the same thing, deliberately: it
+   * is the way back out of a recipe without hunting for the close button.
+   */
   show(screen: Screen): void {
-    // Read here rather than trusted from the last scroll event: this is the
-    // last instant at which `window.scrollY` still belongs to the screen being
-    // left.
-    this.#offsets[this.screen] = window.scrollY;
-    this.#settling = true;
+    // Only when there is one, so that changing tabs does not push a state and
+    // schedule a write for a command that changes nothing.
+    if (this.state.focus !== null) this.run({ command: 'close_recipe' });
     this.screen = screen;
     localStorage.setItem(SCREEN_KEY, screen);
-    this.#saveOffsets();
-  }
-
-  /**
-   * Puts the screen back where it was left. Called by `App.svelte` once the
-   * screen has rendered — an offset means nothing before there is something to
-   * scroll.
-   *
-   * Takes the screen it was queued for, because a second tap can land while the
-   * first is still waiting for the DOM, and scrolling the new screen to the old
-   * one's offset is worse than not scrolling at all.
-   */
-  restoreScroll(screen: Screen): void {
-    if (screen !== this.screen) return;
-    window.scrollTo(0, this.#offsets[screen] ?? 0);
-    this.#settling = false;
-  }
-
-  #saveOffsets(): void {
-    localStorage.setItem(SCROLL_KEY, JSON.stringify(this.#offsets));
+    window.scrollTo(0, 0);
   }
 
   dismissError(): void {
@@ -256,7 +208,6 @@ export class Session {
   #watchPageLifecycle(): void {
     const settle = (): void => {
       void this.#flush();
-      this.#saveOffsets();
     };
     // `pagehide` is the one iOS fires reliably when a PWA is backgrounded;
     // `visibilitychange` covers app switching everywhere else. Both, because
@@ -266,21 +217,11 @@ export class Session {
     });
     window.addEventListener('pagehide', settle);
 
-    // Kept in memory on every frame and written down only when a screen is
-    // left or the app is: a `localStorage` write per scroll event is a
-    // synchronous disk touch per frame, on the one device that cannot spare it.
-    window.addEventListener(
-      'scroll',
-      () => {
-        if (this.#settling) return;
-        this.#offsets[this.screen] = window.scrollY;
-      },
-      { passive: true },
-    );
-
     // The browser's own scroll restoration aims at a document that does not
-    // exist yet — this one renders after the wasm core has loaded. Ours runs
-    // when there is something to scroll; theirs would only be a jump.
+    // exist yet — this one renders after the wasm core has loaded, so what it
+    // would restore is an offset into a page that was empty at the time. A
+    // launch lands at the top of the last tab, which is what `show` does too
+    // (DECISIONS 0074).
     history.scrollRestoration = 'manual';
   }
 }

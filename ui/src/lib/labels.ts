@@ -14,6 +14,7 @@
 import type { ActionTag } from './bindings/ActionTag';
 import type { AisleTag } from './bindings/AisleTag';
 import type { CheckStateTag } from './bindings/CheckStateTag';
+import type { KeepingTag } from './bindings/KeepingTag';
 import type { ProblemKind } from './bindings/ProblemKind';
 import type { RefDisplayTag } from './bindings/RefDisplayTag';
 import type { SubjectTag } from './bindings/SubjectTag';
@@ -63,19 +64,37 @@ export const UNIT_PLURAL: Partial<Record<UnitTag, string>> = {
  * table names them and nothing more.
  */
 export const AISLE_LABEL: Record<AisleTag, string> = {
-  produce: 'Fruits et légumes',
-  butcher: 'Boucherie',
-  fish: 'Poissonnerie',
-  deli: 'Charcuterie, traiteur',
-  dairy: 'Crèmerie',
-  bakery: 'Boulangerie',
-  grocery: 'Épicerie',
-  frozen: 'Surgelés',
+  produce: 'Fruits & légumes',
+  bakery: 'Pains & pâtisseries',
+  dairy: 'Produits laitiers',
+  pantry: 'Ingrédients & épices',
+  frozen: 'Surgelés & plats cuisinés',
+  staples: 'Pâtes, riz & céréales',
+  snacks: 'Snacks & friandises',
   beverages: 'Boissons',
-  household: 'Entretien',
-  items: 'Items',
+  household: 'Foyer',
+  care: 'Soin & santé',
+  crafts: 'Artisanat & jardin',
   other: 'Autres',
 };
+
+/**
+ * Where a thing goes once it is home (DECISIONS 0070).
+ *
+ * "Placard" rather than "ambiant" because it is the word a person uses while
+ * holding the thing. It is the default, so it is deliberately the one label
+ * the shelves and the cart do **not** draw a badge for: a badge on almost
+ * every row says nothing, and the two that matter are the ones that stop
+ * being obvious once the bag is on the counter.
+ */
+export const KEEPING_LABEL: Record<KeepingTag, string> = {
+  ambient: 'Placard',
+  fridge: 'Frigo',
+  freezer: 'Congélateur',
+};
+
+/** The order the form offers them, the default first. */
+export const KEEPINGS: readonly KeepingTag[] = ['ambient', 'fridge', 'freezer'];
 
 /**
  * The three cart sections. "Acheté" and "Déjà à la maison" are kept apart
@@ -135,16 +154,16 @@ export const REF_DISPLAYS: readonly RefDisplayTag[] = ['full', 'name_only', 'qua
 /** Aisles in the order the pickers offer them — the shop's walking order. */
 export const AISLES: readonly AisleTag[] = [
   'produce',
-  'butcher',
-  'fish',
-  'deli',
-  'dairy',
   'bakery',
-  'grocery',
+  'dairy',
+  'pantry',
   'frozen',
+  'staples',
+  'snacks',
   'beverages',
   'household',
-  'items',
+  'care',
+  'crafts',
   'other',
 ];
 

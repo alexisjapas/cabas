@@ -1,9 +1,3 @@
-| [0063](#0063--a-family-is-called-a-group) | A family is called a group | Product |
-| [0064](#0064--the-tabs-run-from-the-shelves-to-the-trip) | The tabs run from the shelves to the trip | Product |
-| [0065](#0065--a-photo-can-be-chosen-as-well-as-taken) | A photo can be chosen as well as taken | Product |
-| [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys) | An ingredient knows how much of it one buys | Domain |
-| [0067](#0067--a-row-goes-on-the-list-by-being-pushed-there) | A row goes on the list by being pushed there | Product |
-| [0068](#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it) | A device joins a group, and then says who is carrying it | Product |
 # Decisions — historical record
 
 Every technical and product choice, with the reasoning that produced it.
@@ -84,6 +78,12 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys) | An ingredient knows how much of it one buys | Domain |
 | [0067](#0067--a-row-goes-on-the-list-by-being-pushed-there) | A row goes on the list by being pushed there | Product |
 | [0068](#0068--a-device-joins-a-group-and-then-says-who-is-carrying-it) | A device joins a group, and then says who is carrying it | Product |
+| [0069](#0069--the-aisles-are-this-groups-shop-not-a-supermarkets) | The aisles are this group's shop, not a supermarket's | Domain |
+| [0070](#0070--an-ingredient-says-where-it-is-kept) | An ingredient says where it is kept | Domain |
+| [0071](#0071--a-shop-is-a-name-and-the-cart-is-one-trip-per-shop) | A shop is a name, and the cart is one trip per shop | Product |
+| [0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount) | The gesture keeps counting, and holding a row types the amount | Product |
+| [0073](#0073--an-ingredients-editor-opens-under-the-ingredient) | An ingredient's editor opens under the ingredient | Product |
+| [0074](#0074--a-tab-opens-cold) | A tab opens cold | Product |
 
 ---
 
@@ -2279,7 +2279,12 @@ Ingredients tab and back** — the status quo, which costs a recipe draft.
 
 ## 0057 — Items: an aisle for what is bought whole and never cooked
 
-**Date** 2026-08-12 · **Status** Accepted · **Relates to**
+**Date** 2026-08-12 · **Status** Superseded by
+[0069](#0069--the-aisles-are-this-groups-shop-not-a-supermarkets) — the
+`Items` aisle retired into `Foyer`, `Soin & santé` and `Artisanat & jardin`,
+which say where a thing is found rather than that it is not food. The
+argument below about *adding* an aisle costing no schema bump is unchanged
+and is what 0069 leans on. · **Relates to**
 [0029](#0029--how-the-document-encodes-domain-values),
 [0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items)
 
@@ -2742,7 +2747,7 @@ the photos of a library sitting in plaintext beside them.
 
 **Date** 2026-08-25 · **Status** Accepted · **Relates to**
 [0009](#0009--zero-knowledge-relay-with-app-layer-e2ee),
-[0024](#0024--users-devices-and-an-event-log),
+[0024](#0024--attribution-is-declarative-not-cryptographic),
 [0042](#0042--the-sync-protocol-and-what-the-relay-stores),
 [0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all)
 
@@ -2921,7 +2926,12 @@ then be two of it when the Tauri host lands (Rule 9, 0005).
 
 ## 0067 — A row goes on the list by being pushed there
 
-**Date** 2026-08-25 · **Status** Accepted · **Relates to**
+**Date** 2026-08-25 · **Status** Accepted · **Extended by**
+[0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount)
+— which keeps everything below and adds the two things it left out: the
+gesture goes on counting after the first add, and the long-press rejected at
+the end of this entry is reinstated, for reasons that entry gives. ·
+**Relates to**
 [0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there),
 [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys),
 [0020](#0020--a-list-entry-disappears-when-it-is-settled-purge-is-deferred)
@@ -2981,7 +2991,7 @@ release** — nothing to cancel, and a mis-scroll becomes an edit.
 ## 0068 — A device joins a group, and then says who is carrying it
 
 **Date** 2026-08-25 · **Status** Accepted · **Relates to**
-[0024](#0024--users-devices-and-an-event-log),
+[0024](#0024--attribution-is-declarative-not-cryptographic),
 [0031](#0031--the-device-identity-lives-in-the-host),
 [0063](#0063--a-family-is-called-a-group),
 [0021](#0021--pairing-by-qr-with-a-12-word-recovery-phrase)
@@ -3056,3 +3066,338 @@ a role, and an access-control story the one shared key cannot back (Rule 7).
 CRDT races a concurrent write to the same person, and the log entries pointing
 at them would dangle. The duplicates that exist stay; the roster is where they
 are visible, and renaming one is a label change.
+
+## 0069 — The aisles are this group's shop, not a supermarket's
+
+**Date** 2026-08-26 · **Status** Accepted · **Supersedes**
+[0057](#0057--items-an-aisle-for-what-is-bought-whole-and-never-cooked) ·
+**Relates to** [0029](#0029--how-the-document-encodes-domain-values)
+
+**Context.** The twelve aisles were a generic French supermarket's counters —
+`Produce`, `Butcher`, `Fish`, `Deli`, `Dairy`, `Bakery`, `Grocery`, `Frozen`,
+`Beverages`, `Household`, `Items`, `Other`. Three of them name meat and fish
+counters that nobody in this group has ever walked past, one (`Grocery`) was
+doing the work of four, and `Items` classified by what a thing *is not*
+rather than by where it is found.
+
+An aisle set is not a taxonomy. Its only job is to sort the cart into the
+order a person walks, and an aisle that is never chosen costs a line in every
+dropdown while sorting nothing.
+
+**Decision.** Twelve aisles again, chosen by the people who shop:
+
+| Tag | Reads |
+|---|---|
+| `produce` | Fruits & légumes |
+| `bakery` | Pains & pâtisseries |
+| `dairy` | Produits laitiers |
+| `pantry` | Ingrédients & épices |
+| `frozen` | Surgelés & plats cuisinés |
+| `staples` | Pâtes, riz & céréales |
+| `snacks` | Snacks & friandises |
+| `beverages` | Boissons |
+| `household` | Foyer |
+| `care` | Soin & santé |
+| `crafts` | Artisanat & jardin |
+| `other` | Autres |
+
+Declaration order is still the walking order, and it is *their* order — the
+list was given in the order they walk it, and reordering it into something
+more defensible would have been an opinion about somebody else's shop.
+
+**Consequences.** `SCHEMA_VERSION` does **not** move. An aisle decides sort
+order and nothing else, so `store::codec` already degraded an unknown tag to
+`Other` rather than refusing the document (0029, 0057) — a phone three weeks
+out of date reads `staples` as `Other` and shows the line at the end of the
+cart, which is a wrong walk and not a lost amount.
+
+What that argument does *not* cover is **retiring** a tag, and that is the
+half worth writing down: without a read mapping, every ingredient in the
+existing library would have decoded to `Other` on the next launch. The
+document would have opened cleanly, every test would have passed, and the
+discovery would have happened in a shop. So `codec::aisle` still answers to
+the five retired spellings — `grocery` → `Pantry`, `items` → `Household`,
+and `butcher`/`fish`/`deli` → `Other`, because there is no shelf left to put
+them on and `Other` says "look at this" rather than inventing a
+classification. They are read and never written: one save under this build
+and an ingredient stops answering to them.
+
+**Rejected.** **Keeping the meat counters "in case".** They are three rows in
+every dropdown, on every ingredient anybody will ever create here, for a case
+that does not arise; and the code is append-only in `docs/`, not in
+`domain/`. **A user-editable aisle list.** Aisles are ordered, and an ordered
+list somebody maintains by hand is a settings screen, a drag handle and a
+migration — for a set that changes about once a year. **Bumping
+`SCHEMA_VERSION`.** It would refuse the *other* phone's document until both
+were updated, which is a worse failure than a line at the end of the cart.
+
+## 0070 — An ingredient says where it is kept
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0069](#0069--the-aisles-are-this-groups-shop-not-a-supermarkets),
+[0029](#0029--how-the-document-encodes-domain-values)
+
+**Context.** The aisle answers "where do I find this", which is the question
+in the shop. There is a second question, half an hour later, with the bags on
+the counter: does this go in the fridge, the freezer, or a cupboard. Getting
+it wrong costs a bag of frozen peas.
+
+The aisle cannot answer it. Crème fraîche and UHT milk share an aisle and not
+a shelf; frozen and refrigerated pastry sit two metres apart in the shop and
+in two different appliances at home.
+
+**Decision.** A third field on the ingredient: `Keeping`, one of `Ambient`,
+`Fridge`, `Freezer`, defaulting to `Ambient`. It travels to the cart line,
+because that is the row still on screen when the unpacking happens, and the
+UI draws a badge for the two that are not the default — a badge on almost
+every row says nothing.
+
+**Consequences.** Additive: the key is absent on every ingredient written
+before this, and an absent key decodes as `Ambient`, which is both the
+default and the honest reading of silence. `SCHEMA_VERSION` does not move,
+for the reason 0069 gives. An unrecognised value decodes as `Ambient` too —
+this is a hint, not an amount, and Rule 4's strictness has nothing to say
+about it.
+
+It is deliberately **not** an aisle. Merging the two would mean either three
+copies of every cold aisle or an ingredient that cannot be both "produits
+laitiers" and "frigo", and the whole point is that the two axes are
+independent.
+
+**Rejected.** **Deriving it from the aisle.** `frozen` → freezer is right and
+everything else is a guess; a guess here is a bag of peas. **A free-text
+"where it lives".** Three answers cover it, and a free-text field is a field
+that gets sorted by nothing. **Putting it on the recipe too.** A recipe is not
+stored anywhere; the dish might be, and that is a different feature.
+
+## 0071 — A shop is a name, and the cart is one trip per shop
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items),
+[0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab),
+[0060](#0060--what-was-searched-for-is-what-gets-created),
+[0022](#0022--instruction-steps-are-segments-referencing-ingredient-usages)
+
+**Context.** One list, one walking order (0018) — and two shops. Half of what
+is on the list is only at the market, the other half only at the supermarket,
+and the cart sorted them into one continuous walk through a shop that does not
+exist.
+
+**Decision.** A **shop** is a name and nothing else: no address, no hours, no
+aisle order of its own. Ingredients carry a list of the shops they can be
+bought at, and the cart screen offers one chip per shop plus "Tous". Choosing
+one keeps what that shop sells, grouped by aisle exactly as before, and folds
+the rest away under "Ailleurs".
+
+Called `Shop` in the code and not `Store`, because `cabas-store` is the
+persistence crate and a `Store` inside it would be two unrelated things under
+one word in the file that maps between them.
+
+Three parts of this carry the weight:
+
+1. **An ingredient with no shop belongs to every shop.** Empty means "nobody
+   has said", never "nowhere". The alternative hides a line from the only
+   screen that would have prompted somebody to classify it, which is how a
+   shopping list quietly loses an item — and every ingredient starts unplaced.
+
+   The same answer covers a second silence that is easy to miss: an
+   ingredient whose named shops have **all been forgotten since**. It was
+   classified, the classification is gone, and refusing to show it would lose
+   it exactly as above. Deciding that needs the shop library, which is why the
+   rule is `domain::shop::sold_at(&ingredient, &shops)` and not a method on
+   the ingredient — and why `CartLineView::shops` carries the **resolved**
+   trips rather than a copy of the ingredient's own list. The screen filters
+   by plain membership and holds no rule of its own (Rule 9); writing
+   "empty means everywhere" out again on the Svelte side is a second
+   implementation that will drift, and it was there for about an hour.
+2. **A shop is created where it is typed**, in the field on the ingredient's
+   own form: a name that matches nothing offers to become one. Nobody is going
+   to visit a settings screen first, and if they do not, "Biocoop" on the
+   second ingredient is a different string from "Biocoop" on the first. The id
+   is minted by the frontend so the field can select what it just created —
+   the same bargain as 0056, for the third time.
+3. **The list is ordered, and the order is read.** The first shop on an
+   ingredient is the one to file it under when a future screen has to choose
+   one. Today nothing needs to; the field would have had to be re-typed if it
+   had been a set.
+
+The filter applies to what is still **to buy** and not to the two folded
+sections: those are a record of the trip, and a record that changes shape when
+you tap a chip is not one.
+
+**Consequences.** A new root container (`shops`) and a new ingredient key,
+both additive — `SCHEMA_VERSION` does not move, for the reason 0069 gives.
+Two commands, `SaveShop` and `DeleteShop`, because creating a shop is a thing
+a person did and not a side effect of saving something else.
+
+**Nothing is recorded in the event log**, unlike every other library write.
+The log exists for what the data cannot remember — a deleted recipe leaves no
+field behind to hold "and Alexis did this" (0024) — and a shop is a label on a
+handful of ingredients: forgetting one changes no amount, breaks no line, and
+is undone by typing the name again. Recording it would also mean widening the
+log's persisted `subject_kind`, which is a schema change bought for a row
+nobody would read.
+
+Forgetting a shop leaves the ingredients that named it alone. Referential
+integrity is not enforceable under a CRDT (0022) and here the dangling id is
+harmless: it matches no shop, so it filters nothing, and the line goes back to
+being sold everywhere. Settings gains a "Magasins" screen for renaming and
+forgetting, because a library with no way to fix a typo fills up with
+"Biocoop", "biocoop " and "Bicoop".
+
+**Rejected.** **Grouping the cart by shop, all shops at once.** It answers
+"what do I buy where" and the question in a shop is "what do I buy *here*";
+it also has to invent a rule for an ingredient sold in two places. **A shop
+name straight on the ingredient, no library.** Two spellings are two shops,
+which is the entire failure this prevents — the same argument as the alias
+table. **Per-shop aisle orders.** A second ordered list to maintain per shop,
+for a walk that is already approximately right. **Shops on the recipe.** A
+recipe is not bought.
+
+## 0072 — The gesture keeps counting, and holding a row types the amount
+
+**Date** 2026-08-26 · **Status** Accepted · **Extends**
+[0067](#0067--a-row-goes-on-the-list-by-being-pushed-there) · **Relates to**
+[0066](#0066--an-ingredient-knows-how-much-of-it-one-buys),
+[0040](#0040--the-keyboard-is-a-length-not-a-mode)
+
+**Context.** 0067 made the first add one gesture and left everything after it
+where it was: the amount was invisible on the shelf, changing it meant the
+list tab and a form, and the swipe did nothing at all on a row that was
+already on the list. "Two of those" was five interactions again.
+
+**Decision.** The parked row carries **what it asks for**, written under
+"Annuler", and the same drag keeps working from there: right for one more
+notch, left for one less. Left past the last one takes the row off the list,
+because one less than the last one is nothing to buy and a row asking for
+none of a thing is a row you read twice.
+
+**A notch is the core's rule, never the frontend's arithmetic.** The command
+is `NudgeListEntry { entry, steps }` and `steps` is a count: what it is worth
+depends on what is on the line — the ingredient's usual shopping quantity
+(0066), or **one whole recipe as written**, so a tart for four goes 4 → 8 →
+12 rather than 4 → 5. Both live in `domain::list`, which also decides that the
+notch is converted into the *line's* unit and not the other way round: type
+"500 g" and nudge, and the row stays in grams, because grams is what is being
+read in a shop.
+
+**Holding the row opens the exact amount** — a panel with the amount, the unit,
+and nothing else. The swipe is deliberately coarse and cannot express "350 g"
+or change a unit, so there has to be somewhere the precise answer is typed;
+holding is where, because it is the same thumb in the same place and a tap is
+already taken.
+
+**This reverses 0067's rejection of long-press**, which said it was invisible
+and fought the OS's text selection. Both objections were right and neither
+survived contact: it is no longer invisible because the row it opens now
+*shows* an amount that visibly wants changing, and `user-select: none` plus
+`-webkit-touch-callout: none` settles the second. It is still an accelerator
+— the list's own form does every one of these jobs — which is the whole
+accessibility argument, and it is the same one 0067 made.
+
+**Consequences.** `SetEntryQuantity` joins `SetEntryServings`, refused on the
+wrong kind of entry rather than guessing which one was meant.
+`ListItemView::Ingredient` gains a lossless `edit` beside its rendered
+`quantity`, for the reason `IngredientView::default_quantity` has one: a form
+seeded from a rounded amount writes the rounding back on the next save.
+
+The panel is a fixed overlay and **not** a `<dialog>`: `showModal()` puts the
+element in the top layer, positioned against the layout viewport — the one iOS
+does not shrink for the keyboard (0040) — where it cannot read
+`--keyboard-inset` and ends up under the keys.
+
+A press that has fired swallows the click that follows it, exactly as a drag
+does, or holding a row would also open the editor underneath it.
+
+`--press-delay` is a token like every other measurement (Rule 10), and its
+**unit has to be read back, not just its number**: it is authored `500ms` and
+the CSS minifier ships it as `.5s`, so a bare `parseFloat` gives 0.5. In the
+component that would be a press firing instantly; in the test that drives it,
+it looked exactly like a press that never fired.
+
+**Rejected.** **"+" and "−" buttons on the parked row.** Two more targets on a
+strip 104 px wide, next to a destructive one. **A notch of one unit.** "One
+more gram of flour" is not a thing anybody wants, and the amount one buys is
+already a decided rule. **Nudging down leaving a zero.** A line asking for
+none of something is a line you have to read and dismiss.
+
+## 0073 — An ingredient's editor opens under the ingredient
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0056](#0056--an-ingredient-is-created-where-it-is-needed-not-in-another-tab),
+[0058](#0058--anything-chosen-out-of-a-library-is-searched-for)
+
+**Context.** Tapping an ingredient opened the library form in a panel at the
+top of the screen, above the search field and possibly a scroll away from the
+row that was tapped. On a phone, in a library long enough to need the search,
+the form appeared somewhere you were not looking and the row it belonged to
+was off screen.
+
+**Decision.** The form opens **under its own row**, and only one is open at a
+time: tapping another closes the first. Tapping the open one closes it. The
+"Nouveau" button still opens a form at the top, because a new ingredient has
+no row to sit under.
+
+**Consequences.** The form is rendered outside the swipe wrapper and inside
+the `<li>`. Outside, because a form that slid sideways with the row would be
+unusable the moment a finger wandered; inside, because it belongs to the row
+and the two have to read as one block when a screen is scrolled.
+
+`Ingredients.svelte`'s `li button` styles keep matching only the row button:
+Svelte scopes a selector to its own component's markup, and the form's buttons
+belong to `IngredientForm`. That is luck rather than design and is worth
+knowing before either file moves.
+
+One open editor rather than a set, because two forms over one library are two
+answers to "what am I editing" — and the draft they bind to is one object.
+
+**Rejected.** **A modal.** It is the whole library form, which is longer than
+a phone screen, and a modal over a scrollable list is where the keyboard
+problem of 0040 is worst. **Keeping the panel at the top and scrolling to
+it.** It is still not where the finger was, and the row it belongs to is still
+off screen. **Several open at once.** See above.
+
+## 0074 — A tab opens cold
+
+**Date** 2026-08-26 · **Status** Accepted · **Supersedes the scroll half of**
+[0003](#0003--ios-ships-as-a-pwa) · **Relates to**
+[0073](#0073--an-ingredients-editor-opens-under-the-ingredient)
+
+**Context.** Each screen remembered where it had been left — which recipe was
+open, how far down it was scrolled — and coming back to a tab put you in the
+middle of whatever you had been doing there, possibly hours earlier. The
+recipe you read on Tuesday was still open on Thursday, and the shelf came back
+scrolled to a row you no longer cared about.
+
+The offsets were also a mechanism with a subtle bug in it: a `scroll` event
+arrives a frame after the scrolling, so the outgoing screen's last scroll was
+attributed to the incoming one, and a `#settling` flag existed only to
+suppress that.
+
+**Decision.** Switching to a tab opens it **cold**: nothing selected, no
+search, at the top. Tapping the tab you are already on does the same, which
+is also the way out of a recipe without hunting for the close button.
+
+Most of it is free — every screen lives inside an `{#if}` in `App.svelte`, so
+switching away destroys the component and its local state. Two things are not,
+and `Session.show` handles both: the open recipe is **core** state
+(`OpenRecipe`, device-local but persisted), so it is closed with a command;
+and the scroll offset belongs to the window, so it is set to zero.
+
+**Consequences.** *Which* screen you were on is still remembered across a cold
+launch — that half of 0003 stands, and it is the one that mattered: an iOS
+reload mid-shop must not drop you on the cart when you were on the list. What
+is dropped is the offset within it, and the whole `#offsets` / `#settling`
+mechanism with it.
+
+`history.scrollRestoration` stays `'manual'`, because the browser's own
+restoration aims at a document that does not exist yet — this one renders
+after the wasm core has loaded, so what it would restore is an offset into a
+page that was empty at the time.
+
+**Rejected.** **Resetting the tab as well**, so every launch lands on the
+cart. That is the flaw 0003 fixed. **Keeping the offset and only closing the
+recipe.** Half of the surprise is the scroll: a shelf that comes back
+mid-scroll reads as a shelf that has lost your place, not one that kept it.
+**A timeout — cold after an hour.** A rule nobody can see, which is worse than
+either behaviour on its own.

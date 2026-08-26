@@ -62,7 +62,7 @@ mod wasm;
 pub use app::App;
 pub use command::Command;
 pub use error::{AppError, Result};
-pub use id::{mint_ingredient_id, mint_usage_id};
+pub use id::{mint_ingredient_id, mint_shop_id, mint_usage_id};
 pub use photos::{MAX_PHOTO_BYTES, Photos};
 pub use platform::{Identity, Platform, SystemPlatform};
 pub use sync::{SyncCursor, SyncEvent, SyncSession, SyncStatus};

@@ -177,6 +177,32 @@ carrying the reasoning:
   two of them in the roster, permanently. The duplicate is created at the
   moment of joining, which is why the question moved to after the first sync.
 
+**0.7.0 settled six more**, on the same footing and for the same reason — the
+app is used every day and its shape is what gets in the way, not its
+plumbing. Three of them reach the domain:
+
+- **The aisles are this group's shop** (0069). Chosen by the people who walk
+  them rather than copied off a supermarket: no butcher, no fishmonger,
+  `Items` retired into `Foyer · Soin & santé · Artisanat & jardin`. No
+  `SCHEMA_VERSION` bump, because an unknown aisle already degraded — but
+  `store::codec` had to grow a **read mapping for the five retired
+  spellings**, or the whole existing library would have decoded to "Autres"
+  and nobody would have found out until a shop.
+- **An ingredient says where it is kept** (0070) — frigo, congélateur or
+  neither, read when the bags are emptied and not when they are filled.
+- **A shop is a name, and the cart is one trip per shop** (0071). Two shops
+  and one continuous walk through a shop that does not exist was the problem;
+  a chip per shop and an "Ailleurs" fold is the answer. An ingredient nobody
+  has placed belongs to *every* trip, which is the half that keeps it from
+  being lost.
+- **The gesture keeps counting** (0072). The parked row shows what it asks
+  for, the same drag adds and removes a notch, and holding it opens the exact
+  amount — reversing 0067's rejection of long-press, with the reasons stated
+  there.
+- **An ingredient's editor opens under its own row** (0073), and **a tab opens
+  cold** (0074): nothing selected, no search, at the top. Which screen you
+  were on is still remembered; where you were inside it is not.
+
 **Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
@@ -191,25 +217,23 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.4.0** — creating an ingredient from the
-list and from a recipe, the `Items` aisle, and the picker that owns all of it
-(DECISIONS 0056, 0057); then searching for anything chosen out of a library,
-alphabetical order everywhere a person reads a list, and a list screen that
-folds away what is settled and takes a recipe directly (0058, 0059). The
-precondition is *agreement*, not a particular number: whatever is on the Pi is
-what both phones must be showing in Settings before the drill starts. Releasing
-0.4.0 means updating the add-on and opening each phone twice; leaving the
-appliance on 0.2.0 is equally valid, since none of it touches sync or either
-restore fix.
+**The workspace has since moved to 0.7.0**, through the releases listed under
+the overview table. The precondition for the drill is *agreement*, not a
+particular number: whatever is on the Pi is what both phones must be showing
+in Settings before it starts. Releasing means updating the add-on and opening
+each phone twice; leaving the appliance where it is would be equally valid,
+since none of it touches sync or either restore fix.
 
-The `Items` aisle is the one thing that does reach the persisted document, and
-it is forward-compatible rather than untouched: an ingredient filed there by a
-0.3.x phone decodes as `Aisle::Other` on 0.2.0 and lands at the *end* of that
-phone's cart (`store::codec`, DECISIONS 0057). No `SCHEMA_VERSION` bump is
-owed for it — but two phones on either side of that line show the same cart in
-a different order, which is worth knowing before running a drill across mixed
-versions. 0.4.0 adds nothing to that: it is a frontend release, and every
-sorting and searching decision in it happens after the document is read.
+**What does reach the persisted document is the aisle set, and it is
+forward-compatible rather than untouched.** An ingredient filed under `pantry`
+or `staples` by a 0.7.0 phone decodes as `Aisle::Other` on an older one and
+lands at the *end* of that phone's cart (`store::codec`, DECISIONS 0057,
+0069); the shops and the keeping are additive keys an older build never reads
+and never rewrites (0070, 0071). No `SCHEMA_VERSION` bump is owed for any of
+it — but two phones on either side of that line show the same cart in a
+different order, which is worth knowing before running a drill across mixed
+versions. **The cleanest thing is to run the drill on one version**, which is
+what "agreement" above means.
 
 What is left, in order, with the detail of each in the README:
 

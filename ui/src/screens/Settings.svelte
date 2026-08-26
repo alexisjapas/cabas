@@ -8,16 +8,18 @@
   import Identify from './Identify.svelte';
   import Pairing from './Pairing.svelte';
   import People from './People.svelte';
+  import Shops from './Shops.svelte';
 
   let { session }: { session: Session } = $props();
 
   /**
-   * Four views behind one tab, where Recipes has three of its own. The
-   * roster, the log and the user picker are screens rather than sections:
-   * each has something to say at the bottom that a section would bury, and
-   * all of them are reached from the one place someone would look for them.
+   * Five views behind one tab, where Recipes has three of its own. The
+   * roster, the log, the shops and the user picker are screens rather than
+   * sections: each has something to say at the bottom that a section would
+   * bury, and all of them are reached from the one place someone would look
+   * for them.
    */
-  let showing = $state<'settings' | 'people' | 'events' | 'identify'>('settings');
+  let showing = $state<'settings' | 'people' | 'shops' | 'events' | 'identify'>('settings');
 
   /**
    * The device half of the identity never appears in a view-model: it is a
@@ -93,6 +95,8 @@
 
 {#if showing === 'people'}
   <People {session} onback={() => (showing = 'settings')} />
+{:else if showing === 'shops'}
+  <Shops {session} onback={() => (showing = 'settings')} />
 {:else if showing === 'events'}
   <Events {session} onback={() => (showing = 'settings')} />
 {:else if showing === 'identify'}
@@ -200,6 +204,9 @@
     <div class="elsewhere">
       <button type="button" class="secondary" onclick={() => (showing = 'people')}>
         Personnes et appareils
+      </button>
+      <button type="button" class="secondary" onclick={() => (showing = 'shops')}>
+        Magasins
       </button>
       <button type="button" class="secondary" onclick={() => (showing = 'events')}>
         Journal

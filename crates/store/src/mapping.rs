@@ -25,8 +25,8 @@ use cabas_domain::recipe::{
     Component, IngredientUsage, Segment, Step, SubRecipeAmount, SubRecipeUsage,
 };
 use cabas_domain::{
-    Device, Event, Ingredient, IngredientId, ListEntryId, PhotoId, Recipe, RecipeId, UsageId, User,
-    UserId,
+    Device, Event, Ingredient, IngredientId, ListEntryId, PhotoId, Recipe, RecipeId, Shop, ShopId,
+    UsageId, User, UserId,
 };
 use loro::{LoroMap, LoroMovableList, LoroValue, ValueOrContainer};
 
@@ -91,6 +91,16 @@ pub(crate) fn write_ingredient(entry: &LoroMap, ing: &Ingredient) -> Result<()> 
         schema::ingredient::AISLE,
         text(codec::aisle_tag(ing.aisle)),
     )?;
+    set(
+        entry,
+        schema::ingredient::SHOPS,
+        value_list(ing.shops.iter().map(|s| text(s.as_str()))),
+    )?;
+    set(
+        entry,
+        schema::ingredient::KEEPING,
+        text(codec::keeping_tag(ing.keeping)),
+    )?;
     set(entry, schema::ingredient::STAPLE, ing.staple.into())?;
     set_optional(
         entry,
@@ -125,12 +135,30 @@ pub(crate) fn read_ingredient(id: &str, value: &LoroValue) -> Result<Ingredient>
             .collect::<Result<Vec<_>>>()?,
         None => Vec::new(),
     };
+    // Absent on everything written before DECISIONS 0071, and on everything
+    // nobody has placed since — which the domain reads as "sold everywhere"
+    // rather than "sold nowhere".
+    let shops = match codec::optional(map, schema::ingredient::SHOPS) {
+        Some(v) => codec::list(v, &path)?
+            .iter()
+            .map(|s| codec::string(s, &path).map(ShopId::from_raw))
+            .collect::<Result<Vec<_>>>()?,
+        None => Vec::new(),
+    };
 
     Ok(Ingredient {
         id: IngredientId::from_raw(id),
         name: codec::string(codec::field(map, schema::ingredient::NAME, &path)?, &path)?,
         aliases,
         aisle: codec::aisle(codec::field(map, schema::ingredient::AISLE, &path)?, &path)?,
+        shops,
+        // The default is supplied here rather than by every caller: an absent
+        // key and an unrecognised one mean the same thing, and it is "a
+        // cupboard" (DECISIONS 0070).
+        keeping: codec::optional(map, schema::ingredient::KEEPING)
+            .map(|v| codec::keeping(v, &path))
+            .transpose()?
+            .unwrap_or_default(),
         staple: codec::boolean(codec::field(map, schema::ingredient::STAPLE, &path)?, &path)?,
         density: codec::optional(map, schema::ingredient::DENSITY)
             .map(|v| codec::rational(v, &path))
@@ -144,6 +172,21 @@ pub(crate) fn read_ingredient(id: &str, value: &LoroValue) -> Result<Ingredient>
         photo: codec::optional(map, schema::ingredient::PHOTO)
             .map(|v| codec::string(v, &path).map(PhotoId::from_raw))
             .transpose()?,
+    })
+}
+
+// --- shops ------------------------------------------------------------------
+
+pub(crate) fn write_shop(entry: &LoroMap, shop: &Shop) -> Result<()> {
+    set(entry, schema::shop::NAME, text(&shop.name))
+}
+
+pub(crate) fn read_shop(id: &str, value: &LoroValue) -> Result<Shop> {
+    let path = format!("shops.{id}");
+    let map = codec::map(value, &path)?;
+    Ok(Shop {
+        id: ShopId::from_raw(id),
+        name: codec::string(codec::field(map, schema::shop::NAME, &path)?, &path)?,
     })
 }
 

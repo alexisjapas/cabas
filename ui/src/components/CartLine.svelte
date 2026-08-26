@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CartLineView } from '../lib/bindings/CartLineView';
   import { formatAmounts, relativeTime } from '../lib/format';
+  import { KEEPING_LABEL } from '../lib/labels';
   import type { Session } from '../lib/session.svelte';
   import Photo from './Photo.svelte';
 
@@ -36,6 +37,16 @@
       <span class="meta">Ingrédient de base, supposé présent</span>
     {/if}
   </span>
+
+  <!-- Only the two that are not obvious: almost everything lives in a
+       cupboard, and a badge on almost every row says nothing (DECISIONS
+       0070). It is on the cart line because this is the row still on screen
+       when the bags are being emptied onto a counter. -->
+  {#if line.keeping !== 'ambient'}
+    <span class="keeping" class:freezer={line.keeping === 'freezer'}>
+      {KEEPING_LABEL[line.keeping]}
+    </span>
+  {/if}
 
   {#if line.amounts.length > 0}
     <span class="amount">{formatAmounts(line.amounts)}</span>
@@ -121,5 +132,22 @@
     color: var(--text-muted);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
+  }
+
+  .keeping {
+    flex: none;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+  }
+
+  /* The freezer is the one that costs something to get wrong. */
+  .keeping.freezer {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 </style>

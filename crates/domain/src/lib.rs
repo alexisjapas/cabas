@@ -31,19 +31,21 @@ pub mod overlay;
 pub mod people;
 pub mod quantity;
 pub mod recipe;
+pub mod shop;
 pub mod units;
 
 pub use cart::{Cart, CartError, CartLine, EntryProgress, IngredientIndex, finish_shopping};
 pub use event::{Action, Event, EventLog, Subject};
 pub use expand::{Contribution, ExpandError, RecipeIndex, expand};
-pub use ingredient::{Aisle, Ingredient};
-pub use list::{ListEntry, ListItem, ShoppingList};
+pub use ingredient::{Aisle, Ingredient, Keeping};
+pub use list::{ListEntry, ListItem, Nudged, ShoppingList, nudge_quantity, nudge_servings};
 pub use overlay::{CheckState, Explicit, Overlay};
 pub use people::{Device, User, devices_of};
 pub use quantity::Quantity;
 pub use recipe::{
     Component, IngredientUsage, Recipe, RefDisplay, Segment, Step, SubRecipeAmount, SubRecipeUsage,
 };
+pub use shop::{Shop, sold_at};
 pub use units::{Dimension, MassUnit, Unit, VolumeUnit, convert};
 
 /// Every magnitude in the domain, exact (Rule 4).
@@ -123,6 +125,13 @@ id_type!(
 id_type!(
     /// A paired device. Belongs to exactly one `UserId`.
     DeviceId
+);
+
+id_type!(
+    /// A shop the group buys from — a name and nothing else (DECISIONS 0071).
+    /// Ingredients point at these; the cart uses them to split one trip into
+    /// the errands it is actually made of.
+    ShopId
 );
 
 id_type!(

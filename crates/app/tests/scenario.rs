@@ -16,10 +16,12 @@
 //! test in `store` (DECISIONS 0030).
 
 use cabas_app::command::{
-    ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput, StepInput,
+    ComponentInput, IngredientInput, QuantityInput, RecipeInput, SegmentInput, ShopInput, StepInput,
 };
 use cabas_app::photos::Photos;
-use cabas_app::tags::{ActionTag, AisleTag, CheckStateTag, RefDisplayTag, SubjectTag, UnitTag};
+use cabas_app::tags::{
+    ActionTag, AisleTag, CheckStateTag, KeepingTag, RefDisplayTag, SubjectTag, UnitTag,
+};
 use cabas_app::view::{
     CartLineView, ComponentView, ListItemView, ProblemKind, SegmentView, StateView,
 };
@@ -76,12 +78,30 @@ fn new_ingredient(name: &str, aisle: AisleTag) -> IngredientInput {
         name: name.into(),
         aliases: Vec::new(),
         aisle,
+        shops: Vec::new(),
+        keeping: KeepingTag::Ambient,
         staple: false,
         density: None,
         unit_weight: None,
         default_quantity: None,
         photo: None,
     }
+}
+
+/// What a bare-ingredient entry asks for, as the row displays it.
+fn on_list(state: &StateView, entry: &str) -> (String, UnitTag) {
+    let found = state
+        .list
+        .iter()
+        .find(|e| e.id == entry)
+        .unwrap_or_else(|| panic!("no list entry {entry}"));
+    let ListItemView::Ingredient { quantity, edit, .. } = &found.item else {
+        panic!("not a bare ingredient");
+    };
+    // The two renderings must agree about the unit; only the amount may be
+    // rounded, and only in `quantity` (DECISIONS 0072).
+    assert_eq!(quantity.unit, edit.unit);
+    (quantity.amount.clone(), quantity.unit)
 }
 
 fn id_of_ingredient(state: &StateView, name: &str) -> String {
@@ -117,7 +137,7 @@ fn names(lines: &[CartLineView]) -> Vec<&str> {
 
 /// The library every scenario below starts from.
 async fn stocked(app: &mut App<MemoryStorage, TestPlatform>) -> StateView {
-    let mut flour = new_ingredient("Flour", AisleTag::Grocery);
+    let mut flour = new_ingredient("Flour", AisleTag::Pantry);
     flour.staple = true;
     flour.density = Some("0.55".into());
     let mut tomato = new_ingredient("Tomato", AisleTag::Produce);
@@ -602,7 +622,7 @@ async fn joining_and_saying_who_you_are() {
     // signing something, not about being read-only.
     let state = app
         .dispatch(Command::SaveIngredient {
-            ingredient: new_ingredient("Flour", AisleTag::Grocery),
+            ingredient: new_ingredient("Flour", AisleTag::Pantry),
         })
         .await
         .expect("the library is writable before anybody is named");
@@ -704,7 +724,7 @@ async fn joining_and_saying_who_you_are() {
 async fn added_without_an_amount() {
     let mut app = open(MemoryStorage::new()).await;
 
-    let mut sized = new_ingredient("Flour", AisleTag::Grocery);
+    let mut sized = new_ingredient("Flour", AisleTag::Pantry);
     sized.default_quantity = Some(amount("1", UnitTag::Kg));
     let state = app
         .dispatch(Command::SaveIngredient { ingredient: sized })
@@ -772,6 +792,204 @@ async fn added_without_an_amount() {
     let flour_line = line(&state.cart.to_buy, "Flour");
     assert_eq!(flour_line.amounts[0].amount, "1 1/2");
     assert_eq!(flour_line.amounts[0].unit, UnitTag::Kg);
+}
+
+/// The gesture continued: one more of this, one less, and the exact amount
+/// (DECISIONS 0072).
+///
+/// What a notch is worth is the core's rule and never the frontend's
+/// (Rule 9), and the two halves of that rule are both here — an ingredient
+/// counts by what one usually buys, a recipe by one whole recipe as written.
+async fn nudging_a_line_up_and_down() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    let mut sized = new_ingredient("Flour", AisleTag::Pantry);
+    sized.default_quantity = Some(amount("1", UnitTag::Kg));
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: sized })
+        .await
+        .expect("save");
+    let flour = id_of_ingredient(&state, "Flour");
+
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: flour,
+            quantity: None,
+        })
+        .await
+        .expect("a swipe puts a kilo on the list");
+    let entry = state.list[0].id.clone();
+    assert_eq!(on_list(&state, &entry), ("1".into(), UnitTag::Kg));
+
+    let state = app
+        .dispatch(Command::NudgeListEntry {
+            entry: entry.clone(),
+            steps: 1,
+        })
+        .await
+        .expect("one more");
+    assert_eq!(on_list(&state, &entry), ("2".into(), UnitTag::Kg));
+
+    // Typed exactly, through the long press. The line is then read in the
+    // unit it was typed in, and a notch does not drag it back to kilos.
+    let state = app
+        .dispatch(Command::SetEntryQuantity {
+            entry: entry.clone(),
+            quantity: amount("500", UnitTag::G),
+        })
+        .await
+        .expect("an exact amount");
+    assert_eq!(on_list(&state, &entry), ("500".into(), UnitTag::G));
+    let state = app
+        .dispatch(Command::NudgeListEntry {
+            entry: entry.clone(),
+            steps: 1,
+        })
+        .await
+        .expect("one more, in grams");
+    assert_eq!(on_list(&state, &entry), ("1500".into(), UnitTag::G));
+
+    // Down past the last one takes the line off the list, rather than leaving
+    // a row asking for none of a thing.
+    let state = app
+        .dispatch(Command::NudgeListEntry { entry, steps: -2 })
+        .await
+        .expect("two less");
+    assert!(state.list.is_empty(), "the line is gone: {:?}", state.list);
+
+    // A recipe counts in whole recipes: one for four goes to eight, not five.
+    let state = stocked(&mut app).await;
+    let state = tart(&mut app, &state).await;
+    let tart = id_of_recipe(&state, "Tomato tart");
+    let state = app
+        .dispatch(Command::AddRecipeToList {
+            recipe: tart,
+            servings: None,
+        })
+        .await
+        .expect("a swiped recipe");
+    let entry = state
+        .list
+        .iter()
+        .find(|e| matches!(&e.item, ListItemView::Recipe { .. }))
+        .expect("the recipe entry")
+        .id
+        .clone();
+
+    let state = app
+        .dispatch(Command::NudgeListEntry {
+            entry: entry.clone(),
+            steps: 1,
+        })
+        .await
+        .expect("one more tart");
+    let ListItemView::Recipe {
+        servings,
+        written_for,
+        ..
+    } = &state
+        .list
+        .iter()
+        .find(|e| e.id == entry)
+        .expect("still there")
+        .item
+    else {
+        panic!("a recipe entry");
+    };
+    assert_eq!((*servings, *written_for), (8, 4));
+
+    // And an amount is not a serving count: the two are separate commands
+    // because they measure different things.
+    assert!(
+        app.dispatch(Command::SetEntryQuantity {
+            entry,
+            quantity: amount("2", UnitTag::Kg),
+        })
+        .await
+        .is_err()
+    );
+}
+
+/// Shops, and where a thing is kept once it is home (DECISIONS 0070, 0071).
+async fn a_shop_is_created_by_the_form_that_needs_it() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    let state = app
+        .dispatch(Command::SaveShop {
+            shop: ShopInput {
+                id: None,
+                name: "Biocoop".into(),
+            },
+        })
+        .await
+        .expect("create");
+    assert_eq!(state.shops.len(), 1);
+    let shop = state.shops[0].id.clone();
+
+    // Renaming is the same command, which is what an id being present means.
+    let state = app
+        .dispatch(Command::SaveShop {
+            shop: ShopInput {
+                id: Some(shop.clone()),
+                name: "Biocoop Centre".into(),
+            },
+        })
+        .await
+        .expect("rename");
+    assert_eq!(state.shops.len(), 1, "renamed, not duplicated");
+    assert_eq!(state.shops[0].name, "Biocoop Centre");
+
+    let mut butter = new_ingredient("Beurre", AisleTag::Dairy);
+    butter.shops = vec![shop.clone()];
+    butter.keeping = KeepingTag::Fridge;
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: butter })
+        .await
+        .expect("save");
+    let id = id_of_ingredient(&state, "Beurre");
+    let stored = state
+        .ingredients
+        .iter()
+        .find(|i| i.id == id)
+        .expect("beurre");
+    assert_eq!(stored.shops, vec![shop.clone()]);
+    assert_eq!(stored.keeping, KeepingTag::Fridge);
+
+    // Both reach the cart line, which is the row still on screen when the
+    // bags are being emptied onto a counter.
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: id,
+            quantity: None,
+        })
+        .await
+        .expect("on the list");
+    let placed = line(&state.cart.to_buy, "Beurre");
+    assert_eq!(placed.shops, vec![shop.clone()]);
+    assert_eq!(placed.keeping, KeepingTag::Fridge);
+
+    // Forgetting the shop leaves the ingredient alone: referential integrity
+    // is not enforceable under a CRDT (DECISIONS 0022, 0071).
+    let state = app
+        .dispatch(Command::DeleteShop { shop: shop.clone() })
+        .await
+        .expect("forget");
+    assert!(state.shops.is_empty());
+
+    // The ingredient's own record still names it — nothing rewrote it — and
+    // the form would show that.
+    let orphaned = state
+        .ingredients
+        .iter()
+        .find(|i| i.name == "Beurre")
+        .expect("beurre");
+    assert_eq!(orphaned.shops, vec![shop]);
+    assert_eq!(orphaned.keeping, KeepingTag::Fridge);
+
+    // The cart line names no trip, because there are none left to name. The
+    // case that matters is the *orphaned* one — a shop forgotten while others
+    // remain — and that is `domain::shop`'s own test.
+    assert!(line(&state.cart.to_buy, "Beurre").shops.is_empty());
 }
 
 /// A photo, from the bytes to the aisle it is meant to be recognised in
@@ -913,6 +1131,16 @@ mod native {
     fn a_device_joins_a_group_and_then_says_who_carries_it() {
         block_on(joining_and_saying_who_you_are());
     }
+
+    #[test]
+    fn a_list_line_counts_up_and_down_in_its_own_notches() {
+        block_on(nudging_a_line_up_and_down());
+    }
+
+    #[test]
+    fn a_shop_is_born_where_it_is_typed() {
+        block_on(a_shop_is_created_by_the_form_that_needs_it());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -957,6 +1185,16 @@ mod browser {
         joining_and_saying_who_you_are().await;
     }
 
+    #[wasm_bindgen_test]
+    async fn a_list_line_counts_up_and_down_in_its_own_notches() {
+        nudging_a_line_up_and_down().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_shop_is_born_where_it_is_typed() {
+        a_shop_is_created_by_the_form_that_needs_it().await;
+    }
+
     /// The PWA's actual path: a command built as a JS object, through the
     /// exported binding, into IndexedDB and back out as a state object.
     ///
@@ -995,7 +1233,7 @@ mod browser {
         assert_eq!(identity.user_name.as_deref(), Some("Alice"));
 
         let command = serde_wasm_bindgen::to_value(&Command::SaveIngredient {
-            ingredient: new_ingredient("Saffron", AisleTag::Grocery),
+            ingredient: new_ingredient("Saffron", AisleTag::Pantry),
         })
         .expect("the command becomes a JS object");
         let state: StateView =
@@ -1039,7 +1277,7 @@ mod browser {
         let mut sender = open(MemoryStorage::new()).await;
         sender
             .dispatch(Command::SaveIngredient {
-                ingredient: new_ingredient("Cardamome", AisleTag::Grocery),
+                ingredient: new_ingredient("Cardamome", AisleTag::Pantry),
             })
             .await
             .expect("the other device saves an ingredient");

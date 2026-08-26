@@ -12,7 +12,7 @@
 use std::num::NonZeroU32;
 
 use cabas_domain::units::{MassUnit, Unit, VolumeUnit};
-use cabas_domain::{Aisle, Quantity, Rational, RefDisplay, Timestamp};
+use cabas_domain::{Aisle, Keeping, Quantity, Rational, RefDisplay, Timestamp};
 use loro::{LoroMapValue, LoroValue};
 
 use crate::error::{Result, StoreError};
@@ -173,16 +173,16 @@ pub(crate) fn unit(value: &LoroValue, path: &str) -> Result<Unit> {
 pub(crate) fn aisle_tag(aisle: Aisle) -> &'static str {
     match aisle {
         Aisle::Produce => "produce",
-        Aisle::Butcher => "butcher",
-        Aisle::Fish => "fish",
-        Aisle::Deli => "deli",
-        Aisle::Dairy => "dairy",
         Aisle::Bakery => "bakery",
-        Aisle::Grocery => "grocery",
+        Aisle::Dairy => "dairy",
+        Aisle::Pantry => "pantry",
         Aisle::Frozen => "frozen",
+        Aisle::Staples => "staples",
+        Aisle::Snacks => "snacks",
         Aisle::Beverages => "beverages",
         Aisle::Household => "household",
-        Aisle::Items => "items",
+        Aisle::Care => "care",
+        Aisle::Crafts => "crafts",
         Aisle::Other => "other",
     }
 }
@@ -191,25 +191,72 @@ pub(crate) fn aisle(value: &LoroValue, path: &str) -> Result<Aisle> {
     let tag = string(value, path)?;
     Ok(match tag.as_str() {
         "produce" => Aisle::Produce,
-        "butcher" => Aisle::Butcher,
-        "fish" => Aisle::Fish,
-        "deli" => Aisle::Deli,
-        "dairy" => Aisle::Dairy,
         "bakery" => Aisle::Bakery,
-        "grocery" => Aisle::Grocery,
+        "dairy" => Aisle::Dairy,
+        "pantry" => Aisle::Pantry,
         "frozen" => Aisle::Frozen,
+        "staples" => Aisle::Staples,
+        "snacks" => Aisle::Snacks,
         "beverages" => Aisle::Beverages,
         "household" => Aisle::Household,
-        "items" => Aisle::Items,
+        "care" => Aisle::Care,
+        "crafts" => Aisle::Crafts,
+
+        // The aisles that were retired when the set became this group's own
+        // rather than a supermarket's (DECISIONS 0069). Read, never written:
+        // an ingredient saved once under the new build stops answering to
+        // these, and until then it keeps the shelf it was filed on.
+        //
+        // Without these five lines the fallback below would still open the
+        // document — and would quietly move every ingredient in the library
+        // to the end of the cart, which is a data loss you only notice in a
+        // shop.
+        "grocery" => Aisle::Pantry,
+        // "Items" was one aisle for everything inedible; "foyer" is where
+        // most of it is actually found, and the two aisles beside it are
+        // where the rest is.
+        "items" => Aisle::Household,
+        // Nobody in this group buys these, so there is no shelf to put them
+        // back on — but a document that has travelled must still open, and
+        // `Other` says "look at this" rather than silently inventing a
+        // classification.
+        "butcher" | "fish" | "deli" => Aisle::Other,
+
         // An aisle only decides sort order, so an unknown one is survivable
         // where an unknown unit is not: falling back to `Other` puts the item
         // at the end of the walk instead of refusing to open the document.
         //
-        // It is also what makes adding one a non-breaking change: a phone
-        // three weeks out of date reads "items" as `Other` and shows the line
-        // at the end of the cart, rather than failing to open the document
-        // its group just synced to it (DECISIONS 0057).
+        // It is also what makes *adding* one a non-breaking change: a phone
+        // three weeks out of date reads a tag it has never heard of as
+        // `Other` and shows the line at the end of the cart, rather than
+        // failing to open the document its group just synced to it
+        // (DECISIONS 0057).
         _ => Aisle::Other,
+    })
+}
+
+pub(crate) fn keeping_tag(keeping: Keeping) -> &'static str {
+    match keeping {
+        Keeping::Ambient => "ambient",
+        Keeping::Fridge => "fridge",
+        Keeping::Freezer => "freezer",
+    }
+}
+
+/// Where a thing is kept once it is home (DECISIONS 0070).
+///
+/// Degrades like an aisle and for a stronger reason: an unknown answer to
+/// "does this go in the fridge" is not an amount, it is a hint, and the
+/// honest fallback for a hint nobody recognises is the default. An ingredient
+/// written before this key existed has no value at all, and lands here too —
+/// see `mapping::read_ingredient`, which supplies the default for an absent
+/// key rather than making every caller do it.
+pub(crate) fn keeping(value: &LoroValue, path: &str) -> Result<Keeping> {
+    let tag = string(value, path)?;
+    Ok(match tag.as_str() {
+        "fridge" => Keeping::Fridge,
+        "freezer" => Keeping::Freezer,
+        _ => Keeping::Ambient,
     })
 }
 
@@ -317,18 +364,20 @@ mod tests {
 
     const ALL_AISLES: [Aisle; 12] = [
         Aisle::Produce,
-        Aisle::Butcher,
-        Aisle::Fish,
-        Aisle::Deli,
-        Aisle::Dairy,
         Aisle::Bakery,
-        Aisle::Grocery,
+        Aisle::Dairy,
+        Aisle::Pantry,
         Aisle::Frozen,
+        Aisle::Staples,
+        Aisle::Snacks,
         Aisle::Beverages,
         Aisle::Household,
-        Aisle::Items,
+        Aisle::Care,
+        Aisle::Crafts,
         Aisle::Other,
     ];
+
+    const ALL_KEEPINGS: [Keeping; 3] = [Keeping::Ambient, Keeping::Fridge, Keeping::Freezer];
 
     #[test]
     fn every_unit_round_trips_through_its_tag() {
@@ -360,6 +409,45 @@ mod tests {
         let unknown = LoroValue::String("chocolate_fountain".into());
         assert_eq!(aisle(&unknown, "test").expect("degrades"), Aisle::Other);
         assert!(unit(&unknown, "test").is_err());
+    }
+
+    /// The five spellings that were written by every build before 0069.
+    ///
+    /// Without this mapping they would fall through to `Other` and move the
+    /// whole existing library to the end of the cart — which opens fine, and
+    /// is only discovered while standing in a shop.
+    #[test]
+    fn a_retired_aisle_still_reads_as_the_shelf_it_became() {
+        for (tag, expected) in [
+            ("grocery", Aisle::Pantry),
+            ("items", Aisle::Household),
+            ("butcher", Aisle::Other),
+            ("fish", Aisle::Other),
+            ("deli", Aisle::Other),
+        ] {
+            let value = LoroValue::String(tag.into());
+            assert_eq!(aisle(&value, "test").expect("degrades"), expected, "{tag}");
+        }
+        // Read, never written: nothing produces a retired tag any more.
+        for a in ALL_AISLES {
+            assert!(!matches!(
+                aisle_tag(a),
+                "grocery" | "items" | "butcher" | "fish" | "deli"
+            ));
+        }
+    }
+
+    #[test]
+    fn every_keeping_round_trips_and_an_unknown_one_is_a_cupboard() {
+        for k in ALL_KEEPINGS {
+            let value = LoroValue::String(keeping_tag(k).into());
+            assert_eq!(keeping(&value, "test").expect("known tag"), k);
+        }
+        let unknown = LoroValue::String("cellar".into());
+        assert_eq!(
+            keeping(&unknown, "test").expect("degrades"),
+            Keeping::Ambient
+        );
     }
 
     #[test]
