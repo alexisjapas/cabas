@@ -90,8 +90,14 @@ every save rewrites the whole document, so a photo library inside it would turn
 ticking an item off in a shop into a multi-megabyte write. The document carries
 an id; the bytes live one record per photo. Half one ships in 0.5.0 — taken,
 stored and shown on the shelves, in the recipe reader and on the cart line,
-offline. Half two is the socket that carries a photo to the other phone; until
-it lands, a photo taken here is named there and not yet visible.
+offline. Half two is the socket that carries a photo to the other phone, and
+0.10.0 is all of it but the browser: the protocol, the client that speaks it
+and `/photos` on the relay
+([0080](docs/DECISIONS.md#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives),
+[0081](docs/DECISIONS.md#0081--the-relays-photo-side-a-directory-per-group-and-three-limits)),
+with two replicas that are never online together proving it in
+`crates/relay/tests/convergence.rs`. Until the app opens that socket, a photo
+taken here is named there and not yet visible.
 
 **0.7.0 is about the shape of the app rather than its plumbing.** The aisles
 are this group's shop rather than a supermarket's
@@ -412,8 +418,8 @@ the installed one, so a change that does not move it never arrives on the Pi
 The same binary answers two questions from a shell on the machine:
 
 ```sh
-cabas-relay groups           # what is on disk, and when each last received anything
-cabas-relay forget <id>        # remove one group's log, named in full, for good
+cabas-relay groups           # what is on disk, photos included, and when each last received anything
+cabas-relay forget <id>        # remove one group's log and photos, named in full, for good
 ```
 
 That is the whole answer to an **abandoned group log**. Changing the group
@@ -472,12 +478,13 @@ the code already answers.
 a few hundred kilobytes; a photo is up to half a megabyte, and there is one per
 recipe and per ingredient
 ([0062](docs/DECISIONS.md#0062--a-photo-is-a-blob-beside-the-document-never-in-it)).
-Once M10's transfer half lands, `/data` holds a sealed copy of every one of
-them and each archive carries the lot — a retention counted in weeks starts
-costing gigabytes rather than megabytes. Nothing about the procedure changes;
-the number to check before setting a retention does. **Today the relay holds no
-photo at all**: half one stores them on the device that took them and nowhere
-else, so a backup taken now is the same size it has always been.
+Since 0.10.0 `/data` holds a sealed copy of every one of them and each archive
+carries the lot — a retention counted in weeks starts costing gigabytes rather
+than megabytes. Nothing about the procedure changes; the number to check before
+setting a retention does, and `cabas-relay groups` prints it per group. **In
+practice the relay is still empty of photos until the app opens the socket**,
+so a backup taken today is the size it has always been — and will not stay
+that way.
 
 ### The restore drill
 
@@ -631,7 +638,8 @@ project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-sh
         └──────────────────────────────────────────────────│───────────────┘
                                          sealed payloads    │
         ┌──────────────────────────── RPi4 (HAOS) ──────────│───────────────┐
-        │  cabas-relay — serves the PWA + brokers sync, holds no key        │
+        │  cabas-relay — serves the PWA, brokers sync (/sync), keeps the    │
+        │  group's sealed photos (/photos). Holds no key.                   │
         └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -641,7 +649,7 @@ project buildable without a Mac ([DECISIONS 0003](docs/DECISIONS.md#0003--ios-sh
 | `crates/store` | Loro schema, snapshots, `Storage` and `PhotoStore` | the only crate that names Loro |
 | `crates/sync` | E2EE, pairing, WebSocket transport | the only crate with cryptography |
 | `crates/app` | Commands and view-models | must build for wasm32 **and** native |
-| `crates/relay` | Sync broker + PWA host (HA add-on) | never sees plaintext |
+| `crates/relay` | Sync broker, photo store + PWA host (HA add-on) | never sees plaintext |
 | `ui/` | Svelte frontend, and the generated types it is written against | holds no business state; owns every word, no number |
 
 Four ideas carry the design, each with its rationale recorded:

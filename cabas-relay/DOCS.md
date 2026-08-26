@@ -15,6 +15,11 @@ Two things, from one address:
   forwards it to whoever else is connected. A phone that has been offline for a
   week replays the log and catches up. That is the whole reason this is a
   server and not a broadcast — two phones are rarely awake at the same time.
+- **It keeps the photos.** They travel on a socket of their own and are stored
+  sealed, one file per photo, so that a picture taken in an aisle on one phone
+  reaches the other — and so that a phone that has just joined can be given
+  the whole library without a 200 kB transfer sitting in front of a shopping
+  list edit.
 
 It cannot read any of it. The key is the twelve-word phrase held by the
 devices, and it is never sent here.
@@ -104,7 +109,11 @@ socket without protecting anything that is not already unreadable.
 Everything this add-on holds lives in `/data`, which Home Assistant's own
 backups cover. That makes it the recovery point if every phone is lost at
 once: install the add-on, restore the backup, and pair a phone with the group
-phrase — the library comes back from the log.
+phrase — the library comes back from the log, and the photos with it.
+
+They are why a backup is no longer a few hundred kilobytes: the log stays
+small because every snapshot a phone pushes compacts it, and the photos only
+ever grow. `cabas-relay groups` prints both numbers.
 
 The phrase is not in the backup, and cannot be. Write it down somewhere else.
 A restored `/data` without it is a directory of ciphertext nobody can open.
@@ -169,10 +178,15 @@ cabas-relay groups
 ```
 
 ```
-group                              frames       size  last write
-5a7bcc53b64acb1c9465f84e1e54ad50       412     154 kB  97 days ago
-9f1e2d3c4b5a69788796a5b4c3d2e1f0        26      10 kB  4min ago
+group                              frames            photos       size  last write
+5a7bcc53b64acb1c9465f84e1e54ad50       412       31 · 4.4 MB     4.6 MB  97 days ago
+9f1e2d3c4b5a69788796a5b4c3d2e1f0        26                 —      10 kB  4min ago
 ```
+
+The photo column is a count and a weight, and it is the one that grows: a log
+is compacted every time a phone pushes a snapshot, while a photo is written
+once and collected by nothing (DECISIONS 0081). A dash means the group has
+sent none.
 
 The abandoned one is the one that stopped when you changed the phrase. Remove
 it by naming it in full:
@@ -185,7 +199,11 @@ There is no undo, no prefix matching and no "delete everything older than". You
 can run it while the add-on is going: the group you are forgetting is one no
 phone connects to any more, which is what abandoned means.
 
-Not doing it costs a directory the size of one group's library. And it is
+It takes the group's photos with it — they live inside the same directory,
+which is also why they are in the Home Assistant backup alongside the log.
+
+Not doing it costs a directory the size of one group's library, photos
+included, and that is the part worth measuring before shrugging. And it is
 worth being clear about what it does not do: the old log holds nothing the
 holder of the old phrase does not already have on the phone that was lost.
 Changing the phrase stops the future, not the past.
@@ -194,7 +212,7 @@ Changing the phrase stops the future, not the past.
 
 | Port | Why |
 |---|---|
-| 8787/tcp | The app, the manifest, the wasm core and the `/sync` WebSocket — all of it, because an installed web app cannot have two origins |
+| 8787/tcp | The app, the manifest, the wasm core, the `/sync` WebSocket and the `/photos` one — all of it, because an installed web app cannot have two origins |
 
 `/healthz` on the same port answers `ok` and nothing else. Home Assistant's
 watchdog uses it to restart the add-on if the process stops answering.

@@ -40,13 +40,19 @@ and never inside it**, because every save rewrites the whole document and a
 photo library in it turns a tick in a shop into a multi-megabyte write
 (DECISIONS 0062, which carries the measurement). Half one is in **0.5.0** —
 taken, stored, displayed on one device; **0.6.0 adds importing one from the
-device** as well as taking it (0065). **Half two is under way and is entirely
-client-side so far**: the photo protocol (`crates/sync/src/photo.rs`,
-DECISIONS 0080) and the client that speaks it — `PhotoSession` in
-`cabas-sync`, sans-IO, and `PhotoSync` in `app::photos`, which is that client
-met with this device's store. Nothing calls either, because nothing listens
-on `/photos` yet; the relay is the next piece, and until it exists a photo
-taken on one phone is named on the other and absent there.
+device** as well as taking it (0065). **Half two's plumbing is complete as of
+0.10.0, and the milestone's criterion holds at replica level**: the photo
+protocol (`crates/sync/src/photo.rs`, DECISIONS 0080), the client that speaks
+it — `PhotoSession` in `cabas-sync`, sans-IO, and `PhotoSync` in
+`app::photos`, which is that client met with this device's store — and
+**`/photos` on the relay** (DECISIONS 0081), a per-group directory of sealed
+blobs. `crates/relay/tests/convergence.rs` drives two real `App`s that are
+never online together through a real relay: one takes a photo, the other ends
+up holding the bytes, and the test reads what the relay stored to check it is
+not the picture. **What is left is the browser** — a socket opened when there
+is work, the local sweep of what this replica no longer references, and
+`navigator.storage.persist()` — so until that lands a photo taken on one phone
+is still named on the other and absent there.
 
 **0.6.0 also changed four things about the app's own shape**, none of them on
 a milestone. **A family is a group** (0063) — in the code, in the relay's
@@ -152,13 +158,16 @@ on `CabasApp`) **and the library's file form** (`app::transfer`, and
 `exportLibrary` / `importLibrary`); `crates/sync` holds the E2EE core
 (phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
 `crates/relay` is a working
-axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 272 native tests plus 20 in
+axum broker persisting sealed frames per group, **keeping that group's photos
+beside them** (0081) **and serving the PWA out of its own binary**. 290 native
+tests plus 20 in
 a real browser — 9 over IndexedDB and the photo store, 11 through the app —
 and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
 exit criterion at replica level: two devices never online together converge
 through the relay, sealed end to end. The phones then answered for themselves.
+**M10's criterion is in the same file**, one socket over: a photo taken on one
+of those two devices ends up on the other.
 
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to
@@ -313,6 +322,7 @@ device:  ui/ (Svelte)  ←view-models / intents→  cabas-app
                                                     │
                                                cabas-sync  ──sealed──┐
 RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
+                     /sync (the log) and /photos (the blobs)
                      holds no key; persists ciphertext in /data
 ```
 
@@ -322,7 +332,7 @@ RPi4 (HAOS add-on):  cabas-relay — serves the PWA + brokers sync  ←──┘
 | `crates/store` | Loro schema, snapshots, `Storage` (the document) and `PhotoStore` (the photos), each over file / IndexedDB |
 | `crates/sync` | E2EE, pairing, WebSocket transport |
 | `crates/app` | Commands + view-models — the only surface the UI touches |
-| `crates/relay` | Sync broker + PWA host, shipped as an HA add-on |
+| `crates/relay` | Sync broker, photo store + PWA host, shipped as an HA add-on |
 | `cabas-relay/` | The add-on: manifest, base images, Dockerfile, its own docs |
 
 Every crate holds code since M5's first half. `crates/sync` — read
@@ -348,14 +358,26 @@ replay under the same lock as the subscription, then live forwarding, plus a
 epoch **and** points inside it — the second half is what a restored backup
 needs (0053). It depends on `cabas-sync` for the protocol types and never
 for a key.
+`photos.rs` is the second endpoint's whole state, and it has none of the log's
+shape (DECISIONS 0081): a directory of sealed blobs under `<group>/photos/`,
+an index rebuilt in memory on open, `holds` / `load` / `store`, and the two
+limits the protocol left to policy. `server.rs` holds `/photos` beside
+`/sync` — one round trip, then one photo per message, nothing forwarded and
+nothing subscribed. The two endpoints share the port, the group id and the
+keepalive, and share no lock: a photo hello never opens a `GroupLog`, because
+opening one mints an epoch for a group that has none.
 `assets.rs` is the static half — the PWA, served from the same origin as
-`/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
-0048). It shares nothing with the sync side but the port. `admin.rs` is the
+`/sync` and `/photos`, out of a table `build.rs` wrote by walking `ui/dist`
+(DECISIONS 0048). It shares nothing with the sync side but the port. `admin.rs` is the
 data directory as seen from a shell: `survey` and `forget`, behind
 `cabas-relay groups` / `cabas-relay forget <id>`, because an abandoned group
 log can only be identified by a person — the relay cannot tell one from a
 quiet group, and the log is the recovery point if every device is lost
-(DECISIONS 0050). Deliberately **not** an HTTP endpoint: a group id is the
+(DECISIONS 0050). It counts and weighs the photos in a column of their own,
+because that is the half of a group that only grows — and it stays
+**read-only** where `GroupPhotos::open` is not, since opening sweeps a torn
+push and a listing that writes is the same mistake as a survey that mints an
+epoch. Deliberately **not** an HTTP endpoint: a group id is the
 only access control the relay has and the port faces the tunnel. **A missing
 `ui/dist` embeds nothing and is not an error**, which is what keeps `cargo
 clippy --workspace` working in a fresh checkout; the release image sets
@@ -1004,12 +1026,25 @@ Key domain shapes, all settled in DECISIONS:
   the relay's own period down to milliseconds instead of trying to stage a
   tunnel. Anything added here that holds a socket open and quiet inherits the
   same problem.
-- **Surveying the data directory must never open a log.** `GroupLog::open`
-  mints an epoch for a group that has none and rewrites `meta`, so a
-  "read-only" listing built on it would cost every device of every group a
-  full replay. `admin::survey` reads `meta` and stats the files instead — and
-  it takes the timestamp off the *log* file, not `meta`, because `meta` is
-  rewritten on open and would report when the relay last restarted.
+- **Surveying the data directory must never open a log — or a photo store.**
+  `GroupLog::open` mints an epoch for a group that has none and rewrites
+  `meta`, so a "read-only" listing built on it would cost every device of
+  every group a full replay. `admin::survey` reads `meta` and stats the files
+  instead — and it takes the timestamp off the *log* file, not `meta`, because
+  `meta` is rewritten on open and would report when the relay last restarted.
+  The same trap has a second door since 0.10.0: `GroupPhotos::open` sweeps the
+  `.part` file a torn push leaves, which is right for a relay about to serve
+  and wrong for a listing, so `photos::held` walks the directory on its own
+  rather than reusing it (DECISIONS 0081).
+
+- **A photo hello must never open a `GroupLog`.** Same reason, from the other
+  endpoint: `/photos` and `/sync` are independent down to the lock, and
+  reaching for `Relay::group` to answer a photo hello would mint an epoch for
+  a group that has never synced and cost its devices a full replay — for the
+  crime of sending a picture. The two maps on `Relay` are two maps for exactly
+  this. For the same reason the photo directory is created by the first photo
+  *stored*, never by a connection: otherwise a hello alone puts a group under
+  `/data` that `cabas-relay groups` would then report.
 - **`forget` is irreversible and takes a whole group id.** No prefix, no age,
   no pattern — the premise of DECISIONS 0050 is that the machine cannot judge
   which group is finished, so it does not get to guess at one either. It is
@@ -1037,9 +1072,11 @@ Key domain shapes, all settled in DECISIONS:
   all. `createImageBitmap` is used precisely because it can apply it; an
   `<img>` cannot be asked to.
 - **`Photos::forget_unreferenced` is a cleanup only once the relay holds a
-  copy.** Until M10's transfer half exists, a device's copy is the *only* copy,
-  and sweeping unreferenced photos at startup would be deleting them. It is
-  implemented and tested; nothing calls it yet, on purpose.
+  copy.** The relay has held one since 0.10.0 (`/photos`, DECISIONS 0081) —
+  but **nothing on a device opens that socket yet**, so a phone's copy is
+  still the only copy and sweeping at startup would still be deleting it. It
+  is implemented and tested; nothing calls it, on purpose, and what unblocks
+  it is the frontend engine and not the relay.
 - **A photo session's `want` list is not bookkeeping, it is the only thing
   standing between an untrusted relay and a phone's storage.** The relay is
   zero-knowledge and *not* trusted (Rule 7), and `/photos` is the one endpoint

@@ -15,8 +15,13 @@
 //! - [`survey`] — what is here, how much of it, and when each group last
 //!   received anything. Read-only, and it does **not** open the logs: doing
 //!   so would mint an epoch for a group it is merely counting, which would
-//!   cost every one of that group's devices a full replay.
-//! - [`forget`] — delete one, named in full.
+//!   cost every one of that group's devices a full replay. It counts the
+//!   photos separately (DECISIONS 0080), because they are the half that
+//!   grows without bound: a log is compacted by every snapshot a device
+//!   pushes, and a photo is never rewritten and collected by nothing.
+//! - [`forget`] — delete one, named in full. Photos included: they live
+//!   inside the group's directory, which is what makes that true without
+//!   this file knowing they exist.
 //!
 //! **Not an HTTP endpoint, and that is the security part.** A group id is
 //! the whole of the relay's access control — `log`'s comment on `open` is
@@ -31,6 +36,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use crate::log::read_meta;
+use crate::photos;
 
 /// One group's directory, as reported without opening it.
 #[derive(Debug)]
@@ -40,7 +46,14 @@ pub struct Group {
     /// Sequence numbers handed out over this group's whole life —
     /// including those a snapshot has since truncated away.
     pub frames: u64,
-    /// Everything under the directory.
+    /// Sealed photos this relay holds for the group (DECISIONS 0080), and
+    /// what they weigh. Reported separately from `bytes` because they are
+    /// the part that grows without bound — the log is compacted by every
+    /// snapshot a device pushes, and a photo is never rewritten and never
+    /// collected but by hand.
+    pub photos: u64,
+    pub photo_bytes: u64,
+    /// Everything under the directory: the log, the meta, and the photos.
     pub bytes: u64,
     /// When this group last *received* something. `None` for one that said
     /// hello and never pushed.
@@ -90,6 +103,10 @@ pub fn survey(root: &Path) -> io::Result<Vec<Group>> {
 /// this module is that the machine cannot judge which of these is finished,
 /// so it does not get to guess at one either.
 ///
+/// The photos go with it, without this function naming them: they are a
+/// subdirectory of the group's own directory, which is the whole reason
+/// [`crate::photos`] puts them there (DECISIONS 0080).
+///
 /// Safe to run while the relay is serving. The group being forgotten is by
 /// definition one no device connects to any more — that is what abandoned
 /// means — so nothing holds it open. Forgetting a *live* group instead
@@ -117,11 +134,14 @@ pub fn forget(root: &Path, id: &str) -> io::Result<Group> {
 fn inspect(dir: &Path, id: String) -> io::Result<Group> {
     let meta = read_meta(&dir.join("meta"))?;
     let log = dir.join("log");
+    let held = photos::held(dir)?;
     Ok(Group {
         id,
         // `next_seq` is the number about to be handed out, so one less is
         // the count handed out so far.
         frames: meta.map(|m| m.next_seq.saturating_sub(1)).unwrap_or(0),
+        photos: held.count,
+        photo_bytes: held.bytes,
         bytes: weigh(dir)?,
         last_write: fs::metadata(&log).and_then(|m| m.modified()).ok(),
     })
@@ -161,12 +181,14 @@ pub fn render(groups: &[Group], now: SystemTime) -> String {
     }
 
     let mut out = format!(
-        "{:<32}  {:>8}  {:>9}  {}\n",
-        "group", "frames", "size", "last write"
+        "{:<32}  {:>8}  {:>16}  {:>9}  {}\n",
+        "group", "frames", "photos", "size", "last write"
     );
     let mut total = 0;
+    let mut total_photos = 0;
     for group in groups {
         total += group.bytes;
+        total_photos += group.photos;
         let age = match group.last_write {
             Some(at) => now
                 .duration_since(at)
@@ -175,20 +197,35 @@ pub fn render(groups: &[Group], now: SystemTime) -> String {
             None => "never".to_string(),
         };
         out.push_str(&format!(
-            "{:<32}  {:>8}  {:>9}  {}\n",
+            "{:<32}  {:>8}  {:>16}  {:>9}  {}\n",
             group.id,
             group.frames,
+            photo_column(group),
             bytes(group.bytes),
             age
         ));
     }
     out.push_str(&format!(
-        "\n{} group{}, {} on disk\n",
+        "\n{} group{}, {} photo{}, {} on disk\n",
         groups.len(),
         if groups.len() == 1 { "" } else { "s" },
+        total_photos,
+        if total_photos == 1 { "" } else { "s" },
         bytes(total)
     ));
     out
+}
+
+/// The count and the weight in one column, because they answer one question:
+/// this is the part of a group that grows without bound, and a person
+/// deciding whether to `forget` it wants both halves at once.
+fn photo_column(group: &Group) -> String {
+    if group.photos == 0 {
+        // Not "0 · 0 B": a group with no photos is a row to skip over, and
+        // the arithmetic is noise in a column being scanned.
+        return "—".to_string();
+    }
+    format!("{} · {}", group.photos, bytes(group.photo_bytes))
 }
 
 fn humanize(d: Duration) -> String {
@@ -204,7 +241,10 @@ fn humanize(d: Duration) -> String {
     }
 }
 
-fn bytes(n: u64) -> String {
+/// A byte count as a person reads it. `pub(crate)` because it is the one
+/// place in this crate that renders one, and [`crate::photos`] tells a device
+/// its group's cap in the same words this prints it in.
+pub(crate) fn bytes(n: u64) -> String {
     match n {
         0..1024 => format!("{n} B"),
         1024..1_048_576 => format!("{:.0} kB", n as f64 / 1024.0),
@@ -232,6 +272,19 @@ mod tests {
         for i in 0..frames {
             log.append(FrameKind::Delta, vec![i as u8; 64])
                 .expect("append");
+        }
+    }
+
+    /// Photos for a group, through the type the relay uses — so a change to
+    /// where they live cannot leave this file testing a directory nothing
+    /// writes to any more.
+    fn pictures(root: &Path, id: &str, count: usize, each: usize) {
+        let mut photos =
+            photos::GroupPhotos::open(photos::dir_of(&root.join(id)), photos::DEFAULT_CAP)
+                .expect("open");
+        for i in 0..count {
+            let name = cabas_sync::PhotoName::new(format!("pho_{i:016x}")).expect("a name");
+            photos.store(&name, &vec![i as u8; each]).expect("store");
         }
     }
 
@@ -358,5 +411,70 @@ mod tests {
         assert_eq!(bytes(512), "512 B");
         assert_eq!(bytes(2048), "2 kB");
         assert_eq!(bytes(3 * 1_048_576), "3.0 MB");
+    }
+
+    /// The count and the weight of the photos, which is the half of a group
+    /// that grows without bound (DECISIONS 0080) — and the reason `groups`
+    /// grew a column at all.
+    #[test]
+    fn a_survey_counts_the_photos_and_weighs_them() {
+        let dir = TempDir::new("admin-photos");
+        fs::create_dir_all(&dir.0).expect("root");
+        group(&dir.0, A, 2);
+        pictures(&dir.0, A, 3, 1000);
+        group(&dir.0, B, 1);
+
+        let groups = survey(&dir.0).expect("survey");
+        let a = groups.iter().find(|g| g.id == A).expect("A");
+        assert_eq!(a.photos, 3);
+        assert_eq!(a.photo_bytes, 3000);
+        assert!(
+            a.bytes > a.photo_bytes,
+            "the total carries the log as well as the photos"
+        );
+
+        let b = groups.iter().find(|g| g.id == B).expect("B");
+        assert_eq!((b.photos, b.photo_bytes), (0, 0));
+
+        let text = render(&groups, SystemTime::now());
+        assert!(text.contains("3 · 3 kB"), "{text}");
+        assert!(
+            text.contains("—"),
+            "a group with no photos reads as a dash: {text}"
+        );
+        assert!(text.contains("3 photos"), "{text}");
+    }
+
+    /// A survey must leave the directory exactly as it found it — the same
+    /// rule that keeps it from opening a log and minting an epoch. Opening
+    /// the photos would sweep an interrupted push, which is a write.
+    #[test]
+    fn a_survey_does_not_touch_the_photos_either() {
+        let dir = TempDir::new("admin-photos-readonly");
+        fs::create_dir_all(&dir.0).expect("root");
+        group(&dir.0, A, 1);
+        let scratch = photos::dir_of(&dir.0.join(A)).join("pho_0000000000000001.part");
+        fs::create_dir_all(scratch.parent().expect("dir")).expect("dir");
+        fs::write(&scratch, [0u8; 32]).expect("half a push");
+
+        let groups = survey(&dir.0).expect("survey");
+        assert_eq!(groups[0].photos, 0, "a torn write is not a photo");
+        assert!(scratch.exists(), "the survey swept something");
+    }
+
+    /// Photos live inside the group's directory precisely so this holds
+    /// without `forget` knowing about them.
+    #[test]
+    fn forgetting_a_group_takes_its_photos_with_it() {
+        let dir = TempDir::new("admin-forget-photos");
+        fs::create_dir_all(&dir.0).expect("root");
+        group(&dir.0, A, 1);
+        pictures(&dir.0, A, 2, 512);
+
+        let gone = forget(&dir.0, A).expect("forget");
+        assert_eq!(gone.photos, 2);
+        assert_eq!(gone.photo_bytes, 1024);
+        assert!(!photos::dir_of(&dir.0.join(A)).exists());
+        assert!(!dir.0.join(A).exists());
     }
 }

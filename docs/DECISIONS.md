@@ -90,6 +90,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at) | No field is small enough for iOS to zoom at | Platform |
 | [0079](#0079--asking-for-more-of-a-line-purges-its-tick-and-both-amounts-are-one-control) | Asking for more of a line purges its tick, and both amounts are one control | Product |
 | [0080](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives) | The photo protocol: one round trip, then a conversation the device drives | Sync |
+| [0081](#0081--the-relays-photo-side-a-directory-per-group-and-three-limits) | The relay's photo side: a directory per group, and three limits | Deployment |
 
 ---
 
@@ -3950,3 +3951,107 @@ device, offline. **One protocol byte for both sockets**, which is the coupling
 0062 removed. **A hash of the plaintext beside each blob for integrity**: the
 AEAD tag is that check, and `Photos::restore` re-runs the format and the
 ceiling on arrival anyway.
+
+
+## 0081 — The relay's photo side: a directory per group, and three limits
+
+**Date** 2026-08-26 · **Status** Accepted · **Implements**
+[0080](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives)
+· **Relates to** [0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all),
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it)
+
+**Context.** 0080 wrote the messages and left the relay two policies it could
+not settle from the wire: **how large a message may be**, since a hello's
+lists and a push's payload are the two unbounded things a stranger holding the
+group id can send, and **how much a group may store**, since the disk being
+filled is a Raspberry Pi's SD card and every byte of it is also in a Home
+Assistant backup. Writing the endpoint settled a third thing nobody had asked:
+what happens when the same name is pushed twice.
+
+**Decision.**
+
+1. **The photos are a subdirectory of the group's own directory** —
+   `<data>/<group id>/photos/<name>`, one file per photo, named after the
+   [`PhotoName`](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives)
+   the device sent. That is what makes `forget` (0050) take the photos with
+   the log without knowing they exist, and what makes a Home Assistant backup
+   carry them for the same reason it carries the log. The index — every name
+   and its weight — is rebuilt in memory on open, so the welcome that starts
+   every connection is a set difference over a map rather than a directory
+   walk per name.
+2. **The directory is created by the first photo stored, never by a
+   connection.** The log side creates a group directory on its first hello and
+   is right to: an id is unguessable, so nobody can mine directories into
+   existence. Doing it here as well would put an empty directory under `/data`
+   for a group that has never synced, and `cabas-relay groups` would report a
+   group that does not exist.
+3. **Three limits, in a deliberate order.** The app refuses a photo over
+   **512 kB** where it is encoded (0062); the relay refuses a blob over **1
+   MB** by name, with a `Rejected` a person can read; the socket refuses a
+   message over **2 MB** by closing. Each is above the one before it, so the
+   limit that fires is the one that can explain itself: an honest device meets
+   the app's, a broken one meets the relay's, and only a caller that is not
+   speaking this protocol at all meets the socket's — and there is nothing to
+   say to that one. Without the ordering, the outer limit would fire first and
+   every refusal would be a dropped socket.
+4. **A group's photos are capped at 512 MB**, and the cap refuses a push
+   rather than filling the disk (0062's decision 8). A thousand photos at the
+   app's own ceiling. It is a constant and not a configuration option: the
+   add-on's options are the surface a person has to understand, and a number
+   nobody would know how to choose does not belong there.
+5. **The first copy of a photo is the one that stays.** Ids are minted random
+   at capture (0062), so two devices pushing one name are pushing one photo
+   and the second push is a no-op — while overwriting would mean that anyone
+   who learned the group id could *replace* a photo with something else, which
+   is destruction rather than the noise they could make anyway. The cheap
+   answer and the safe one are the same answer, and the device is told
+   `Stored` either way, because what it needs to know is that it is no longer
+   the only copy.
+6. **`Stored` is a promise, so the write is fsynced and renamed into place.**
+   A device acts on it: 0062's decision 8 has it sweep its own copy of a photo
+   its replica no longer references, safe only because the relay has one. A
+   photo that existed only in the page cache would be a promise this process
+   cannot keep. An interrupted push leaves a `.part` file, which the next open
+   sweeps — nothing else ever would, and each one weighs as much as a photo.
+7. **`groups` counts the photos and weighs them, in a column of their own.**
+   The log is compacted by every snapshot a device pushes; the photos are the
+   half that only grows, and the person deciding whether to `forget` a group
+   wants both numbers at once. The survey stays read-only: it walks the
+   directory itself rather than opening it, because opening sweeps, and a
+   listing that writes is the same mistake as a survey that mints an epoch.
+
+**Consequences.** The relay's photo state is a directory and an index, and
+`/photos` is four answers: the welcome's set difference, a blob, a refusal, an
+`Absent`. Nothing is forwarded — a photo arriving from one device is not
+pushed at the other; the other asks for it on its own next connection, out of
+the hello it computes from its own disk. So there is no subscription, no
+broadcast channel and no forward buffer on this endpoint, and a photo transfer
+cannot disconnect a device for falling behind, which is what 0062 was worried
+about when it took photos off `/sync`.
+
+The two endpoints now share the port, the group id and the keepalive (0051),
+and share no lock: a photo hello never opens a `GroupLog`, because opening one
+mints an epoch for a group that has none and would cost every device of that
+group a full replay for the crime of sending a picture.
+
+M10's exit criterion holds at replica level from this commit: the test is in
+`crates/relay/tests/convergence.rs`, beside M5's, because a photo travelling
+between two devices that are never online together is the same sentence about
+a different socket and needs the same two `App`s, the same relay and the same
+choreography. What is left of the milestone is the frontend — a socket opened
+when there is work, the local sweep, and `navigator.storage.persist()`.
+
+**Rejected.** **A byte cap as an add-on option.** It is a number nobody can
+choose without knowing what a photo weighs here, and the add-on's options are
+what a person has to understand before installing it. **One directory of
+photos for all groups, keyed by name.** Names are unique — they are minted
+random — so it would work, and it would make `forget` a scan of every blob in
+the system instead of an `rm -r`, and a group's weight uncomputable without
+one. **Deleting a photo nothing references**, which the relay cannot know:
+it reads no document, and "unreferenced on the replica that just connected" is
+not "unreferenced" while the other phone has been off for a week (0062,
+0050). **Answering an oversized message with words.** By the time a message is
+over the socket's limit the transport has already refused it, and there is no
+id to name in a reply — which is exactly why the relay's own blob limit sits
+below it and does the explaining.

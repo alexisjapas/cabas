@@ -19,8 +19,11 @@
 //!   it, which makes the relay the recovery point if every device is lost.
 //!
 //! The shape is three verbs — append, replay, forward — and `log` and
-//! `server` hold one and two of them respectively; `assets` holds the static
-//! half, which shares nothing with them but the port. [`admin`] is the fourth
+//! `server` hold one and two of them respectively; `photos` is the second
+//! endpoint's whole state, a directory of sealed blobs per group with none of
+//! the log's ordering, because a photo library has none (DECISIONS 0080);
+//! `assets` holds the static half, which shares nothing with them but the
+//! port. [`admin`] is the fourth
 //! verb and the odd one out: it runs from a shell rather than from the socket,
 //! because the one thing this process cannot judge for itself is which of its
 //! groups has been abandoned (DECISIONS 0050).
@@ -34,6 +37,7 @@
 pub mod admin;
 mod assets;
 mod log;
+mod photos;
 mod server;
 
 pub use assets::embedded;

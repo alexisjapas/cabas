@@ -26,15 +26,15 @@ cabas-relay — sync relay and host for the cabas app
 
   cabas-relay                 serve (the add-on's default)
   cabas-relay groups        what is on disk, per group
-  cabas-relay forget <id>     delete one group's log, irreversibly
+  cabas-relay forget <id>     delete one group's log and photos, irreversibly
 
 Environment:
   CABAS_RELAY_DATA  where the sealed logs live (default /data)
   CABAS_RELAY_ADDR  listen address (default 0.0.0.0:8787)
 
 `forget` is how an abandoned group goes away — rotating the phrase leaves
-its log here and nothing collects it, because nothing here can tell an
-abandoned group from a quiet one. See cabas-relay/DOCS.md.
+its log and its photos here and nothing collects them, because nothing here
+can tell an abandoned group from a quiet one. See cabas-relay/DOCS.md.
 ";
 
 #[tokio::main]
@@ -117,8 +117,8 @@ fn forget(id: &str) -> ExitCode {
     match admin::forget(&data, id) {
         Ok(group) => {
             println!(
-                "forgot {} — {} frames, gone for good",
-                group.id, group.frames
+                "forgot {} — {} frames, {} photos, gone for good",
+                group.id, group.frames, group.photos
             );
             ExitCode::SUCCESS
         }

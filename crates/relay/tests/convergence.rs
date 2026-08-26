@@ -8,13 +8,21 @@
 //! scenario drives by hand (connect, replay, merge, push, persist the
 //! cursor) is the loop the PWA wiring will drive from `session.svelte.ts`;
 //! `cabas_sync::Session` keeps the two honest about doing it identically.
+//!
+//! **M10's criterion is at the bottom of this file, and it is here rather
+//! than beside it** (DECISIONS 0080): a photo travelling between two devices
+//! that are never online together is the same sentence about a different
+//! socket, and it needs the same two `App`s, the same relay and the same
+//! never-simultaneous choreography. A second file would have been a second
+//! copy of all of it, kept in step by hand.
 
 use cabas_app::command::{IngredientInput, QuantityInput};
 use cabas_app::tags::{AisleTag, CheckStateTag, KeepingTag, UnitTag};
 use cabas_app::view::StateView;
 use cabas_app::{App, Command, Identity, Platform};
-use cabas_domain::Timestamp;
-use cabas_store::MemoryStorage;
+use cabas_app::{PhotoEvent, PhotoStatus, PhotoSync, Photos};
+use cabas_domain::{PhotoId, Timestamp};
+use cabas_store::{MemoryPhotoStore, MemoryStorage};
 use cabas_sync::protocol::{ClientMessage, FrameKind, encode_client};
 use cabas_sync::{Event, GroupKey, Session};
 
@@ -80,6 +88,14 @@ impl Drop for TempDir {
 /// persists between connections (DECISIONS 0042).
 struct Device {
     app: App<MemoryStorage, TestPlatform>,
+    /// The bytes the document only names, on this device (DECISIONS 0062).
+    /// Empty in every scenario but the last one, which is the point: a photo
+    /// is not part of the replica and no amount of syncing moves it.
+    photos: Photos<MemoryPhotoStore>,
+    /// A second counter, for the ids the camera mints. `App`'s own is busy
+    /// numbering ingredients, and a photo id has to be unique across
+    /// devices for the same reason every other id does.
+    camera: TestPlatform,
     phrase: String,
     epoch: u64,
     since: u64,
@@ -98,6 +114,8 @@ impl Device {
             app: App::open(MemoryStorage::new(), TestPlatform::from(base), identity)
                 .await
                 .expect("the app opens"),
+            photos: Photos::new(MemoryPhotoStore::new()),
+            camera: TestPlatform::from(base + 1_000_000),
             phrase: phrase.to_string(),
             epoch: 0,
             since: 0,
@@ -127,7 +145,11 @@ async fn spawn_relay(root: PathBuf) -> SocketAddr {
 }
 
 async fn connect(addr: SocketAddr) -> Ws {
-    let (ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/sync"))
+    connect_to(addr, "/sync").await
+}
+
+async fn connect_to(addr: SocketAddr, path: &str) -> Ws {
+    let (ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}{path}"))
         .await
         .expect("connect");
     ws
@@ -636,4 +658,173 @@ async fn a_restored_backup_does_not_strand_a_device_that_missed_the_window() {
              does not, so only a whole replica puts it back — {names:?}"
         );
     }
+}
+
+// --- M10: the same sentence, on the other socket (DECISIONS 0080) -----------
+
+/// The smallest thing the core accepts as a photo. What is inside a JPEG is
+/// nobody's business here — the relay stores ciphertext and this test asserts
+/// the bytes come back identical, which is the whole of what a transfer owes.
+fn jpeg(tail: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0xff, 0xd8, 0xff];
+    bytes.extend_from_slice(tail);
+    bytes
+}
+
+/// The same save command, carrying a photo — attaching one is the ordinary
+/// save and never a second command (DECISIONS 0062).
+fn photographed(name: &str, photo: &PhotoId) -> Command {
+    let Command::SaveIngredient { mut ingredient } = save_ingredient(name) else {
+        unreachable!("save_ingredient builds exactly that")
+    };
+    ingredient.photo = Some(photo.to_string());
+    Command::SaveIngredient { ingredient }
+}
+
+/// One photo connection, run to its own end: hello, welcome, then one
+/// message at a time until both queues drain.
+///
+/// This is the loop `sync_once` is for the log, and it is shorter for the
+/// reason 0080 gives — there is no cursor to persist and no epoch to check,
+/// because the next hello re-derives the work from what is on disk at both
+/// ends. **One message in flight**: the device paces the transfer, which is
+/// what stops a phone that has just joined being handed the whole library at
+/// once.
+async fn move_photos(device: &mut Device, addr: SocketAddr) -> PhotoStatus {
+    let referenced = device.app.referenced_photos().expect("what is referenced");
+    let mut session = PhotoSync::open(&device.phrase, &device.photos, &referenced)
+        .await
+        .expect("the phrase derives");
+
+    let mut ws = connect_to(addr, "/photos").await;
+    ws.send(Message::Binary(session.hello().expect("hello")))
+        .await
+        .expect("send hello");
+
+    while !session.done() {
+        match session
+            .handle(&device.photos, &recv(&mut ws).await)
+            .await
+            .expect("a server message")
+        {
+            PhotoEvent::Refused { reason } => panic!("refused: {reason}"),
+            PhotoEvent::Rejected { id, reason } => panic!("rejected {id}: {reason}"),
+            PhotoEvent::Dropped { id } => panic!("dropped {id}"),
+            _ => {}
+        }
+        // Fetches first: a device that is missing pictures is a device with
+        // a placeholder on screen, and what it holds is already safe here.
+        let next = match session.fetch().expect("fetch") {
+            Some(wire) => Some(wire),
+            None => session.push(&device.photos).await.expect("push"),
+        };
+        if let Some(wire) = next {
+            ws.send(Message::Binary(wire)).await.expect("send");
+        }
+    }
+    ws.close(None).await.expect("close");
+    session.status()
+}
+
+/// M10's exit criterion at replica level: **a photo taken on one phone is on
+/// the other, and the two are never online at the same time.**
+///
+/// The mirror of `never_simultaneous_devices_converge`, one socket over. What
+/// makes it a different test rather than a longer one is that a photo is not
+/// in the replica: Bob's document names it the moment the two merge, and the
+/// bytes arrive later, on their own connection, or not at all (DECISIONS
+/// 0062).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_photo_reaches_a_device_that_was_never_online_with_the_one_that_took_it() {
+    let dir = TempDir::new("photos");
+    let addr = spawn_relay(dir.0.clone()).await;
+    let phrase = GroupKey::generate().expect("generate").phrase().to_string();
+    let pixels = jpeg(b"a bag of flour, photographed in an aisle");
+
+    // Alice, in the shop: she photographs the flour she buys and attaches it
+    // to the ingredient. Both are local the moment they happen (Rule 6).
+    let mut alice = Device::join(&phrase, 0, "usr_alice", "Alice", "dev_phone").await;
+    let photo = alice
+        .photos
+        .put(&alice.camera, &pixels)
+        .await
+        .expect("store the photo");
+    alice
+        .app
+        .dispatch(photographed("Farine", &photo))
+        .await
+        .expect("save");
+
+    // Two sockets, one after the other: the document, then the bytes.
+    sync_once(&mut alice, addr, true).await;
+    let sent = move_photos(&mut alice, addr).await;
+    assert_eq!(sent.sent, 1, "the photo did not reach the relay");
+    assert_eq!(sent.received, 0, "there was nothing for Alice to fetch");
+
+    // The relay holds it, and cannot read it (Rule 7). This is the one place
+    // a test can look at what the untrusted party actually has.
+    let blob = std::fs::read(
+        dir.0
+            .join(
+                GroupKey::from_phrase(&phrase)
+                    .expect("derive")
+                    .id()
+                    .to_hex(),
+            )
+            .join("photos")
+            .join(photo.as_str()),
+    )
+    .expect("the relay stored a blob under the photo's own id");
+    assert_ne!(blob, pixels, "the relay is holding the photo in the clear");
+    assert!(
+        !blob.windows(4).any(|w| w == b"flou"),
+        "the plaintext is recognisable inside what the relay stored"
+    );
+
+    // Bob, later — Alice is long gone. The document reaches him first, so
+    // his replica names a photo whose bytes are on nobody's disk but hers.
+    let mut bob = Device::join(&phrase, 5000, "usr_bob", "Bob", "dev_laptop").await;
+    sync_once(&mut bob, addr, true).await;
+    let view = bob.app.state().expect("state");
+    let farine = view
+        .ingredients
+        .iter()
+        .find(|i| i.name == "Farine")
+        .expect("Alice's ingredient reached Bob");
+    assert_eq!(
+        farine.photo.as_deref(),
+        Some(photo.as_str()),
+        "the reference travels with the document"
+    );
+    assert_eq!(
+        bob.photos.get(&photo).await.expect("get"),
+        None,
+        "and the bytes do not — that is the whole reason /photos exists"
+    );
+
+    // Then the other socket, and he has them.
+    let got = move_photos(&mut bob, addr).await;
+    assert_eq!(got.received, 1);
+    assert_eq!(got.sent, 0, "Bob had nothing to offer");
+    assert_eq!(
+        bob.photos.get(&photo).await.expect("get"),
+        Some(pixels.clone()),
+        "byte-identical: sealed by Alice, stored verbatim, opened by Bob"
+    );
+
+    // And it is his, offline: nothing about reading a photo touches a socket
+    // again. Both devices now hold it, so a second connection has no work —
+    // the relay never asks for a photo it already has, whoever offers it
+    // (DECISIONS 0080's decision 9).
+    let again = move_photos(&mut bob, addr).await;
+    assert_eq!(
+        (again.sent, again.received, again.pending),
+        (0, 0, 0),
+        "a settled device reconnects, finds nothing to do, and closes"
+    );
+    let alice_again = move_photos(&mut alice, addr).await;
+    assert_eq!(
+        alice_again.sent, 0,
+        "the relay already holds it: offering it again would be a second upload"
+    );
 }
