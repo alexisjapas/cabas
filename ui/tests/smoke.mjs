@@ -853,6 +853,31 @@ await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates on the list');
 ok('an ingredient goes onto the list');
 await shot('03-list');
 
+// --- and what it asks for is changed there (DECISIONS 0077) -----------------
+//
+// The list is where the amount is read when it turns out to be wrong, and it
+// was the one screen that could only show it. Both halves of the shelf's
+// gesture, as buttons: a notch either side, and the exact answer behind the
+// amount itself. Six is the notch, because that is what Tomates is usually
+// bought by (0066) — so the numbers are the core's arithmetic and not this
+// screen's.
+await evaluate(`__click('li .step[aria-label="Plus"]')`);
+await waitFor(`__text('li .quantity')?.includes('9')`, 'one notch more on the line');
+ok('a list entry counts up by what one usually buys');
+
+await evaluate(`__click('li .step[aria-label="Moins"]')`);
+await waitFor(`__text('li .quantity')?.includes('3')`, 'the notch, back off');
+ok('and back down again');
+
+await evaluate(`__click('li .quantity')`);
+await waitFor('document.querySelector(".amount-dialog")', 'the amount, opened from the line');
+await evaluate(`__set('[data-field="entry-amount"]', '5')`);
+await evaluate(`__set('[data-field="entry-amount-unit"]', 'piece')`);
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__count('.amount-dialog') === 0`, 'the dialog, closed');
+await waitFor(`__text('li .quantity')?.includes('5')`, 'the typed amount, on the line');
+ok('and the exact amount is typed behind the line itself');
+
 // --- and one the library has never heard of --------------------------------
 //
 // Wanting something mid-shop that is not in the library used to mean leaving

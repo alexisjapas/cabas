@@ -233,7 +233,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cabas-app"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "base64",
  "cabas-domain",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "cabas-domain"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "num-rational",
  "proptest",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "cabas-relay"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "axum",
  "cabas-app",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "cabas-store"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "cabas-domain",
  "js-sys",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "cabas-sync"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bip39",
  "chacha20poly1305",

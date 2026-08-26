@@ -85,6 +85,9 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0073](#0073--an-ingredients-editor-opens-under-the-ingredient) | An ingredient's editor opens under the ingredient | Product |
 | [0074](#0074--a-tab-opens-cold) | A tab opens cold | Product |
 | [0075](#0075--main-may-not-advertise-a-version-nothing-published) | `main` may not advertise a version nothing published | Deployment |
+| [0076](#0076--the-library-travels-as-a-json-file-of-the-apps-own-inputs) | The library travels as a JSON file of the app's own inputs | Product |
+| [0077](#0077--the-list-is-where-an-amount-is-changed-too) | The list is where an amount is changed, too | Product |
+| [0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at) | No field is small enough for iOS to zoom at | Platform |
 
 ---
 
@@ -3598,3 +3601,107 @@ file to whoever wants one.
 **CSV, for the spreadsheet half of want 2.** A recipe is a tree — lines,
 sub-recipes, and prose that points at lines (0022) — and flattening it would
 either lose the references or invent a second format to carry them.
+
+## 0077 — The list is where an amount is changed, too
+
+**Date** 2026-08-26 · **Status** Accepted · **Extends**
+[0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount) ·
+**Relates to** [0066](#0066--an-ingredient-knows-how-much-of-it-one-buys),
+[0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there)
+
+**Context.** 0072 put the whole of "how much" on the **shelf**: swipe for a
+notch, hold for the exact amount. It left `Liste` as it was, and `Liste` is
+where the answer is actually read — it is the screen that says what has been
+asked for. A recipe entry there could be rescaled in place ("we are six
+tonight"), a bare ingredient could only be *looked* at: changing 500 g to a
+kilo meant going back to the shelf, finding the row again, and holding it.
+Worse, it was reachable only from the shelf the ingredient is on, so an entry
+whose ingredient had been renamed or hidden behind a search was a number
+nobody could edit at all.
+
+**Decision.** A bare ingredient's line carries the same two affordances the
+shelf row carries, as buttons rather than as a gesture: **"−" and "+" for one
+notch**, and **the amount itself is a door to the exact one** — the same
+`AmountDialog` the long press opens, seeded from the line's lossless `edit`
+rather than its rounded `quantity`.
+
+Both go through the commands 0072 already added — `NudgeListEntry` and
+`SetEntryQuantity` — so no core changed, and the arithmetic stays where it
+was. In particular **"−" past the last notch takes the row off the list**,
+because that is `Nudged::Off` and the frontend does not get a second opinion
+(Rule 9). It reads the same as pressing "×" and lands in the log the same way.
+
+The recipe entry keeps its own stepper unchanged: it counts **people**, not
+whole recipes, because that is what the list's "− 4 pers. +" has always meant
+and it is the question this screen asks.
+
+**This reverses 0072's rejection of "+/− buttons"**, and only where its
+reason does not apply. That rejection was about the *parked shelf row*: two
+more targets on a strip 104 px wide, beside a destructive one. A list entry is
+a full-width card that already carries this exact stepper on its other kind of
+line — there is room, and the shape is already there to copy.
+
+**Consequences.** The list screen gains the dialog and the two commands, and
+nothing else in the app moves. The amount is a `<button>` and not a field:
+in-place editing would need a form, a commit and a cancel on every row, and
+the panel already exists.
+
+`AmountDialog` is now opened from three screens, which is what makes it a
+component rather than something the shelf owns.
+
+**Rejected.** **Editing the amount inline on the row.** A text field per line
+on the one screen that is read at a glance, each needing its own save — and
+the unit still would not fit. **Making the recipe row's "4 pers." a door to
+the same dialog.** The dialog's serving half is a stepper, which is what the
+row already is; the door would open onto itself. **A notch of one unit here,
+whatever the shelf does.** Two meanings for "+" in one app, decided by which
+screen you are on.
+
+## 0078 — No field is small enough for iOS to zoom at
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0003](#0003--ios-ships-as-a-pwa),
+[0040](#0040--the-keyboard-is-a-length-not-a-mode),
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on)
+
+**Context.** Tapping into any field on the iPhone zoomed the page towards it,
+and left it there — iOS magnifies a focused control whose text is under 16px
+and does not undo it when the keyboard goes away. Panning back out by hand,
+mid-shop, after every search box.
+
+Almost every field in the app was under the line without anybody choosing it:
+`app.css` gives controls `font: inherit`, and most of them sit inside a
+`<label>` at `--text-sm`, which is 14px. The two fields that were explicitly
+`--text-base` — pairing's phrase box, "qui êtes-vous ?" — were the two that
+never zoomed, which is exactly the shape of an accident.
+
+**Decision.** `input`, `select` and `textarea` are floored at
+`max(var(--text-base), 1em)` in `app.css`. `1em` is the inherited size, so a
+control that is deliberately larger stays larger and only the small end is
+lifted. It is one rule in the one file that is allowed to hold measurements
+(Rule 10), rather than a correction repeated in twenty components.
+
+**The viewport is deliberately not touched.** `maximum-scale=1` and
+`user-scalable=no` stop the automatic zoom by forbidding **all** zoom,
+pinch included — and pinch-zoom is an accessibility feature that 0003's
+`index.html` comment already says this app keeps. Safari has also ignored
+those attributes on and off across versions, so it is a fix that is both
+harmful and unreliable. The 16px floor is neither: it is what iOS actually
+reads.
+
+**Consequences.** Every field in the app is 16px, which is a visible change —
+the search boxes, the ingredient form, the recipe editor's lines. The one
+place it could have cost something is a recipe line on a 390px screen, where
+an amount, a unit and a picker share a row; `ui-test` already asserts that
+nothing there overflows sideways and that the three share a right edge, and
+it still does.
+
+The label above a field stays at `--text-sm`: the hierarchy is still there,
+it is just the other way round from what it was.
+
+**Rejected.** **`maximum-scale=1` in the viewport meta**, for the reason
+above. **Bumping `--text-sm` to 16px.** It is a token used for labels, meta
+lines and hints all over the app — that is a redesign, and the fields are what
+the problem is about. **Scaling the page back with a `focusout` handler.**
+Fighting the platform in JavaScript, on the one interaction that happens
+hundreds of times per shop.

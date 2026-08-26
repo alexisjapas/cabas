@@ -195,6 +195,26 @@ textarea {
   color: inherit;
 }
 
+/*
+ * iOS zooms the page towards a text field the moment it takes focus, if that
+ * field's text is smaller than 16px — and it does not zoom back out
+ * afterwards, so one tap on a search box leaves the whole app oversized for
+ * the rest of the trip. The fix is not a viewport flag: `maximum-scale` and
+ * `user-scalable=no` also forbid pinch-zoom, which is an accessibility
+ * feature this app keeps (see `index.html`). A control that is never below
+ * 16px never triggers it, so the floor lives here (DECISIONS 0078).
+ *
+ * `font: inherit` above is what makes this necessary at all: a field inside
+ * a `--text-sm` label inherits 14px and zooms, which is most of the fields
+ * in the app. `1em` is the inherited size, so anything deliberately larger
+ * stays larger and only the small end is lifted.
+ */
+input,
+select,
+textarea {
+  font-size: max(var(--text-base), 1em);
+}
+
 /* Every focusable thing gets the same visible ring, and only from the
    keyboard — a tap on a phone should not leave one behind. */
 :focus-visible {

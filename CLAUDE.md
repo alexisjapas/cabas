@@ -97,6 +97,20 @@ a CRDT is a group-wide fact and one person opening a file must not decide for
 two. It is not a substitute for the appliance backup — no list, no roster, no
 relay log — but it is the only dated copy that lives off the Pi.
 
+**0.9.0 is two, both off-milestone and neither touching the core.** **The
+list is where an amount is changed, too** (0077): a bare ingredient's line
+carries "−" and "+" for one notch and the amount itself is a door to the
+exact one, which is 0072's shelf gesture rendered as buttons on the screen
+that is actually read. It reverses 0072's rejection of "+/−" only where that
+reason does not hold — a parked shelf row is 104 px wide, a list card is not
+— and it uses `NudgeListEntry` / `SetEntryQuantity` unchanged, so "−" past
+the last notch still takes the row off the list because that is the core's
+rule. And **no field is small enough for iOS to zoom at** (0078): tapping any
+control under 16px magnified the app and left it magnified, so `app.css`
+floors `input`, `select` and `textarea` at `max(var(--text-base), 1em)`. The
+viewport meta is untouched on purpose — `maximum-scale=1` stops the zoom by
+forbidding pinch-zoom as well.
+
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
@@ -407,7 +421,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press; `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, which is the third screen that opens it (0077); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -756,6 +770,14 @@ Key domain shapes, all settled in DECISIONS:
   instantly, and in the test that drives it, it looked exactly like a press
   that never fired at all. Both ends read the unit back. The distance tokens
   are safe only because `px` survives minification unchanged.
+- **A form control may never be smaller than `--text-base`.** `app.css` floors
+  `input`, `select` and `textarea` at `max(var(--text-base), 1em)` because iOS
+  zooms the page towards anything under 16px that takes focus, and does not
+  zoom back (DECISIONS 0078). A component that sets `font-size: var(--text-sm)`
+  on a field wins on specificity — Svelte's scoping class outranks a bare
+  element selector — and puts the behaviour back, on that field only, which is
+  exactly the shape nobody notices until they are in a shop. Label it small if
+  the hierarchy needs it; the field itself stays 16px.
 - **iOS does not resize the page for the keyboard.** The layout viewport keeps
   its height and the keys are drawn over it, so `100dvh`, `position: fixed` and
   `env(safe-area-inset-bottom)` all describe a viewport whose bottom third is

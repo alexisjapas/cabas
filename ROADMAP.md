@@ -215,6 +215,18 @@ it carries the library and nothing else, no list, no roster and none of the
 relay's log — but it is the first dated copy of the expensive half that lives
 anywhere except the Pi.
 
+**0.9.0 adds two, neither on a milestone and neither touching the core.**
+**The list is where an amount is changed, too** (DECISIONS 0077): a bare
+ingredient's line grew "−" and "+" for one notch and the amount itself is now
+a door to the exact one — 0072's shelf gesture, rendered as buttons on the
+screen the amount is actually read from. It runs on the commands 0072 already
+added, so "−" past the last notch still takes the row off the list, because
+that is the core's rule and not this screen's. **And no field is small enough
+for iOS to zoom at** (0078): every `input`, `select` and `textarea` is floored
+at 16px in `app.css`, because anything under it magnified the app on focus and
+did not undo it. The viewport meta stays as it is — `maximum-scale=1` buys the
+same thing by forbidding pinch-zoom, which this app keeps.
+
 **Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
@@ -229,7 +241,7 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.7.0**, through the releases listed under
+**The workspace has since moved to 0.9.0**, through the releases listed under
 the overview table. The precondition for the drill is *agreement*, not a
 particular number: whatever is on the Pi is what both phones must be showing
 in Settings before it starts. Releasing means updating the add-on and opening

@@ -8,6 +8,11 @@
       anything: without it iOS letterboxes the page and the notch insets all
       read zero. `user-scalable=no` is deliberately absent — pinch-zoom is an
       accessibility feature, and the layout does not need to forbid it.
+
+      It is also not how the automatic zoom towards a focused field is
+      stopped: `maximum-scale=1` would take pinch-zoom with it. `app.css`
+      floors every control at 16px instead, which is the size iOS reads
+      (DECISIONS 0078).
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 

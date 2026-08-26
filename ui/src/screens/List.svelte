@@ -1,9 +1,14 @@
 <script lang="ts">
+  import AmountDialog, {
+    quantityDraft,
+    type AmountDraft,
+  } from '../components/AmountDialog.svelte';
   import IngredientPicker from '../components/IngredientPicker.svelte';
   import QuantityField from '../components/QuantityField.svelte';
   import Screen from '../components/Screen.svelte';
   import SearchPicker, { type PickerOption } from '../components/SearchPicker.svelte';
   import type { ListEntryView } from '../lib/bindings/ListEntryView';
+  import type { QuantityInput } from '../lib/bindings/QuantityInput';
   import type { RecipeSummaryView } from '../lib/bindings/RecipeSummaryView';
   import type { UnitTag } from '../lib/bindings/UnitTag';
   import { byName, formatQuantity, relativeTime } from '../lib/format';
@@ -19,6 +24,12 @@
    * folded away below the ones that are still going, for the same reason the
    * cart folds away what is already in the trolley: the screen is there to
    * show what is left (DECISIONS 0059).
+   *
+   * Every entry says how much of it is wanted and every entry can be told
+   * otherwise, whichever kind it is (DECISIONS 0077): a recipe in people, a
+   * bare ingredient in its own unit. This is the screen the amount is read
+   * off when the answer turns out to be wrong, and it used to be the one
+   * screen where it could not be changed.
    */
   let { session }: { session: Session } = $props();
 
@@ -129,6 +140,46 @@
     session.run({ command: 'set_entry_servings', entry, servings: count });
   }
 
+  // --- changing what an entry asks for --------------------------------------
+
+  /**
+   * The amount on a bare ingredient's line, the same two ways the shelf offers
+   * it (DECISIONS 0072, 0077): a notch either side of it, and the exact answer
+   * behind the amount itself.
+   *
+   * A notch is `nudge_list_entry` and never arithmetic done here — what one
+   * is worth is the ingredient's usual shopping quantity, which is the core's
+   * rule (Rule 9). It is also the core that decides a line nudged below its
+   * last notch comes off the list, which is why "−" can empty a row and why
+   * that reads the same as pressing "×".
+   */
+  let editing = $state<{ entry: string; name: string } | null>(null);
+  let entryAmount = $state<AmountDraft>(quantityDraft({ amount: '1', unit: 'piece' }));
+
+  function nudge(entry: string, steps: number): void {
+    session.run({ command: 'nudge_list_entry', entry, steps });
+  }
+
+  /**
+   * `edit` and not `quantity`: the rendered amount is rounded so it reads well
+   * on a row, and a form seeded from a rounded value writes the rounding back
+   * on the next save.
+   */
+  function edit(entry: string, name: string, held: QuantityInput): void {
+    entryAmount = quantityDraft(held);
+    editing = { entry, name };
+  }
+
+  function confirmAmount(typed: AmountDraft): void {
+    if (editing === null) return;
+    const accepted = session.run({
+      command: 'set_entry_quantity',
+      entry: editing.entry,
+      quantity: { amount: typed.amount, unit: typed.unit },
+    });
+    if (accepted) editing = null;
+  }
+
   let subtitle = $derived.by(() => {
     if (entries.length === 0) return 'Vide';
     if (done.length === 0) return `${entries.length} entrées`;
@@ -163,7 +214,25 @@
         {/if}
       </div>
     {:else}
-      <p class="quantity">{formatQuantity(entry.item.quantity)}</p>
+      {@const item = entry.item}
+      <div class="amount">
+        <button
+          type="button"
+          class="step"
+          aria-label="Moins"
+          onclick={() => nudge(entry.id, -1)}>−</button
+        >
+        <button
+          type="button"
+          class="quantity"
+          aria-label="Quantité de {item.name}"
+          onclick={() => edit(entry.id, item.name, item.edit)}
+          >{formatQuantity(item.quantity)}</button
+        >
+        <button type="button" class="step" aria-label="Plus" onclick={() => nudge(entry.id, 1)}
+          >+</button
+        >
+      </div>
     {/if}
 
     <p class="meta">
@@ -276,6 +345,16 @@
     </details>
   {/if}
 </Screen>
+
+{#if editing !== null}
+  {@const line = editing}
+  <AmountDialog
+    title={line.name}
+    bind:draft={entryAmount}
+    onconfirm={confirmAmount}
+    oncancel={() => (editing = null)}
+  />
+{/if}
 
 <style>
   .add {
@@ -497,10 +576,41 @@
     font-size: var(--text-xs);
   }
 
+  /* The recipe row's shape, applied to the other kind of amount: a notch
+     either side, and the amount in the middle is the door to the exact one
+     (DECISIONS 0077). */
+  .amount {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .amount button {
+    height: var(--space-6);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+  }
+
+  .step {
+    flex: none;
+    width: var(--tapsize);
+  }
+
+  /* It hugs what it says rather than filling the row: full width reads as a
+     text field, and this is a door to one. */
   .quantity {
-    margin: var(--space-1) 0 0;
+    flex: 0 1 auto;
+    min-width: var(--tapsize);
+    padding: 0 var(--space-3);
     color: var(--text-muted);
     font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .meta {
