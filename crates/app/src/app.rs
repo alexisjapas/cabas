@@ -849,6 +849,24 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(true)
     }
 
+    /// Changes what an entry asks for, then persists **both** effects.
+    ///
+    /// The mirror of [`Self::add_entry`], and it exists for the same second
+    /// half: asking for more or less of a bare ingredient is the same
+    /// statement as putting it on the list, so it purges the tick the same
+    /// way (Rule 3, DECISIONS 0079). Every command that rewrites a line goes
+    /// through here — writing `update_list_entry` directly is how the rule
+    /// was missing from three of them.
+    fn update_entry(&mut self, entry: ListEntry, library: &Library) -> Result<bool> {
+        let mut list = library.list.clone();
+        let mut overlay = library.overlay.clone();
+        list.update(entry.clone(), &mut overlay);
+
+        self.document.update_list_entry(&entry)?;
+        self.apply_overlay_purge(library, &overlay)?;
+        Ok(true)
+    }
+
     fn set_entry_servings(
         &mut self,
         entry: &str,
@@ -867,14 +885,16 @@ impl<S: Storage, P: Platform> App<S, P> {
             ));
         };
 
-        self.document.update_list_entry(&ListEntry {
-            item: ListItem::Recipe {
-                recipe: recipe.clone(),
-                servings: servings_count(servings)?,
+        self.update_entry(
+            ListEntry {
+                item: ListItem::Recipe {
+                    recipe: recipe.clone(),
+                    servings: servings_count(servings)?,
+                },
+                ..existing.clone()
             },
-            ..existing.clone()
-        })?;
-        Ok(true)
+            library,
+        )
     }
 
     /// Sets exactly what a bare ingredient on the list asks for — what the
@@ -897,14 +917,16 @@ impl<S: Storage, P: Platform> App<S, P> {
             ));
         };
 
-        self.document.update_list_entry(&ListEntry {
-            item: ListItem::Ingredient {
-                ingredient: ingredient.clone(),
-                quantity: self.quantity("quantity", quantity)?,
+        self.update_entry(
+            ListEntry {
+                item: ListItem::Ingredient {
+                    ingredient: ingredient.clone(),
+                    quantity: self.quantity("quantity", quantity)?,
+                },
+                ..existing.clone()
             },
-            ..existing.clone()
-        })?;
-        Ok(true)
+            library,
+        )
     }
 
     /// One more of this, or one less (DECISIONS 0072).
@@ -964,9 +986,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             }
         };
 
-        self.document
-            .update_list_entry(&ListEntry { item, ..existing })?;
-        Ok(true)
+        self.update_entry(ListEntry { item, ..existing }, library)
     }
 
     fn remove_list_entry(&mut self, entry: &str, library: &Library) -> Result<bool> {

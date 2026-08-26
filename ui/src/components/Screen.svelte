@@ -48,7 +48,7 @@
   header {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: var(--layer-header);
     display: flex;
     align-items: flex-end;
     gap: var(--space-3);

@@ -112,6 +112,22 @@
      against the row it sits in rather than against the picture — recognising
      a product takes very little of one (DECISIONS 0062). */
   --photo-thumb: 3rem;
+  /* --- Layering -------------------------------------------------------- */
+  /* One scale, because a `z-index` only means anything against the others and
+     these are written in five different components. They share the root
+     stacking context: nothing between them and `<body>` sets a `z-index`, a
+     `position` or a `transform`, so a component that grows one has to be
+     added here rather than given a number that happens to be bigger.
+     The banner is above the panels on purpose (DECISIONS 0079): a refused
+     command is reported while the panel it was typed into is still open, and
+     at `3` against a scrim of `20` the explanation was painted underneath the
+     dimming — leaving a "Valider" that did nothing and said nothing. */
+  --layer-header: 1;
+  --layer-tabbar: 2;
+  --layer-scrim: 20;
+  --layer-panel: 21;
+  --layer-alert: 30;
+
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);

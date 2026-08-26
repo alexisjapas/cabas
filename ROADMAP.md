@@ -227,6 +227,26 @@ at 16px in `app.css`, because anything under it magnified the app on focus and
 did not undo it. The viewport meta stays as it is — `maximum-scale=1` buys the
 same thing by forbidding pinch-zoom, which this app keeps.
 
+**0.9.1 is what reviewing 0.9.0 found** (DECISIONS 0079), and one of it is a
+real defect in the core: **changing what a line asks for did not purge its
+tick.** Adding an ingredient by hand has cleared its explicit cart entry since
+0019 — "I need this" has to make the line visible again — and the two commands
+0077 put on every row wrote straight to the document instead. Asking for more
+of something ticked off earlier in the trip left the cart calling it bought
+and the row folded away under "Terminées". `ShoppingList::update` and
+`App::update_entry` are now `add`'s and `add_entry`'s mirrors, and every
+command that rewrites a line goes through them. On screen, **a recipe's line
+became the same control as an ingredient's** — the same three buttons, a notch
+of one whole recipe as written, and the exact number of people behind the
+amount — because it had been a stepper of its own that clamped at one person
+while the identical button on the row above emptied the row, with the floor
+held in the frontend against Rule 9. With them: a refused command is drawn
+above the panel it was refused in, the accessible names on those rows carry
+the row and the value, the controls are a full tap target in both directions,
+and `ui-test` now measures the library form at 390px — which 0078 said was the
+one place its 16px floor could cost something, and had never actually been
+opened for the measurement.
+
 **Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
@@ -241,7 +261,7 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.9.0**, through the releases listed under
+**The workspace has since moved to 0.9.1**, through the releases listed under
 the overview table. The precondition for the drill is *agreement*, not a
 particular number: whatever is on the Pi is what both phones must be showing
 in Settings before it starts. Releasing means updating the add-on and opening

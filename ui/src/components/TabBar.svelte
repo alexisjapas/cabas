@@ -58,7 +58,7 @@
   nav {
     position: fixed;
     inset: auto 0 0;
-    z-index: 2;
+    z-index: var(--layer-tabbar);
     display: flex;
     justify-content: center;
     gap: var(--space-1);

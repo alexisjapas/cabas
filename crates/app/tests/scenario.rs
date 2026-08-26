@@ -910,6 +910,91 @@ async fn nudging_a_line_up_and_down() {
     );
 }
 
+/// A line that is told otherwise comes back into view (Rule 3,
+/// DECISIONS 0079).
+///
+/// The same rule as adding by hand, through the other door: "I need this
+/// much of it" is a statement about the ingredient, so a tick taken earlier
+/// in the trip cannot outlive it. Both commands that rewrite a line are here
+/// because they are two code paths, and the rule was missing from both — a
+/// line asking for twice as much while the cart called it bought, folded away
+/// under what is already settled.
+async fn changing_a_line_purges_the_tick() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    let mut sized = new_ingredient("Flour", AisleTag::Pantry);
+    sized.default_quantity = Some(amount("1", UnitTag::Kg));
+    let state = app
+        .dispatch(Command::SaveIngredient { ingredient: sized })
+        .await
+        .expect("save");
+    let flour = id_of_ingredient(&state, "Flour");
+
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: flour.clone(),
+            quantity: None,
+        })
+        .await
+        .expect("a kilo, on the list");
+    let entry = state.list[0].id.clone();
+
+    let state = app
+        .dispatch(Command::ToggleCartItem {
+            ingredient: flour.clone(),
+        })
+        .await
+        .expect("ticked off in the shop");
+    assert_eq!(
+        line(&state.cart.bought, "Flour").state,
+        CheckStateTag::Checked
+    );
+
+    // One notch more, from the list.
+    let state = app
+        .dispatch(Command::NudgeListEntry {
+            entry: entry.clone(),
+            steps: 1,
+        })
+        .await
+        .expect("one more");
+    assert_eq!(on_list(&state, &entry), ("2".into(), UnitTag::Kg));
+    assert_eq!(
+        line(&state.cart.to_buy, "Flour").state,
+        CheckStateTag::ToBuy,
+        "the tick was purged"
+    );
+    assert!(state.cart.bought.is_empty());
+    assert!(
+        !state.list[0].progress.complete,
+        "and the row is back among what is still missing"
+    );
+
+    // And the exact amount, which reaches the document by its own path.
+    let state = app
+        .dispatch(Command::ToggleCartItem {
+            ingredient: flour.clone(),
+        })
+        .await
+        .expect("ticked off again");
+    assert_eq!(
+        line(&state.cart.bought, "Flour").state,
+        CheckStateTag::Checked
+    );
+    let state = app
+        .dispatch(Command::SetEntryQuantity {
+            entry,
+            quantity: amount("500", UnitTag::G),
+        })
+        .await
+        .expect("an exact amount");
+    assert_eq!(
+        line(&state.cart.to_buy, "Flour").state,
+        CheckStateTag::ToBuy,
+        "the tick was purged"
+    );
+}
+
 /// Shops, and where a thing is kept once it is home (DECISIONS 0070, 0071).
 async fn a_shop_is_created_by_the_form_that_needs_it() {
     let mut app = open(MemoryStorage::new()).await;
@@ -1138,6 +1223,11 @@ mod native {
     }
 
     #[test]
+    fn asking_for_more_of_something_ticked_brings_it_back() {
+        block_on(changing_a_line_purges_the_tick());
+    }
+
+    #[test]
     fn a_shop_is_born_where_it_is_typed() {
         block_on(a_shop_is_created_by_the_form_that_needs_it());
     }
@@ -1188,6 +1278,11 @@ mod browser {
     #[wasm_bindgen_test]
     async fn a_list_line_counts_up_and_down_in_its_own_notches() {
         nudging_a_line_up_and_down().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn asking_for_more_of_something_ticked_brings_it_back() {
+        changing_a_line_purges_the_tick().await;
     }
 
     #[wasm_bindgen_test]

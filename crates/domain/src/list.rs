@@ -57,10 +57,39 @@ impl ShoppingList {
     /// checked off earlier in the same trip. Adding a *recipe* purges nothing,
     /// since it makes no statement about any single ingredient.
     pub fn add(&mut self, entry: ListEntry, overlay: &mut Overlay) {
-        if let ListItem::Ingredient { ingredient, .. } = &entry.item {
-            overlay.remove(ingredient);
-        }
+        purge(&entry.item, overlay);
         self.entries.push(entry);
+    }
+
+    /// Replaces an entry, purging the overlay entry of a bare ingredient.
+    ///
+    /// Changing what a line asks for is the same statement as putting it
+    /// there — "I need this much of it" — so it carries the same purge, for
+    /// the reason [`Self::add`] gives (DECISIONS 0079). Without it a line
+    /// ticked off earlier in the trip stays ticked while asking for twice as
+    /// much: the cart calls it bought, the row folds away under what is
+    /// settled, and the difference is discovered at home.
+    ///
+    /// An id the list does not hold changes nothing. Whether that is an error
+    /// is the caller's to say — the app refuses the command, a merge from a
+    /// device that deleted the line does not.
+    pub fn update(&mut self, entry: ListEntry, overlay: &mut Overlay) {
+        let Some(held) = self.entries.iter_mut().find(|e| e.id == entry.id) else {
+            return;
+        };
+        purge(&entry.item, overlay);
+        *held = entry;
+    }
+}
+
+/// What a statement about a line does to the overlay (Rule 3).
+///
+/// One function rather than two copies of the `if let`: "an explicit action
+/// about an ingredient dies the moment somebody asks for that ingredient
+/// again" is one rule, and both doors into it are the same width.
+fn purge(item: &ListItem, overlay: &mut Overlay) {
+    if let ListItem::Ingredient { ingredient, .. } = item {
+        overlay.remove(ingredient);
     }
 }
 
@@ -198,6 +227,57 @@ mod tests {
             &mut overlay,
         );
         assert_eq!(overlay.len(), 1);
+    }
+
+    #[test]
+    fn changing_what_a_line_asks_for_purges_its_overlay_entry() {
+        let mut overlay: Overlay = [(
+            IngredientId::from_raw("salt"),
+            Explicit::Checked {
+                by: UserId::from_raw("bob"),
+                at: Timestamp(5),
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        let mut list = ShoppingList::default();
+        list.add(ingredient_entry("e1", "salt"), &mut overlay);
+        // Ticked off after it was added — the state the purge exists for.
+        overlay.insert(
+            IngredientId::from_raw("salt"),
+            Explicit::Checked {
+                by: UserId::from_raw("bob"),
+                at: Timestamp(9),
+            },
+        );
+
+        let mut asking_for_more = ingredient_entry("e1", "salt");
+        asking_for_more.item = ListItem::Ingredient {
+            ingredient: IngredientId::from_raw("salt"),
+            quantity: Quantity::whole(300, G),
+        };
+        list.update(asking_for_more, &mut overlay);
+
+        assert!(overlay.is_empty(), "the explicit action must be cleared");
+        assert_eq!(list.entries.len(), 1, "it is the same line, not a second");
+        let ListItem::Ingredient { quantity, .. } = &list.entries[0].item else {
+            panic!("a bare ingredient");
+        };
+        assert_eq!(quantity, &Quantity::whole(300, G));
+    }
+
+    #[test]
+    fn changing_a_line_the_list_does_not_hold_changes_nothing() {
+        let mut overlay: Overlay = [(IngredientId::from_raw("salt"), Explicit::Unchecked)]
+            .into_iter()
+            .collect();
+        let mut list = ShoppingList::default();
+
+        list.update(ingredient_entry("gone", "salt"), &mut overlay);
+
+        assert!(list.entries.is_empty(), "no line is invented");
+        assert_eq!(overlay.len(), 1, "and nothing is purged for one");
     }
 
     #[test]

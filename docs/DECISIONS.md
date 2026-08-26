@@ -3705,3 +3705,133 @@ lines and hints all over the app — that is a redesign, and the fields are what
 the problem is about. **Scaling the page back with a `focusout` handler.**
 Fighting the platform in JavaScript, on the one interaction that happens
 hundreds of times per shop.
+
+## 0079 — Asking for more of a line purges its tick, and both amounts are one control
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0019](#0019--the-cart-is-derived-the-overlay-stores-only-explicit-actions),
+[0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount),
+[0077](#0077--the-list-is-where-an-amount-is-changed-too),
+[0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at)
+
+**Context.** 0077 put "−", the amount and "+" on every list row. Reviewing it
+afterwards found that the two commands behind those buttons — both written for
+0072's shelf gesture, where they were only ever reachable on a row that was
+being added — carry a rule the add path has carried since 0019, and neither of
+them applies it.
+
+`ShoppingList::add` purges the overlay entry of a bare ingredient: putting
+something on the list by hand means "I need this", so a tick taken earlier in
+the trip cannot survive it (Rule 3). `set_entry_quantity` and
+`nudge_list_entry` wrote straight to the document instead. Asking for three
+more tomatoes on a row that was already ticked left the row ticked: the cart
+called it bought, the line stayed folded away under "Terminées" reading
+"9 pièces", and the difference was discovered at home. On the shelf this was
+nearly unreachable — a row that is already settled is not the row a thumb is
+dragging. On the list it is two buttons on the card, and the settled entries
+are one `<details>` away.
+
+The same review found that the screen now had **two** "−" that meant opposite
+things. The recipe row's, which predates all of this, computed
+`servings - 1` in the component and stopped at one person; the ingredient
+row's asks the core for one notch and the core takes the row off the list
+below the last one. Same label, same styling, same card, opposite outcome —
+and the recipe half was arithmetic and a floor held in the frontend, which is
+Rule 9's whole subject.
+
+**Decision — the core.** `ShoppingList::update` is `add`'s mirror: it
+replaces an entry and purges the same overlay entry, through the same private
+`purge`. `App::update_entry` is `add_entry`'s mirror in the same way, and
+**every** command that rewrites a line goes through it — `SetEntryQuantity`,
+`NudgeListEntry` and `SetEntryServings`. Writing `update_list_entry` directly
+is how the rule went missing from three commands at once, so the direct call
+is gone from all of them.
+
+Nudging *down* purges too. "One less of this" is as much a statement about
+wanting the thing as "one more" is, and a rule that holds in one direction
+only is a rule nobody can remember.
+
+**Decision — the screen.** A recipe's line is the same three buttons as an
+ingredient's, driven by the same `nudge_list_entry`. A notch is therefore one
+whole recipe as written — a tart for four goes 4 → 8 → 12, which is what
+`domain::list::nudge_servings` has said since 0072 and what the shelf has done
+since — and one below the last one takes the line off the list, exactly as it
+does for an ingredient.
+
+The per-person control that stepping by one used to give is not lost, it moves
+where 0077 already put the exact answer for the other kind of line: **behind
+the amount**. Tapping "8 pers." opens the same panel the shelf's long press
+opens, on its `servings` half, and "for five" is typed there. Which command
+the panel writes back is the draft's own business — an amount and a serving
+count measure different things and the core refuses each on the wrong kind of
+line.
+
+**Decision — four smaller things the same review named.**
+
+- **A refused command is drawn above the panel that was refused.** The banner
+  sat at `z-index: 3` against the amount panel's scrim at `20`, so the one
+  sentence explaining why "Valider" did nothing was painted underneath the
+  dimming. The panel stays open on a refusal on purpose — it is holding what
+  was typed — so the banner has to win. The five `z-index` values in this app
+  are now a `--layer-*` scale in `app.css`, because a number that only means
+  something against four others written in four other files is exactly what
+  Rule 10 exists for.
+- **Every accessible name on those rows carries the row and the value.** The
+  amount button's `aria-label` was "Quantité de Tomates", which *replaces* the
+  button's text in the name computation — so the amount, the whole content of
+  the button, was unreadable to a screen reader on the one screen that exists
+  to show it. The steppers said "Moins" and "Plus" with nothing naming the row
+  they belonged to, on a screen that holds six of them and where one of those
+  buttons empties a row.
+- **Those controls are `--tapsize` in both directions.** They were 44 wide and
+  32 tall — the token in one dimension and `--space-6` in the other, copied
+  from a stepper that had the same flaw — on the screen most used one-handed
+  while walking, next to a button that removes the row.
+- **`.notch`, not `.step`.** `RecipeEditor` already has a `.step`; Svelte
+  scopes the styles but `ui-test` queries the DOM globally, which is the
+  `.picker` collision this file has already recorded once. And the recipe
+  row's stepper CSS, which was a declaration-for-declaration copy of the
+  ingredient row's, is now the one rule it always was.
+
+**Consequences.** A recipe on the list counts in whole recipes rather than in
+people. That is a visible change to a control that has been there since M3,
+and it is the one the shelf has always had — the two screens disagreed, and
+this is which way the disagreement was settled.
+
+`RecipeEditor`'s step box loses its local `font: inherit`. The shorthand
+resets `font-size`, and Svelte's scoping made it outrank the bare `textarea`
+selector 0078's 16px floor is written on; it survived only because nothing
+around that box happens to set a size, and the rules either side of it use
+`--text-sm`. `app.css` sets `font: inherit` on every field already, so the
+local copy said nothing and quietly exempted one field from the floor.
+
+`ui-test` now measures the library form at 390px, with it open inside a
+recipe line. 0078 said the one place its floor could cost something was that
+line and that `ui-test` still asserts it fits — true of the line, but the
+measurement ran with no form in it, and the aisle and keeping selects carry
+the longest labels in the app. It fits; now it is checked.
+
+The amount assertions on the list are read back whole rather than searched for
+a digit. `includes('9')` is satisfied by "19" and by "0,9": a notch wrong by a
+factor of ten would have gone green.
+
+**Rejected.** **Making the ingredient "−" stop at the last notch**, which
+would have settled the disagreement the other way. It contradicts
+[`Nudged::Off`](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount)
+— a row asking for none of a thing is a row you read twice — and it would put
+the floor back in the frontend, since the core is what knows where the last
+notch is.
+
+**Purging the overlay in the frontend**, by sending `ToggleCartItem` after a
+nudge. Two commands where the domain has one rule, a window in which the
+document disagrees with itself, and a second implementation of Rule 3 in the
+layer that is not allowed to hold business rules (Rule 9).
+
+**Leaving `set_entry_servings` alone** because a recipe purges nothing anyway.
+It does not, and it never will — a recipe makes no statement about any single
+ingredient (0019) — but routing it through `update_entry` is what makes "every
+command that rewrites a line" a sentence about the code rather than about two
+thirds of it.
+
+**Raising the banner with `!important` or a bigger number.** The numbers were
+the problem, not their size.

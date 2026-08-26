@@ -20,7 +20,10 @@
   div {
     position: sticky;
     top: 0;
-    z-index: 3;
+    /* Above the panels, not below them: the thing it explains is most often a
+       command a panel refused, and that panel stays open on purpose
+       (DECISIONS 0079). */
+    z-index: var(--layer-alert);
     display: flex;
     align-items: flex-start;
     gap: var(--space-3);

@@ -773,8 +773,8 @@ ok('and one dragged to the stop is added, leaving "Annuler" behind it');
 
 await evaluate(`__clickText('nav button', 'Liste')`);
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates, on the list');
-const pushed = await evaluate(`__text('li .quantity')`);
-if (!pushed.includes('6')) {
+const pushed = await evaluate(`__text('li .quantity[aria-label^="Quantité de Tomates"]')`);
+if (pushed !== '6') {
   throw failed(`the swipe used ${JSON.stringify(pushed)} rather than the usual six`);
 }
 ok(`a gesture with no amount in it uses what the ingredient is usually bought by (${pushed})`);
@@ -791,15 +791,15 @@ ok('and it survives leaving the screen — it is the list that says so, not the 
 // counts it up and down. A notch is the amount the ingredient is usually
 // bought by — six here — so the numbers below are the core's rule and not
 // this screen's arithmetic.
-await waitFor(`__text('.swipe .undo small')?.includes('6')`, 'the amount, beside "Annuler"');
+await waitFor(`__text('.swipe .undo small') === '6'`, 'the amount, beside "Annuler"');
 ok('a row on the list says how much of it is on there');
 
 await evaluate(`__swipe('.swipe .front', 'Tomates', 200)`);
-await waitFor(`__text('.swipe .undo small')?.includes('12')`, 'one more notch');
+await waitFor(`__text('.swipe .undo small') === '12'`, 'one more notch');
 ok('dragging it again adds another of what one usually buys');
 
 await evaluate(`__swipe('.swipe .front', 'Tomates', -200)`);
-await waitFor(`__text('.swipe .undo small')?.includes('6')`, 'one notch back');
+await waitFor(`__text('.swipe .undo small') === '6'`, 'one notch back');
 ok('and dragging it the other way takes one off');
 
 // The exact amount, which no number of notches can express.
@@ -809,7 +809,7 @@ await evaluate(`__set('[data-field="entry-amount"]', '3')`);
 await evaluate(`__set('[data-field="entry-amount-unit"]', 'piece')`);
 await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
 await waitFor(`__count('.amount-dialog') === 0`, 'the dialog, closed');
-await waitFor(`__text('.swipe .undo small')?.includes('3')`, 'the typed amount, on the row');
+await waitFor(`__text('.swipe .undo small') === '3'`, 'the typed amount, on the row');
 ok('holding a row opens what it asks for, and typing replaces it');
 
 // And the row is still a row: holding it must not also have opened the
@@ -861,22 +861,78 @@ await shot('03-list');
 // amount itself. Six is the notch, because that is what Tomates is usually
 // bought by (0066) — so the numbers are the core's arithmetic and not this
 // screen's.
-await evaluate(`__click('li .step[aria-label="Plus"]')`);
-await waitFor(`__text('li .quantity')?.includes('9')`, 'one notch more on the line');
+// Read back whole rather than searched for a digit: "9" is satisfied by "19"
+// and by "0,9", so a notch wrong by a factor of ten would have gone green.
+// The row is addressed by name for the same reason — this list holds four
+// entries before the file is done, and the first `li` is whichever one sorts
+// first.
+const TOMATOES = 'li .quantity[aria-label^="Quantité de Tomates"]';
+
+await evaluate(`__click('li .notch[aria-label="Plus de Tomates"]')`);
+await waitFor(`__text('${TOMATOES}') === '9'`, 'one notch more on the line');
 ok('a list entry counts up by what one usually buys');
 
-await evaluate(`__click('li .step[aria-label="Moins"]')`);
-await waitFor(`__text('li .quantity')?.includes('3')`, 'the notch, back off');
+await evaluate(`__click('li .notch[aria-label="Moins de Tomates"]')`);
+await waitFor(`__text('${TOMATOES}') === '3'`, 'the notch, back off');
 ok('and back down again');
 
-await evaluate(`__click('li .quantity')`);
+await evaluate(`__click('${TOMATOES}')`);
 await waitFor('document.querySelector(".amount-dialog")', 'the amount, opened from the line');
 await evaluate(`__set('[data-field="entry-amount"]', '5')`);
 await evaluate(`__set('[data-field="entry-amount-unit"]', 'piece')`);
 await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
 await waitFor(`__count('.amount-dialog') === 0`, 'the dialog, closed');
-await waitFor(`__text('li .quantity')?.includes('5')`, 'the typed amount, on the line');
+await waitFor(`__text('${TOMATOES}') === '5'`, 'the typed amount, on the line');
 ok('and the exact amount is typed behind the line itself');
+
+// A refused amount keeps the panel open on purpose — and the sentence saying
+// why has to be readable over it (DECISIONS 0079). It used to be painted
+// beneath the panel's own scrim, which is a "Valider" that does nothing and
+// explains nothing.
+await evaluate(`__click('${TOMATOES}')`);
+await waitFor('document.querySelector(".amount-dialog")', 'the amount, opened again');
+await evaluate(`__set('[data-field="entry-amount"]', 'trois')`);
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__count('[role="alert"]') === 1`, 'the refusal, reported');
+if ((await evaluate(`__count('.amount-dialog')`)) !== 1) {
+  throw failed('the panel closed on a refusal, taking what was typed with it');
+}
+const layers = await evaluate(`
+  (() => {
+    const layer = (selector) => Number(getComputedStyle(document.querySelector(selector)).zIndex);
+    return { alert: layer('[role="alert"]'), scrim: layer('.scrim') };
+  })()
+`);
+if (!(layers.alert > layers.scrim)) {
+  throw failed(`the refusal is drawn under the panel it belongs to: ${JSON.stringify(layers)}`);
+}
+ok(`a refused amount keeps the panel open and says why over it (${JSON.stringify(layers)})`);
+
+await evaluate(`__clickText('.amount-dialog button', 'Annuler')`);
+await waitFor(`__count('.amount-dialog') === 0`, 'the panel, closed by hand');
+await evaluate(`__click('[role="alert"] button')`);
+await waitFor(`__count('[role="alert"]') === 0`, 'the banner, dismissed');
+await waitFor(`__text('${TOMATOES}') === '5'`, 'the amount, unchanged by a refusal');
+
+// And one notch below the last one is not zero of something: the row leaves
+// the list, through the same command "×" sends and into the same log. Five is
+// less than the notch of six, so this is the first press.
+await evaluate(`__click('li .notch[aria-label="Moins de Tomates"]')`);
+await waitFor(`__count('${TOMATOES}') === 0`, 'the row, off the list');
+if ((await evaluate(`__all('li .name')`)).includes('Tomates')) {
+  throw failed('the row stayed on the list with nothing to buy on it');
+}
+ok('and "−" past the last notch takes the row off the list');
+
+// Put back the way it arrived, because everything after this reads the list
+// this block leaves behind.
+await evaluate(`__clickText('button', 'Ajouter')`);
+await waitFor('document.querySelector("form .search-picker input")', 'the add form');
+await evaluate(`__choose('input[aria-label="Ingrédient"]', 0, 'tom', 'Tomates')`);
+await evaluate(`__set('form input[inputmode="decimal"]', '3')`);
+await evaluate(`__set('select[aria-label="Unité"]', 'piece')`);
+await evaluate(`__clickText('button', 'Ajouter à la liste')`);
+await waitFor(`__text('${TOMATOES}') === '3'`, 'Tomates, back on the list');
 
 // --- and one the library has never heard of --------------------------------
 //
@@ -1151,11 +1207,38 @@ await evaluate(`__clickText('button', 'Ajouter à la liste')`);
 await waitFor(`__text('.primary') === 'Ajoutée à la liste'`, 'the recipe on the list');
 await evaluate(`__clickText('nav button', 'Liste')`);
 await waitFor(`__all('li .name').includes('Salade de tomates')`, 'the entry');
-const entry = await evaluate(`__all('li .servings span')`);
+const entry = await evaluate(`__all('li .quantity')`);
 if (!entry.includes('8 pers.')) {
   throw new Error(`the entry did not keep the servings it was added at: ${JSON.stringify(entry)}`);
 }
 ok('the recipe goes onto the list at the servings it was read at');
+
+// --- and a recipe's line is the same control (DECISIONS 0079) ---------------
+//
+// It used to be a stepper of its own: one person at a time, floored at one in
+// the component. Two identical "−" on one screen that meant opposite things —
+// this one clamped, the ingredient's emptied the row — and the floor was
+// arithmetic the frontend has no business holding (Rule 9). It is the same
+// three buttons now: a notch is one whole recipe as written, four here, and
+// the exact answer is behind the amount.
+//
+// Only one recipe is on the list at this point, which is what makes the row
+// addressable by name; the second one arrives below.
+const SALAD = '.pending > li .quantity[aria-label^="Quantité de Salade de tomates"]';
+
+await evaluate(`__click('.pending > li .notch[aria-label="Plus de Salade de tomates"]')`);
+await waitFor(`__text('${SALAD}') === '12 pers.'`, 'one whole recipe more, not one person');
+ok('a recipe on the list counts in whole recipes');
+
+await evaluate(`__click('${SALAD}')`);
+await waitFor('document.querySelector(".amount-dialog")', 'how many people, from the list');
+for (let i = 0; i < 4; i += 1) {
+  await evaluate(`__click('.amount-dialog button[aria-label="Moins"]')`);
+}
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__count('.amount-dialog') === 0`, 'the panel, closed');
+await waitFor(`__text('${SALAD}') === '8 pers.'`, 'the count typed behind the amount');
+ok('and the exact number of people is behind the amount, as on any other line');
 
 // --- and again, without leaving the list ------------------------------------
 //
@@ -1175,7 +1258,7 @@ await evaluate(`__click('.pour button[aria-label="Moins"]')`);
 await waitFor(`__text('.pour span') === '2 pers.'`, 'the entry, scaled before it is added');
 await evaluate(`__clickText('button', 'Ajouter à la liste')`);
 await waitFor(
-  `__all('.pending > li .servings span').includes('2 pers.')`,
+  `__all('.pending > li .quantity').includes('2 pers.')`,
   'the second entry, at two',
 );
 ok('a recipe goes onto the list from the list, at the servings chosen there');
@@ -1287,6 +1370,33 @@ if (new Set(edges.rows).size !== 1) {
   throw failed(`the parts of a recipe line do not line up: ${JSON.stringify(edges.rows)}`);
 }
 ok(`the picker, the amount and the unit share one right edge (${edges.rows[0]}px)`);
+
+// And again with the library form open inside a line, which is the widest
+// thing this screen can hold: the aisle and keeping selects carry the longest
+// labels in the app (DECISIONS 0069, 0070) and every field in it is 16px
+// since 0078 — wider than it was when this measurement was written. Taken
+// with the form closed, the two assertions above say nothing about any of it.
+await evaluate(`__door('input[aria-label="Ingrédient"]', 0, 'Zzz')`);
+await waitFor('document.querySelector(".ingredient-form")', 'the library form, at 390px');
+const withForm = await evaluate(`
+  (() => {
+    const form = document.querySelector('.ingredient-form');
+    const fields = [...form.querySelectorAll('input, select, textarea')];
+    return {
+      page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      form: form.scrollWidth - form.clientWidth,
+      widest: Math.round(Math.max(...fields.map((el) => el.getBoundingClientRect().right))),
+      edge: Math.round(form.getBoundingClientRect().right),
+    };
+  })()
+`);
+if (withForm.page > 0 || withForm.form > 0 || withForm.widest > withForm.edge) {
+  throw failed(`the library form does not fit a 390px line: ${JSON.stringify(withForm)}`);
+}
+ok(`the library form fits inside a recipe line at 390px (${JSON.stringify(withForm)})`);
+
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+await waitFor(`__count('.ingredient-form') === 0`, 'the form, closed again');
 
 const inset = `getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim()`;
 await evaluate(`__keyboard(${KEYBOARD})`);

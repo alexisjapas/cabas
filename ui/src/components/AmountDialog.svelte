@@ -121,7 +121,7 @@
   .scrim {
     position: fixed;
     inset: 0;
-    z-index: 20;
+    z-index: var(--layer-scrim);
     background: var(--scrim);
   }
 
@@ -129,7 +129,7 @@
      already is — and because the keyboard comes up under it. */
   .amount-dialog {
     position: fixed;
-    z-index: 21;
+    z-index: var(--layer-panel);
     left: 0;
     right: 0;
     bottom: 0;

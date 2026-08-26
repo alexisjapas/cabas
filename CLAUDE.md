@@ -111,6 +111,23 @@ floors `input`, `select` and `textarea` at `max(var(--text-base), 1em)`. The
 viewport meta is untouched on purpose — `maximum-scale=1` stops the zoom by
 forbidding pinch-zoom as well.
 
+**0.9.1 is what reviewing 0.9.0 found** (0079), and the first of it is in the
+core: **changing what a line asks for purges its tick**, the same way adding
+it by hand has since 0019. `set_entry_quantity` and `nudge_list_entry` wrote
+straight to the document, so asking for more of something already ticked left
+it ticked — folded away under "Terminées", bought as far as the cart was
+concerned. `ShoppingList::update` is `add`'s mirror and `App::update_entry`
+is `add_entry`'s; every command that rewrites a line goes through it,
+`SetEntryServings` included. On screen, **a recipe's line is the same control
+as an ingredient's**: the same three buttons, one notch being one whole
+recipe as written (4 → 8 → 12), and the exact number of people behind the
+amount rather than a "−" that clamped at one person while the identical
+button on the row above emptied the row. Four smaller things with it — a
+refused command is drawn **above** the panel it was refused in (the `--layer-*`
+scale in `app.css`), every accessible name on those rows carries the row and
+the value it is showing, the controls are `--tapsize` in both directions, and
+`.notch` is not `.step` because `RecipeEditor` already has one.
+
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
@@ -348,7 +365,7 @@ clippy --workspace` working in a fresh checkout; the release image sets
 | `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs`, and `matches` / `resolve` — a recipe recognised by its name, which is what an imported file needs (0076) |
 | `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
-| `list` | `ShoppingList`, `ListEntry`, add-purges-overlay, and what one notch of the swipe is worth — `nudge_quantity` / `nudge_servings` (0072) |
+| `list` | `ShoppingList`, `ListEntry`, `add`/`update` — both purge the overlay (0019, 0079) — and what one notch of the swipe is worth: `nudge_quantity` / `nudge_servings` (0072) |
 | `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
 | `people` | `User`, `Device` — attribution names, not access control |
 | `event` | `Event`, `EventLog` — deletions and edits, capped |
@@ -420,8 +437,8 @@ file:
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
-| `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, which is the third screen that opens it (0077); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
+| `app.css` | The tokens, `--layer-*` among them. No component writes a literal value, a `z-index` included (Rule 10, 0079) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, whichever kind of line it is, which is the third screen that opens it (0077, 0079); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -532,6 +549,16 @@ Key domain shapes, all settled in DECISIONS:
   silently re-checks a staple the user just unchecked. Symmetrically, adding
   an ingredient to the list **purges** its overlay entry so it becomes
   visible again (Rule 3).
+- **And so does changing what a line already on the list asks for** — the
+  same purge, from the other door (DECISIONS 0079). `set_entry_quantity` and
+  `nudge_list_entry` wrote to the document directly and did not, so asking
+  for more of something ticked off earlier in the trip left it ticked: the
+  cart called it bought, the row stayed folded under "Terminées", and the
+  difference turned up at home. Every command that rewrites a line goes
+  through **`App::update_entry`** over **`ShoppingList::update`**, which is
+  `add_entry` over `add` with the same second half; a new one that calls
+  `document.update_list_entry` itself compiles, passes, and loses the rule
+  again.
 - **The `.#android` shell pins are unvalidated** until M7 opens; nothing
   depends on them before then.
 - **`Ratio::new_raw` does not reduce the fraction, and `Ratio`'s equality
@@ -712,7 +739,9 @@ Key domain shapes, all settled in DECISIONS:
   a second component naming its root `.picker` silently changes what
   `__count('.picker button')` counts. `IngredientPicker.svelte` is
   `.ingredient-picker` and `SearchPicker.svelte` is `.search-picker` for that
-  reason.
+  reason. It caught `.step` next — the recipe editor's instruction step and
+  the list's stepper button, one release apart — which is why the list's is
+  `.notch` (0079).
 - **A UI test that sets a `<select>` needs the native setter and a dispatched
   event** — assigning `.value` moves the pixel and tells Svelte nothing. Note
   also that `form select:nth-of-type(1)` matches *every* first-select-child in
@@ -778,6 +807,22 @@ Key domain shapes, all settled in DECISIONS:
   element selector — and puts the behaviour back, on that field only, which is
   exactly the shape nobody notices until they are in a shop. Label it small if
   the hierarchy needs it; the field itself stays 16px.
+  **`font: inherit` does it too, and looks like nothing**: the shorthand
+  resets `font-size` along with everything else, so a scoped
+  `textarea { font: inherit }` outranks the floor exactly the same way.
+  `app.css` already sets it on every control, so a component repeating it is
+  saying nothing and exempting one field (0079).
+- **A `z-index` is a `--layer-*` token, and the scale lives in `app.css`.**
+  The handful in this app all share the root stacking context — nothing
+  between them and `<body>` sets a `position`, a `z-index` or a `transform` —
+  so each number only means something against the other four, and they were
+  written as bare literals in five different files. The error banner sat at
+  `3` under the amount panel's scrim at `20`: a refused command explained
+  underneath the dimming that hid it, on a panel that stays open precisely so
+  the explanation can be read (DECISIONS 0079). Anything new that floats reads
+  the scale instead of picking a bigger number — and anything that puts a
+  stacking context between `<body>` and one of these makes the whole scale a
+  lie.
 - **iOS does not resize the page for the keyboard.** The layout viewport keeps
   its height and the keys are drawn over it, so `100dvh`, `position: fixed` and
   `env(safe-area-inset-bottom)` all describe a viewport whose bottom third is

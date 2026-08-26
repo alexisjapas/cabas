@@ -1,6 +1,7 @@
 <script lang="ts">
   import AmountDialog, {
     quantityDraft,
+    servingsDraft,
     type AmountDraft,
   } from '../components/AmountDialog.svelte';
   import IngredientPicker from '../components/IngredientPicker.svelte';
@@ -135,23 +136,24 @@
     }
   }
 
-  function rescale(entry: string, count: number): void {
-    if (count < 1) return;
-    session.run({ command: 'set_entry_servings', entry, servings: count });
-  }
-
   // --- changing what an entry asks for --------------------------------------
 
   /**
-   * The amount on a bare ingredient's line, the same two ways the shelf offers
-   * it (DECISIONS 0072, 0077): a notch either side of it, and the exact answer
-   * behind the amount itself.
+   * What a line asks for, the same two ways the shelf offers it and the same
+   * two ways whichever kind of line it is (DECISIONS 0072, 0077, 0079): a
+   * notch either side of the amount, and the exact answer behind the amount
+   * itself.
    *
    * A notch is `nudge_list_entry` and never arithmetic done here — what one
-   * is worth is the ingredient's usual shopping quantity, which is the core's
-   * rule (Rule 9). It is also the core that decides a line nudged below its
-   * last notch comes off the list, which is why "−" can empty a row and why
-   * that reads the same as pressing "×".
+   * is worth is the ingredient's usual shopping quantity or one whole recipe
+   * as written, which is the core's rule (Rule 9). It is also the core that
+   * decides a line nudged below its last notch comes off the list, which is
+   * why "−" can empty a row and why that reads the same as pressing "×".
+   *
+   * The recipe row used to do its own subtraction and hold its own floor, so
+   * one screen carried two identical "−" that meant opposite things: one
+   * removed the row, the other stopped at one person. Both are the same
+   * control now, and the exact answer is behind the amount on both.
    */
   let editing = $state<{ entry: string; name: string } | null>(null);
   let entryAmount = $state<AmountDraft>(quantityDraft({ amount: '1', unit: 'piece' }));
@@ -165,18 +167,36 @@
    * on a row, and a form seeded from a rounded value writes the rounding back
    * on the next save.
    */
-  function edit(entry: string, name: string, held: QuantityInput): void {
+  function editQuantity(entry: string, name: string, held: QuantityInput): void {
     entryAmount = quantityDraft(held);
     editing = { entry, name };
   }
 
+  /** The same door on a recipe's line: for how many people, exactly. */
+  function editServings(entry: string, name: string, held: number): void {
+    entryAmount = servingsDraft(held);
+    editing = { entry, name };
+  }
+
+  /**
+   * Which command the door writes back is the draft's own business: an
+   * amount and a serving count are different commands because they measure
+   * different things, and the core refuses each on the other kind of line.
+   */
   function confirmAmount(typed: AmountDraft): void {
     if (editing === null) return;
-    const accepted = session.run({
-      command: 'set_entry_quantity',
-      entry: editing.entry,
-      quantity: { amount: typed.amount, unit: typed.unit },
-    });
+    const accepted =
+      typed.kind === 'servings'
+        ? session.run({
+            command: 'set_entry_servings',
+            entry: editing.entry,
+            servings: typed.servings,
+          })
+        : session.run({
+            command: 'set_entry_quantity',
+            entry: editing.entry,
+            quantity: { amount: typed.amount, unit: typed.unit },
+          });
     if (accepted) editing = null;
   }
 
@@ -199,15 +219,32 @@
       >
     </div>
 
+    <!-- One control, two kinds of line. Every accessible name carries the row
+         it belongs to and the amount it is showing: navigating by button is
+         the ordinary way through this screen, and "Moins" alone names neither
+         what it takes one off nor which of six rows it is on — on a bare
+         ingredient it is also the button that empties the row. -->
     {#if entry.item.kind === 'recipe'}
       {@const item = entry.item}
-      <div class="servings">
-        <button type="button" aria-label="Moins" onclick={() => rescale(entry.id, item.servings - 1)}
-          >−</button
+      <div class="amount">
+        <button
+          type="button"
+          class="notch"
+          aria-label="Moins de {item.name}"
+          onclick={() => nudge(entry.id, -1)}>−</button
         >
-        <span>{item.servings} pers.</span>
-        <button type="button" aria-label="Plus" onclick={() => rescale(entry.id, item.servings + 1)}
-          >+</button
+        <button
+          type="button"
+          class="quantity"
+          aria-label="Quantité de {item.name} : {item.servings} personnes"
+          onclick={() => editServings(entry.id, item.name, item.servings)}
+          >{item.servings} pers.</button
+        >
+        <button
+          type="button"
+          class="notch"
+          aria-label="Plus de {item.name}"
+          onclick={() => nudge(entry.id, 1)}>+</button
         >
         {#if item.servings !== item.written_for}
           <small>écrite pour {item.written_for}</small>
@@ -218,19 +255,22 @@
       <div class="amount">
         <button
           type="button"
-          class="step"
-          aria-label="Moins"
+          class="notch"
+          aria-label="Moins de {item.name}"
           onclick={() => nudge(entry.id, -1)}>−</button
         >
         <button
           type="button"
           class="quantity"
-          aria-label="Quantité de {item.name}"
-          onclick={() => edit(entry.id, item.name, item.edit)}
+          aria-label="Quantité de {item.name} : {formatQuantity(item.quantity)}"
+          onclick={() => editQuantity(entry.id, item.name, item.edit)}
           >{formatQuantity(item.quantity)}</button
         >
-        <button type="button" class="step" aria-label="Plus" onclick={() => nudge(entry.id, 1)}
-          >+</button
+        <button
+          type="button"
+          class="notch"
+          aria-label="Plus de {item.name}"
+          onclick={() => nudge(entry.id, 1)}>+</button
         >
       </div>
     {/if}
@@ -426,7 +466,7 @@
 
   .pour button {
     width: var(--tapsize);
-    height: var(--space-6);
+    height: var(--tapsize);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
@@ -555,30 +595,10 @@
     cursor: pointer;
   }
 
-  .servings {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-  }
-
-  .servings button {
-    width: var(--tapsize);
-    height: var(--space-6);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    cursor: pointer;
-  }
-
-  .servings small {
-    color: var(--text-faint);
-    font-size: var(--text-xs);
-  }
-
-  /* The recipe row's shape, applied to the other kind of amount: a notch
-     either side, and the amount in the middle is the door to the exact one
-     (DECISIONS 0077). */
+  /* One shape for both kinds of line: a notch either side, and the amount in
+     the middle is the door to the exact one (DECISIONS 0077, 0079). Written
+     once because it is one control — the recipe row's copy of it drifted into
+     meaning something else within a single release. */
   .amount {
     display: flex;
     align-items: center;
@@ -586,15 +606,27 @@
     margin-top: var(--space-2);
   }
 
+  /* `--tapsize` in both directions. It was `--space-6` tall, which is 32px:
+     below the floor, on the control a thumb aims at in a shop while walking,
+     and the one either side of it takes the row off the list. */
   .amount button {
-    height: var(--space-6);
+    height: var(--tapsize);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
     cursor: pointer;
   }
 
-  .step {
+  .amount small {
+    color: var(--text-faint);
+    font-size: var(--text-xs);
+  }
+
+  /* `.notch` and not `.step`: `RecipeEditor` already has a `.step`, Svelte
+     scopes the styles but `ui-test` queries the DOM globally, and two
+     components naming a class the same thing silently change what a selector
+     counts (the same trap as `.picker`). */
+  .notch {
     flex: none;
     width: var(--tapsize);
   }

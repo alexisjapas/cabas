@@ -755,7 +755,12 @@
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: inherit;
-    font: inherit;
+    /* No `font: inherit` here, and it must not come back: `app.css` already
+       sets it on every field, and the shorthand *also* resets `font-size` —
+       from a scoped selector, which outranks the bare `textarea` the 16px
+       floor is written on (DECISIONS 0078). It survived only because nothing
+       around this box sets a size; the rules either side of it use
+       `--text-sm`. */
     line-height: var(--leading-normal);
     resize: none;
     overflow: hidden;
