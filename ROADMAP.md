@@ -23,7 +23,7 @@ buys a false belief instead of no belief.
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
-| **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0): taken, stored and shown on one device; the transfer is left |
+| **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0): taken, stored and shown on one device. Half two: the protocol and the client are in, `/photos` on the relay is not |
 | **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
@@ -147,16 +147,21 @@ from the log alone, and that Home Assistant's backups really do carry `/data`,
 which is a claim this repository can make about the relay's behaviour and not
 about HA's.
 
-**Next action, in this repository: M10 half two** — the transfer. Half one is
-done and in 0.5.0: a photo is taken from an ingredient's form or a recipe's,
-downscaled and encoded by the browser, stored beside the document one record
-per photo, and shown on the shelves, in the recipe reader and **on the cart
-line**, offline. **0.6.0 adds importing one from the device** rather than only
-taking it (DECISIONS 0065). What is left is the socket that carries it to the
-other phone; until it exists, a photo taken on one device is named on the
-other and absent there, which `ui-test` asserts on purpose rather than working
-around. The reasoning is DECISIONS 0062 and the checklist is under "M10 —
-Photos".
+**Next action, in this repository: `/photos` on the relay.** M10's half two is
+under way and both client-side halves of it are in — the protocol
+(`crates/sync/src/photo.rs`, DECISIONS 0080) and the client that speaks it
+(`PhotoSession` beside it, `PhotoSync` in `app::photos`). Neither has a
+counterpart yet: nothing listens on `/photos`, so nothing calls either, and a
+photo taken on one device is still named on the other and absent there —
+which `ui-test` asserts on purpose rather than working around. The relay is
+what turns the two into a transfer: a per-group directory of sealed blobs,
+put, get, list, and the two refusals the protocol leaves to policy. Half one
+is done and in 0.5.0: a photo is taken from an ingredient's form or a
+recipe's, downscaled and encoded by the browser, stored beside the document
+one record per photo, and shown on the shelves, in the recipe reader and **on
+the cart line**, offline. **0.6.0 adds importing one from the device** rather
+than only taking it (DECISIONS 0065). The reasoning is DECISIONS 0062 and the
+checklist is under "M10 — Photos".
 
 **0.6.0 also settled four things that were not on any milestone**, all of them
 about the app's own shape rather than its plumbing, and each with an entry
@@ -946,13 +951,26 @@ first, where every bug has one replica and one cause, then the transfer.
       `Deserialize`**, because the relay names a file after one and its port
       faces the internet, and a cap **rejects a photo rather than the
       connection**, or the queue behind it dies with the socket
-- [ ] **`sync::PhotoSession`, then `app::photos`**: the client, sans-IO, split
+- [x] **`sync::PhotoSession`, then `app::photos`**: the client, sans-IO, split
       the way `Session` and `SyncSession` already are — sealing and opening in
       `cabas-sync`, which is where all cryptography lives and why `seal` is
-      private (Rule 7), and the composition with `Photos` and the replica's
-      references in `app`. It decides what to offer and what to ask for and
-      returns one event per message. The socket belongs to whoever calls it,
-      which is what lets M7's Tauri host drive the same code
+      private (Rule 7), and the composition with `Photos` in `app::photos`,
+      because a transfer meets a store and never an `App`. The hello offers
+      what is on disk and asks for what the replica names; the welcome fills
+      two queues; `fetch`/`offer`+`push` drain them one message at a time, and
+      `done()` is this side's call because the relay cannot compute it
+      (0080). The socket belongs to whoever calls it, which is what lets M7's
+      Tauri host drive the same code. Three refusals the writing settled, each
+      stated where it lives: **a device stores only what it asked for**, so an
+      untrusted relay cannot spend a phone's storage with an answer nobody
+      wanted; **a welcome cannot widen what the hello said**, since those two
+      lists decide what is read off this disk and what is accepted onto it;
+      and **a payload that opens to something that is not a photo is dropped,
+      not raised** — it came from inside the group, and the queue behind it
+      has nothing wrong with it. A photo id that could not be a `PhotoName` is
+      left out of both lists rather than failing the connection: a library
+      carries whatever an import wrote (0076), and one bad reference must not
+      cost every other photo its transfer
 - [ ] **`relay`**: `/photos`, a per-group directory of sealed blobs, a byte
       cap that refuses a push rather than filling the SD card Home Assistant
       runs on, `survey` reporting the count and the weight, and `forget`

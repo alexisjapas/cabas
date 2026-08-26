@@ -17,12 +17,12 @@
 //!   this" between two people who trust each other; they are not access
 //!   control, and signatures would not change that under this threat model
 //!   (DECISIONS 0024).
-//! - **Two transports, one client.** [`Session`] is sans-IO — cursor
-//!   discipline, sealing and the epoch reset as plain calls on bytes — so
-//!   `tokio-tungstenite` natively and the browser's own WebSocket on the PWA
-//!   stay thin adapters next to their event loops (DECISIONS 0043). No socket
-//!   type appears in this crate's public API, and neither does
-//!   `std::time::Instant`.
+//! - **Two transports, one client each.** [`Session`] and [`PhotoSession`]
+//!   are sans-IO — cursor discipline, reconciliation, sealing and the epoch
+//!   reset as plain calls on bytes — so `tokio-tungstenite` natively and the
+//!   browser's own WebSocket on the PWA stay thin adapters next to their
+//!   event loops (DECISIONS 0043). No socket type appears in this crate's
+//!   public API, and neither does `std::time::Instant`.
 //! - **Two protocols, one key.** [`protocol`] is the sequenced log every
 //!   replica converges through; [`photo`] is the blob store beside it, on a
 //!   socket of its own and with a version byte of its own, so that photos
@@ -37,6 +37,7 @@
 pub mod error;
 pub mod key;
 pub mod photo;
+mod photo_session;
 pub mod protocol;
 mod seal;
 mod session;
@@ -44,4 +45,5 @@ mod session;
 pub use error::{Result, SyncError};
 pub use key::{GroupId, GroupKey, PHRASE_WORDS};
 pub use photo::PhotoName;
+pub use photo_session::{PhotoEvent, PhotoSession};
 pub use session::{Event, Session};

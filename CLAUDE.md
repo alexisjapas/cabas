@@ -40,8 +40,13 @@ and never inside it**, because every save rewrites the whole document and a
 photo library in it turns a tick in a shop into a multi-megabyte write
 (DECISIONS 0062, which carries the measurement). Half one is in **0.5.0** —
 taken, stored, displayed on one device; **0.6.0 adds importing one from the
-device** as well as taking it (0065); the transfer to the second phone is
-half two and does not exist yet.
+device** as well as taking it (0065). **Half two is under way and is entirely
+client-side so far**: the photo protocol (`crates/sync/src/photo.rs`,
+DECISIONS 0080) and the client that speaks it — `PhotoSession` in
+`cabas-sync`, sans-IO, and `PhotoSync` in `app::photos`, which is that client
+met with this device's store. Nothing calls either, because nothing listens
+on `/photos` yet; the relay is the next piece, and until it exists a photo
+taken on one phone is named on the other and absent there.
 
 **0.6.0 also changed four things about the app's own shape**, none of them on
 a milestone. **A family is a group** (0063) — in the code, in the relay's
@@ -148,7 +153,7 @@ on `CabasApp`) **and the library's file form** (`app::transfer`, and
 (phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
 `crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 251 native tests plus 20 in
+its own binary**. 272 native tests plus 20 in
 a real browser — 9 over IndexedDB and the photo store, 11 through the app —
 and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
@@ -331,6 +336,7 @@ Every crate holds code since M5's first half. `crates/sync` — read
 | `protocol` | `ClientMessage`/`ServerMessage`, `FrameKind`, the postcard codec |
 | `photo` | The photo protocol (0080) — `PhotoName`, a `Hello` carrying what this device has and wants, a `Welcome` answering with what to upload and what is available, one sealed photo per message after that. Its own version byte, on `/photos` |
 | `session` | `Session` — the sans-IO client: cursor, epoch reset, seal/push, one `Event` per wire message |
+| `photo_session` | `PhotoSession` — the sans-IO photo client: the hello it offers, the two queues the welcome fills, one `PhotoEvent` per wire message. Stores nothing it did not ask for (0080) |
 | `error` | `SyncError` — no vendor type crosses the boundary |
 
 `crates/relay` (binary + lib, never in `wasm-check`): `log.rs` is one
@@ -402,7 +408,7 @@ one file and a compatibility surface (DECISIONS 0029):
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
 | `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` — whose user half is `None` until somebody is chosen (0068) |
 | `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
-| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, `restore` one under an id minted elsewhere, and the two diffs a prefetch and a sweep need (0062, 0076) |
+| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, `restore` one under an id minted elsewhere, and the two diffs a prefetch and a sweep need (0062, 0076) — plus `PhotoSync`, that store met with `cabas_sync`'s `PhotoSession` (0080) |
 | `transfer` | `LibraryFile` — the library as a JSON file of the app's own inputs, the reference rewriting an import needs, and `ImportReport` (0076) |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
 
@@ -1034,6 +1040,26 @@ Key domain shapes, all settled in DECISIONS:
   copy.** Until M10's transfer half exists, a device's copy is the *only* copy,
   and sweeping unreferenced photos at startup would be deleting them. It is
   implemented and tested; nothing calls it yet, on purpose.
+- **A photo session's `want` list is not bookkeeping, it is the only thing
+  standing between an untrusted relay and a phone's storage.** The relay is
+  zero-knowledge and *not* trusted (Rule 7), and `/photos` is the one endpoint
+  where it hands bytes back that get written to disk. `PhotoSession` therefore
+  checks an incoming `Photo` against what the hello asked for **before** it
+  opens it, and narrows the welcome's two lists to what the hello said —
+  otherwise a relay answering a fetch with something else, or naming photos
+  nobody asked about, writes whatever it likes onto every device in the group.
+  Both checks read like redundant defence against a server we run ourselves,
+  and both are two lines. The tests that stop them being tidied away are
+  `a_photo_nobody_asked_for_is_dropped_without_being_opened` and
+  `a_welcome_cannot_widen_what_the_hello_said`.
+- **A photo id is not a `PhotoName`, and one bad one must not cost the rest
+  their transfer.** `PhotoId::from_raw` takes whatever a document says and an
+  imported file writes ids by hand (0076), while a `PhotoName` is checked
+  because the relay names a file after it (0080). `app::photos::speakable`
+  leaves an id that is not a name out of both the hello's lists instead of
+  raising: `PhotoStore` refuses the same shapes, so its bytes were never here
+  anyway, and failing `PhotoSync::open` over one malformed reference would
+  strand every *other* photo in the library, permanently and silently.
 - **An import must not go through `Command::SaveIngredient`, and the reason is
   the event log.** The log is capped at 200 entries (`EventLog::CAP`) and one
   file can carry more ingredients than that, so replaying an import through
