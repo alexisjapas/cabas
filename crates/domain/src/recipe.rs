@@ -122,6 +122,23 @@ impl Recipe {
         self
     }
 
+    /// Does `name` denote this recipe? Case-insensitive, and trimmed.
+    ///
+    /// The same bargain [`crate::Shop::matches`] and
+    /// [`crate::Ingredient::matches`] make, and it exists for the one caller
+    /// that has to decide whether two spellings are one thing: a library
+    /// arriving in a file, whose ids were minted on somebody else's device
+    /// (DECISIONS 0076). Without it an imported "Tarte aux pommes" becomes a
+    /// second recipe beside the one already written, and the two then drift.
+    ///
+    /// A recipe has no aliases, so there is one spelling to compare — which
+    /// is also why this is not `resolve`'s only rule: an id match wins over
+    /// a name match, and that ordering is the importer's business, not this
+    /// crate's.
+    pub fn matches(&self, name: &str) -> bool {
+        self.name.trim().eq_ignore_ascii_case(name.trim())
+    }
+
     pub fn usage(&self, id: &UsageId) -> Option<&IngredientUsage> {
         self.components.iter().find_map(|c| match c {
             Component::Ingredient(u) if &u.id == id => Some(u),
@@ -167,6 +184,18 @@ impl Recipe {
     pub fn factor_for_servings(&self, wanted: NonZeroU32) -> Rational {
         Rational::new(i128::from(wanted.get()), i128::from(self.servings.get()))
     }
+}
+
+/// Resolves free text to a recipe the library already has.
+///
+/// Stops at "not found" rather than creating one, like
+/// [`crate::ingredient::resolve`] and [`crate::shop::resolve`]: minting is a
+/// write and this crate performs none (Rule 1).
+pub fn resolve<'a, I>(candidates: I, text: &str) -> Option<&'a Recipe>
+where
+    I: IntoIterator<Item = &'a Recipe>,
+{
+    candidates.into_iter().find(|recipe| recipe.matches(text))
 }
 
 #[cfg(test)]
@@ -235,5 +264,18 @@ mod tests {
         assert_eq!(r.sub_recipes().count(), 1);
         // A sub-recipe usage is not addressable as an ingredient usage.
         assert!(r.usage(&UsageId::from_raw("u_pastry")).is_none());
+    }
+
+    #[test]
+    fn a_recipe_is_found_however_it_was_typed() {
+        let held = [tart()];
+        assert_eq!(
+            resolve(&held, "  apple TART  ").map(|r| r.id.clone()),
+            Some(RecipeId::from_raw("tart"))
+        );
+        // Unknown text is reported, never minted here (Rule 1). What the
+        // importer does with "not found" — create it under the id the file
+        // gave it — is the importer's decision (DECISIONS 0076).
+        assert!(resolve(&held, "Clafoutis").is_none());
     }
 }

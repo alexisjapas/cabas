@@ -15,7 +15,7 @@ members = [
 # it is not decoration either: the Supervisor decides an add-on has an update
 # by comparing this string to the installed one, so anything that must reach
 # the Pi has to move it.
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/alexisjapas/cabas"
@@ -101,6 +101,18 @@ ts-rs = "12"
 # Needs the web backend feature on wasm32, otherwise key generation fails to
 # link. Required by the M5 crypto.
 getrandom = "0.3"
+
+# --- Export / import (DECISIONS 0076) ---
+# The library travels as a JSON file of the very inputs the app already takes,
+# so that a person can read it and edit it. `serde_json` is the text form of
+# that file and nothing else; its shape is `app::transfer`'s.
+serde_json = "1"
+# The photos ride in the same file, and JSON has no bytes. Base64 costs a
+# third more than what it carries and is the one encoding everything on the
+# far side of a share sheet already reads. Decoding is the untrusted half —
+# the file came from somewhere — which is why this is a crate and not thirty
+# hand-written lines, unlike the QR encoder of 0047 whose input is ours.
+base64 = "0.22"
 
 # --- M5 · sync (E2EE + transport) ---
 # Default features off: they pull `rand_core` 0.6, whose `getrandom` 0.2

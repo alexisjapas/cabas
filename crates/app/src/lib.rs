@@ -54,6 +54,7 @@ pub mod platform;
 mod project;
 pub mod sync;
 pub mod tags;
+pub mod transfer;
 pub mod view;
 
 #[cfg(target_family = "wasm")]
@@ -66,6 +67,7 @@ pub use id::{mint_ingredient_id, mint_shop_id, mint_usage_id};
 pub use photos::{MAX_PHOTO_BYTES, Photos};
 pub use platform::{Identity, Platform, SystemPlatform};
 pub use sync::{SyncCursor, SyncEvent, SyncSession, SyncStatus};
+pub use transfer::{FORMAT, FORMAT_VERSION, ImportReport, Imported, LibraryFile};
 pub use view::StateView;
 
 #[cfg(target_family = "wasm")]

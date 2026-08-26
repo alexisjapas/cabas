@@ -85,6 +85,18 @@ the app rather than its plumbing — and the first three change the domain:
   persisted *screen* stays (0003); the scroll offset within it is gone, and so
   is the machinery that kept it.
 
+**0.8.0 is one more, also off-milestone: the library travels as a file**
+(0076). `Réglages · Données` writes the shops, the ingredients and the recipes
+as one readable JSON file — photos with them if the toggle is on — and reads
+one back. The file **is the app's own inputs** (`IngredientInput`,
+`RecipeInput`, `ShopInput`), so an import is the ordinary save run over what
+the file says and there is no second vocabulary; **ids travel and names are
+the fallback**, which is what merges somebody else's "Farine" into ours
+instead of beside it; and **an import never deletes**, because a delete under
+a CRDT is a group-wide fact and one person opening a file must not decide for
+two. It is not a substitute for the appliance backup — no list, no roster, no
+relay log — but it is the only dated copy that lives off the Pi.
+
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
@@ -99,11 +111,13 @@ which is where photo bytes live because `Storage` is one blob and that blob is
 rewritten on every save (DECISIONS 0062); `crates/app` holds the command set,
 the view-models and the wasm
 binding — **including the sync session** (`app::sync`, and `sync*` on
-`CabasApp`) **and the photo library** (`app::photos`, and `putPhoto` / `photo`
-on `CabasApp`); `crates/sync` holds the E2EE core (phrase → key, seal/open, the
-wire protocol, the sans-IO client `Session`); `crates/relay` is a working
+`CabasApp`), **the photo library** (`app::photos`, and `putPhoto` / `photo`
+on `CabasApp`) **and the library's file form** (`app::transfer`, and
+`exportLibrary` / `importLibrary`); `crates/sync` holds the E2EE core
+(phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
+`crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 228 native tests plus 20 in
+its own binary**. 241 native tests plus 20 in
 a real browser — 9 over IndexedDB and the photo store, 11 through the app —
 and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
@@ -216,9 +230,10 @@ does.
 
 The last command regenerates `ui/src/lib/bindings/*.ts` from the Rust types.
 It is not part of the everyday loop, but **CI fails if its output is stale**,
-so run it after touching **any of the five files that carry `ts(export)`** —
-`command.rs`, `view.rs`, `tags.rs`, `platform.rs` and `sync.rs`. `grep -rl
-'ts(export)' crates/app/src` is the authoritative list.
+so run it after touching **any of the six files that carry `ts(export)`** —
+`command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs` and
+`transfer.rs`. `grep -rl 'ts(export)' crates/app/src` is the authoritative
+list.
 
 CI runs all of these **inside the flake** — deliberately, because Rule 13
 makes nixpkgs authoritative for the `wasm-bindgen-cli` version, and a CI with
@@ -316,7 +331,7 @@ clippy --workspace` working in a fresh checkout; the release image sets
 | `quantity` | `Quantity`, scaling, addition, `ceil_to_whole`, `humanized` |
 | `ingredient` | `Ingredient`, `Aisle` (0069), `Keeping` (0070), cross-dimension conversion, `resolve`, `shopping_quantity` (0066) |
 | `shop` | `Shop` — a name and nothing else; `resolve` over it, and `sold_at`, the one place "an unplaced ingredient is on every trip" is written (0071). Named `Shop` and not `Store` because `cabas-store` is a crate |
-| `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs` |
+| `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs`, and `matches` / `resolve` — a recipe recognised by its name, which is what an imported file needs (0076) |
 | `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
 | `list` | `ShoppingList`, `ListEntry`, add-purges-overlay, and what one notch of the swipe is worth — `nudge_quantity` / `nudge_servings` (0072) |
@@ -355,7 +370,8 @@ one file and a compatibility surface (DECISIONS 0029):
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
 | `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` — whose user half is `None` until somebody is chosen (0068) |
 | `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
-| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, and the two diffs a prefetch and a sweep need (0062) |
+| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, `restore` one under an id minted elsewhere, and the two diffs a prefetch and a sweep need (0062, 0076) |
+| `transfer` | `LibraryFile` — the library as a JSON file of the app's own inputs, the reference rewriting an import needs, and `ImportReport` (0076) |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
 
 The shape to keep in mind: **`apply` is synchronous and returns the whole new
@@ -391,7 +407,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens. No component writes a literal value (Rule 10) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press; `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press; `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
 | `public/` | Served verbatim: the manifest, the favicon, the icons |
@@ -399,9 +415,9 @@ file:
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
 
-`screens/Settings.svelte` is five views behind one tab — itself, the roster,
-the shops, the log and the user switch — and it is also where the running
-build names itself (0055), and
+`screens/Settings.svelte` is six views behind one tab — itself, the roster,
+the shops, the log, the file door and the user switch — and it is also where
+the running build names itself (0055), and
 `screens/Recipes.svelte` is three behind another — the shelf, the one being
 read, and the one being written — and the shape is worth knowing before
 touching it. Which recipe is *open* is core state (`OpenRecipe`, never
@@ -595,9 +611,10 @@ Key domain shapes, all settled in DECISIONS:
   `render` rounds when a value has no tidy form, and a form that displays a
   rounded amount writes it back on the next save.
 - **The `.ts` files under `ui/src/lib/bindings/` are generated and CI
-  checks them.** Touching any of the five files carrying `ts(export)` —
-  `command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs` — means
-  rerunning the export command above. **A doc comment counts**: rustdoc prose
+  checks them.** Touching any of the six files carrying `ts(export)` —
+  `command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs`, `transfer.rs`
+  — means rerunning the export command above. **A doc comment counts**:
+  rustdoc prose
   is copied into the generated `.ts`, so reflowing a paragraph over a struct
   that exports is enough to fail the gate while every test still passes. That
   is how 0.6.0's first tag went red, on `platform.rs` — a file the earlier
@@ -949,6 +966,38 @@ Key domain shapes, all settled in DECISIONS:
   copy.** Until M10's transfer half exists, a device's copy is the *only* copy,
   and sweeping unreferenced photos at startup would be deleting them. It is
   implemented and tested; nothing calls it yet, on purpose.
+- **An import must not go through `Command::SaveIngredient`, and the reason is
+  the event log.** The log is capped at 200 entries (`EventLog::CAP`) and one
+  file can carry more ingredients than that, so replaying an import through
+  the ordinary save would push out every deletion the log exists to remember —
+  silently, and only on the day somebody looks (DECISIONS 0076). That is why
+  `save_ingredient`, `save_recipe` and `save_shop` are each split into an
+  `App::*_from` that validates and a caller that writes and logs; anything new
+  on those paths inherits the split.
+- **An import resolves everything before it writes anything.** There is no
+  transaction under the document, so a failure halfway through would leave a
+  library nobody could describe. `App::import_library` builds every domain
+  value first and only then calls `put_*`; adding a write into the resolving
+  half quietly removes that guarantee, and the test that catches it is
+  `an_import_that_fails_leaves_the_library_exactly_as_it_was`.
+- **An export skips a photo this device does not hold, in silence.** The
+  entity keeps naming it, so the file stays truthful — but it means an export
+  *with photos asked for* can legitimately carry none, which is exactly the
+  state of a phone that joined by typing twelve words and has not been given
+  the pictures (M10's transfer half). `ui-test` puts a photo on that device
+  first for this reason; without it the assertion looks like a broken toggle.
+- **`navigator.share` wants the tap it came from, and the export is
+  asynchronous.** Safari drops the transient activation across the await that
+  builds the file, so the share sheet may refuse on a real phone while working
+  everywhere it is not needed. `Transfer.deliver` tries it and falls through to
+  a download — and distinguishes a *refusal* from an `AbortError`, because the
+  second one means the person already said no and a download after it would be
+  the app insisting.
+- **`smoke.mjs`'s `HELPERS` is one big template literal.** A backtick anywhere
+  in it — including inside a doc comment, which is exactly where prose puts
+  them — closes the string, and the failure is a `SyntaxError` at module load
+  quoting a word out of the comment rather than anything about the test. Every
+  backtick in there is written `\``.
 - **`input.files` is read-only**, so a test cannot hand a file to a file input
   by assignment. `__photograph` in `smoke.mjs` builds a real JPEG on a canvas
   and fills a `DataTransfer` — which is also why the photo path is tested

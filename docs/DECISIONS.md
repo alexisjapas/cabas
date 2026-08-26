@@ -3464,3 +3464,137 @@ appliance actually used to do the shopping. **Blocking the *tag* run instead**
 it took to notice. **A scheduled job that reconciles `main` against ghcr
 nightly.** It would find this, a day late, in a place nobody is looking; the
 push is when the mistake is made and the push is where it belongs.
+
+## 0076 — The library travels as a JSON file of the app's own inputs
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on),
+[0024](#0024--attribution-is-declarative-not-cryptographic),
+[0033](#0033--one-state-pushed-whole-rebuilt-from-the-document),
+[0034](#0034--a-broken-reference-is-a-warning-not-an-empty-screen),
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it),
+[0071](#0071--a-shop-is-a-name-and-the-cart-is-one-trip-per-shop)
+
+**Context.** There are three copies of the library — both phones and the
+relay's log — and they are all *live*. They answer one question, "a device
+died", and no other: a recipe deleted by accident reaches all three in
+seconds. The dated copy is Home Assistant's backup (0010), which lives on the
+appliance, is opaque, is encrypted with a key kept on paper, and restores **the
+relay** rather than a library.
+
+Four things nobody could do, and they are not variations of one another:
+
+1. hold a copy of the library themselves, off the Pi, without asking anybody;
+2. type or correct a library on a keyboard rather than with a thumb — the
+   library is the part of this app that costs hours to enter;
+3. carry everything into a **new group**, which has already happened once: M6
+   moved both phones to the permanent origin, and starting a new group there
+   meant retyping what had been typed;
+4. send recipes to somebody outside the group at all.
+
+They turn out to be one file, which is why there is one mechanism and not
+four.
+
+**Decision.** A JSON file, `cabas.library`, holding the shops, the ingredients
+and the recipes, with the photos optionally beside them. Five choices inside
+that, and each of them is the reason the thing is worth having:
+
+1. **The file *is* the app's own inputs.** Every entry is an
+   `IngredientInput`, a `RecipeInput` or a `ShopInput` — the shapes
+   `SaveIngredient` and its two siblings already take. There is no second
+   vocabulary for the same things and therefore no second set of rules to keep
+   in step; a field added to a form is in the file the day it is added. It also
+   settles what an amount is: text, `"1,5"` or `"1/3"`, exactly as in a form,
+   because a JSON number is a float and Rule 4 does not allow one near a
+   quantity. Rendering goes through `number::render_lossless` for the reason an
+   edit form does — a rounded amount that gets written back is a quantity that
+   quietly changed.
+2. **Ids travel; names are the fallback.** An entity carries the id it has
+   here, so re-importing this group's own file updates in place — that is what
+   makes the file a backup rather than a duplicator. A file from *another*
+   group carries ids this document has never seen, so anything that resolves to
+   nothing by id is resolved by **name**, through the domain's own matchers.
+   That is what keeps somebody else's "Farine" from landing beside ours, and it
+   is what lets a file be written by hand: name things and leave the ids out.
+   The domain grew `Recipe::matches` and `recipe::resolve` for it, beside the
+   two that already existed.
+3. **An import merges, and never deletes.** What the file holds wins over what
+   is here — including the name that matched it — and what it does not mention
+   is left exactly as it was. This is not caution. A delete under a CRDT is a
+   **group-wide** fact: an import that pruned would reach through the relay and
+   take a recipe off the other person's phone, so one person opening a file
+   would be deciding for two.
+4. **Photos ride in the same file, base64, and only when asked.** Off by
+   default, and that default is the design: without them the file is tens of
+   kilobytes and opens in a text editor, which is what makes it a document you
+   can correct; with them it is a backup measured in tens of megabytes (0062
+   carries the arithmetic). A photo this device does not hold is skipped in
+   silence — the entity keeps naming it, so the file stays truthful about what
+   exists rather than pretending the picture is gone.
+5. **Nothing is written until everything is decided, and nothing is written to
+   the log.** There is no transaction under the document, so the import parses
+   every value and resolves every reference before the first `put` — which is
+   the only way "the import failed" can mean "nothing happened". And it records
+   no events: the log is capped at 200 entries (0024) and one file can carry
+   more ingredients than that, so routing an import through the ordinary save
+   would push out every deletion the log exists to remember. "Imported" has no
+   subject to be recorded against either, without widening the persisted
+   `subject_kind` — a trade `save_shop` already declined for a row nobody
+   reads. The receipt is handed straight back to the screen instead.
+
+**Consequences.** `crates/app/src/transfer.rs` holds the format, the export
+projection and the reference rewriting; `App::export_library` and
+`App::import_library` are the two doors, both synchronous, with the photos
+awaited by the host on either side of them — the same split `putPhoto` already
+has, and for the same reason (0032). `save_ingredient`, `save_recipe` and
+`save_shop` split into a `*_from` that validates and a caller that writes, so
+the import reuses every rule and none of the logging. `Photos::restore` stores
+under an id minted elsewhere, which is also exactly what M10's transfer half
+will need for a photo fetched from the relay.
+
+Two dependencies enter the registry: `serde_json` for the text and `base64`
+for the photos. The second is a crate rather than thirty hand-written lines —
+unlike the QR encoder of 0047 — because decoding is the half that meets a file
+that came from somewhere.
+
+`format_version` is the file's own, separate from the app's version (Rule 15),
+because they answer different questions: the app's says which build wrote the
+file, this one says whether a build can read it. A file from the future is
+refused with a message naming both numbers; an older one is read, which is the
+whole point of having it.
+
+**This is not a substitute for Home Assistant's backup.** It carries the
+library and nothing else: no list, no cart overlay, no roster, no devices, no
+event log, and none of the relay's log or its epoch. Losing the Pi still needs
+the appliance's archive and the key beside the twelve words. What this adds is
+a copy of the expensive half that a person holds, reads and can correct.
+
+**Rejected.** **The Loro snapshot as the file** — exact, and about ten lines of
+code. It is opaque: it cannot be read, cannot be edited, and cannot be merged
+into another group, since it carries a history and a set of peers as well as a
+library. It answers the first want and none of the other three, and the relay's
+side of it is already what an appliance backup holds.
+
+**A preview of what will change, before it lands.** Wanted, and cut for now:
+the file picker is already the deliberate act, nothing is ever deleted, and
+importing the *right* file afterwards corrects a wrong one — because the file
+wins. If picking the wrong file ever costs somebody an evening, this is the
+entry to supersede.
+
+**Selecting which recipes to export.** The whole library goes, and a file
+trimmed by hand is what sends one recipe. A selection screen is UI for
+something done twice a year, and the file being plain JSON is what makes the
+manual version possible at all.
+
+**Deleting what the file does not mention** — "make my library look like this
+file". It is the one shape of import that can destroy something, and under a
+CRDT it destroys it for both people at once.
+
+**A zip carrying the photos beside the JSON.** One file is what a share sheet
+moves and what a file picker hands back; a PWA has no unzip it can reach
+without another dependency, and the toggle already gives the small readable
+file to whoever wants one.
+
+**CSV, for the spreadsheet half of want 2.** A recipe is a tree — lines,
+sub-recipes, and prose that points at lines (0022) — and flattening it would
+either lose the references or invent a second format to carry them.

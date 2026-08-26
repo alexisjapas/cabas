@@ -9,17 +9,20 @@
   import Pairing from './Pairing.svelte';
   import People from './People.svelte';
   import Shops from './Shops.svelte';
+  import Transfer from './Transfer.svelte';
 
   let { session }: { session: Session } = $props();
 
   /**
-   * Five views behind one tab, where Recipes has three of its own. The
-   * roster, the log, the shops and the user picker are screens rather than
-   * sections: each has something to say at the bottom that a section would
-   * bury, and all of them are reached from the one place someone would look
-   * for them.
+   * Six views behind one tab, where Recipes has three of its own. The roster,
+   * the log, the shops, the file door and the user picker are screens rather
+   * than sections: each has something to say at the bottom that a section
+   * would bury, and all of them are reached from the one place someone would
+   * look for them.
    */
-  let showing = $state<'settings' | 'people' | 'shops' | 'events' | 'identify'>('settings');
+  let showing = $state<'settings' | 'people' | 'shops' | 'events' | 'transfer' | 'identify'>(
+    'settings',
+  );
 
   /**
    * The device half of the identity never appears in a view-model: it is a
@@ -99,6 +102,8 @@
   <Shops {session} onback={() => (showing = 'settings')} />
 {:else if showing === 'events'}
   <Events {session} onback={() => (showing = 'settings')} />
+{:else if showing === 'transfer'}
+  <Transfer {session} onback={() => (showing = 'settings')} />
 {:else if showing === 'identify'}
   <!-- The same screen the first launch shows, minus the device question: the
        device is already in the roster and keeps its name (DECISIONS 0068). -->
@@ -210,6 +215,9 @@
       </button>
       <button type="button" class="secondary" onclick={() => (showing = 'events')}>
         Journal
+      </button>
+      <button type="button" class="secondary" onclick={() => (showing = 'transfer')}>
+        Données
       </button>
     </div>
 

@@ -71,26 +71,29 @@ impl<F: PhotoStore> Photos<F> {
     /// already exists, which keeps `apply` synchronous — a photo write is a
     /// browser transaction, and no render may wait on one (Rule 6).
     pub async fn put(&self, platform: &impl Platform, bytes: &[u8]) -> Result<PhotoId> {
-        if bytes.len() < JPEG_MAGIC.len() || bytes[..JPEG_MAGIC.len()] != JPEG_MAGIC {
-            return Err(AppError::invalid(
-                "photo",
-                "not a JPEG — the encoder handed over something else",
-            ));
-        }
-        if bytes.len() > MAX_PHOTO_BYTES {
-            return Err(AppError::invalid(
-                "photo",
-                format!(
-                    "{} kB is over the {} kB a photo may weigh",
-                    bytes.len() / 1024,
-                    MAX_PHOTO_BYTES / 1024
-                ),
-            ));
-        }
-
+        acceptable(bytes)?;
         let id = PhotoId::from_raw(id::mint(platform, id::PHOTO)?);
         self.store.save(&id, bytes).await?;
         Ok(id)
+    }
+
+    /// Stores a photo **under an id minted somewhere else**.
+    ///
+    /// The one thing [`Photos::put`] cannot do, and the two callers that need
+    /// it both have the same shape: the document already names this photo, so
+    /// the bytes have to arrive under the name it uses. Today that is an
+    /// imported file (DECISIONS 0076); it is also exactly what M10's transfer
+    /// half will do with a photo fetched from the relay.
+    ///
+    /// Accepting a foreign id is safe for the reason ids are random rather
+    /// than derived (see [`crate::id`]): 64 bits minted on another device
+    /// cannot collide with one minted here. What is *not* taken on trust is
+    /// the content — the same JPEG check and the same ceiling apply, because
+    /// this is the path bytes take when they came from somewhere.
+    pub async fn restore(&self, id: &PhotoId, bytes: &[u8]) -> Result<()> {
+        acceptable(bytes)?;
+        self.store.save(id, bytes).await?;
+        Ok(())
     }
 
     /// The bytes of a photo this device holds.
@@ -143,6 +146,31 @@ impl<F: PhotoStore> Photos<F> {
         }
         Ok(forgotten)
     }
+}
+
+/// One format and one ceiling, checked on every path that stores anything.
+///
+/// It lives in one function rather than at each call site for the reason the
+/// module note gives: a second implementation of the rule is a second thing
+/// to forget, and the bytes here are the only copy until the relay has one.
+fn acceptable(bytes: &[u8]) -> Result<()> {
+    if bytes.len() < JPEG_MAGIC.len() || bytes[..JPEG_MAGIC.len()] != JPEG_MAGIC {
+        return Err(AppError::invalid(
+            "photo",
+            "not a JPEG — the encoder handed over something else",
+        ));
+    }
+    if bytes.len() > MAX_PHOTO_BYTES {
+        return Err(AppError::invalid(
+            "photo",
+            format!(
+                "{} kB is over the {} kB a photo may weigh",
+                bytes.len() / 1024,
+                MAX_PHOTO_BYTES / 1024
+            ),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

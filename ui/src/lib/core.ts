@@ -15,6 +15,7 @@
 
 import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
+import type { Imported } from './bindings/Imported';
 import type { StateView } from './bindings/StateView';
 import type { SyncCursor } from './bindings/SyncCursor';
 import type { SyncEvent } from './bindings/SyncEvent';
@@ -275,6 +276,39 @@ export class Core {
   /** What the replica references and this device has not got yet. */
   missingPhotos(): Promise<string[]> {
     return this.#app.missingPhotos() as Promise<string[]>;
+  }
+
+  /**
+   * The library as a file, and back (DECISIONS 0076).
+   *
+   * Both are asynchronous because the photos are: the document is read and
+   * written synchronously, and every picture is a browser transaction of its
+   * own. The core decides the file's shape and its text; this side does not
+   * parse it, does not build it, and does not look inside it.
+   */
+
+  /**
+   * The whole library as JSON text — what a share sheet or a download is
+   * handed.
+   *
+   * `withPhotos` is the difference between a document and a backup: without
+   * them the file is small enough to open in a text editor, which is the
+   * point of it being JSON at all.
+   */
+  exportLibrary(withPhotos: boolean): Promise<string> {
+    return this.#app.exportLibrary(withPhotos) as Promise<string>;
+  }
+
+  /**
+   * Merges a file in, and returns the receipt together with the new state.
+   *
+   * Both in one call for the reason every mutation returns a state
+   * (DECISIONS 0033): an import changes more of the screen than anything else
+   * the app does, and fetching the state separately would leave a window in
+   * which the report and the screen disagree.
+   */
+  importLibrary(json: string): Promise<Imported> {
+    return this.#app.importLibrary(json) as Promise<Imported>;
   }
 
   /**

@@ -43,6 +43,7 @@ use crate::error::{AppError, Result};
 use crate::library::Library;
 use crate::platform::{Identity, Platform};
 use crate::project::{self, Focus};
+use crate::transfer::{self, ImportReport, LibraryFile};
 use crate::view::StateView;
 use crate::{id, number};
 
@@ -345,6 +346,87 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(ids)
     }
 
+    // --- the library as a file (DECISIONS 0076) -----------------------------
+
+    /// The whole library, ready to be written to a file.
+    ///
+    /// Photos are **named and not carried**: reading them is asynchronous and
+    /// this is not, for the same reason every read here is synchronous — a
+    /// host with one thread must not hold a borrow of the app across an await
+    /// (DECISIONS 0032). The host takes [`LibraryFile::photo_ids`], fetches
+    /// what it wants from [`crate::Photos`], and puts them in with
+    /// [`LibraryFile::attach_photo`]. An export with no photos in it is a
+    /// complete, valid file — it is the form somebody edits by hand.
+    pub fn export_library(&self) -> Result<LibraryFile> {
+        let library = Library::read(&self.document)?;
+        Ok(transfer::export(
+            &library,
+            env!("CARGO_PKG_VERSION"),
+            self.now(),
+        ))
+    }
+
+    /// Merges a file into this replica, and says what it did.
+    ///
+    /// Synchronous like [`App::apply`], and for the same reason. It writes no
+    /// photo: the bytes live in a store of their own (DECISIONS 0062), so the
+    /// host restores them first with [`crate::Photos::restore`] — and an
+    /// entity that arrives naming a photo nobody carried is the ordinary
+    /// state, not a failure.
+    ///
+    /// **Nothing is ever deleted here.** What the file holds wins over what
+    /// is already in the document; what it does not mention is left exactly
+    /// as it was. That is not timidity: a delete under a CRDT is a group-wide
+    /// fact, so an import that pruned would reach through the relay and take
+    /// a recipe off the other person's phone — one person opening a file
+    /// would be deciding for two.
+    pub fn import_library(&mut self, file: &LibraryFile) -> Result<ImportReport> {
+        let library = Library::read(&self.document)?;
+
+        let resolved = {
+            let platform = &self.platform;
+            let mut mint = |prefix: &'static str| id::mint(platform, prefix);
+            transfer::resolve(file, &library, &mut mint)?
+        };
+
+        // Everything is parsed and every reference is decided before the
+        // first write. There is no transaction under the document, so this is
+        // the only thing that makes "the import failed" mean "nothing
+        // happened" rather than "some of it happened, in an order nobody
+        // recorded".
+        let shops = resolved
+            .shops
+            .iter()
+            .map(|input| self.shop_from(input))
+            .collect::<Result<Vec<_>>>()?;
+        let ingredients = resolved
+            .ingredients
+            .iter()
+            .map(|input| self.ingredient_from(input))
+            .collect::<Result<Vec<_>>>()?;
+        let recipes = resolved
+            .recipes
+            .iter()
+            .map(|input| self.recipe_from(input))
+            .collect::<Result<Vec<_>>>()?;
+
+        let touched = shops.len() + ingredients.len() + recipes.len();
+        for shop in &shops {
+            self.document.put_shop(shop)?;
+        }
+        for ingredient in &ingredients {
+            self.document.put_ingredient(ingredient)?;
+        }
+        for recipe in &recipes {
+            self.document.put_recipe(recipe)?;
+        }
+        if touched > 0 {
+            self.mark_changed();
+        }
+
+        Ok(resolved.report)
+    }
+
     // --- the sync seam (M5 drives these) ------------------------------------
     //
     // Bytes in, bytes out, no protocol. `sync` will seal and unseal them and
@@ -466,14 +548,37 @@ impl<S: Storage, P: Platform> App<S, P> {
     // --- the library --------------------------------------------------------
 
     fn save_ingredient(&mut self, input: IngredientInput, library: &Library) -> Result<bool> {
+        let ingredient = self.ingredient_from(&input)?;
+        let existed = library.ingredients.contains_key(&ingredient.id);
+        let (id, name) = (ingredient.id.clone(), ingredient.name.clone());
+
+        self.document.put_ingredient(&ingredient)?;
+        if existed {
+            self.record(Action::Edited, Subject::Ingredient(id), &name)?;
+        }
+        Ok(true)
+    }
+
+    /// One ingredient, as the document will hold it — everything that
+    /// validates, and nothing that writes.
+    ///
+    /// Split out of [`App::save_ingredient`] because an import builds the
+    /// same value and must not do the two things left above it (DECISIONS
+    /// 0076). It must not **log**: the event log is capped at 200 entries and
+    /// one file can carry more ingredients than that, so an import routed
+    /// through the save would push out every deletion the log exists to
+    /// remember. And it must not **write yet**: an import decides every
+    /// entity before the first `put`, because there is no transaction under
+    /// this and a failure halfway would leave a library nobody could
+    /// describe.
+    fn ingredient_from(&self, input: &IngredientInput) -> Result<Ingredient> {
         let name = text("name", &input.name)?.to_owned();
         let id = match &input.id {
             Some(id) => IngredientId::from_raw(id.clone()),
             None => IngredientId::from_raw(self.mint(id::INGREDIENT)?),
         };
-        let existing = library.ingredients.get(&id);
 
-        let mut ingredient = Ingredient::new(id.clone(), &name, input.aisle.into());
+        let mut ingredient = Ingredient::new(id, &name, input.aisle.into());
         ingredient.aliases = input
             .aliases
             .iter()
@@ -498,12 +603,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             .map(|q| self.quantity("default_quantity", q))
             .transpose()?;
         ingredient.photo = photo(input.photo.as_deref())?;
-
-        self.document.put_ingredient(&ingredient)?;
-        if existing.is_some() {
-            self.record(Action::Edited, Subject::Ingredient(id), &name)?;
-        }
-        Ok(true)
+        Ok(ingredient)
     }
 
     fn delete_ingredient(&mut self, id: &str, library: &Library) -> Result<bool> {
@@ -533,13 +633,20 @@ impl<S: Storage, P: Platform> App<S, P> {
     /// `subject_kind`, which is a schema change bought for a row nobody
     /// would read.
     fn save_shop(&mut self, input: ShopInput) -> Result<bool> {
+        let shop = self.shop_from(&input)?;
+        self.document.put_shop(&shop)?;
+        Ok(true)
+    }
+
+    /// One shop, validated and not yet written. See [`App::ingredient_from`]
+    /// for why the two halves are separate.
+    fn shop_from(&self, input: &ShopInput) -> Result<Shop> {
         let name = text("name", &input.name)?.to_owned();
         let id = match &input.id {
             Some(id) => ShopId::from_raw(id.clone()),
             None => ShopId::from_raw(self.mint(id::SHOP)?),
         };
-        self.document.put_shop(&Shop::new(id, name))?;
-        Ok(true)
+        Ok(Shop::new(id, name))
     }
 
     fn delete_shop(&mut self, id: &str, library: &Library) -> Result<bool> {
@@ -556,14 +663,27 @@ impl<S: Storage, P: Platform> App<S, P> {
     }
 
     fn save_recipe(&mut self, input: RecipeInput, library: &Library) -> Result<bool> {
+        let recipe = self.recipe_from(&input)?;
+        let existed = library.recipes.contains_key(&recipe.id);
+        let (id, name) = (recipe.id.clone(), recipe.name.clone());
+
+        self.document.put_recipe(&recipe)?;
+        if existed {
+            self.record(Action::Edited, Subject::Recipe(id), &name)?;
+        }
+        Ok(true)
+    }
+
+    /// One recipe, validated and not yet written. See [`App::ingredient_from`]
+    /// for why the two halves are separate.
+    fn recipe_from(&self, input: &RecipeInput) -> Result<Recipe> {
         let name = text("name", &input.name)?.to_owned();
         let id = match &input.id {
             Some(id) => RecipeId::from_raw(id.clone()),
             None => RecipeId::from_raw(self.mint(id::RECIPE)?),
         };
-        let existed = library.recipes.contains_key(&id);
 
-        let mut recipe = Recipe::new(id.clone(), &name, servings_count(input.servings)?);
+        let mut recipe = Recipe::new(id, &name, servings_count(input.servings)?);
         recipe.yields = input
             .yields
             .as_ref()
@@ -592,12 +712,7 @@ impl<S: Storage, P: Platform> App<S, P> {
                     .collect(),
             })
             .collect();
-
-        self.document.put_recipe(&recipe)?;
-        if existed {
-            self.record(Action::Edited, Subject::Recipe(id), &name)?;
-        }
-        Ok(true)
+        Ok(recipe)
     }
 
     /// One recipe line.

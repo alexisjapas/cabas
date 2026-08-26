@@ -390,6 +390,46 @@ const HELPERS = `
     if (!el) throw new Error('no ' + selector + ' containing ' + text);
     return el;
   };
+  /**
+   * Catches the file the export hands to the phone (DECISIONS 0076).
+   *
+   * \`Transfer.deliver\` tries the share sheet first and falls back to a
+   * download; a headless browser has neither, so this forces the fallback and
+   * takes the blob on its way past \`createObjectURL\`. The anchor's click is
+   * stubbed because a real download in headless chromium goes nowhere and
+   * complains about it in the console, which this suite fails on.
+   */
+  window.__catchExport = () => {
+    window.__exported = null;
+    window.__realShare = navigator.canShare;
+    window.__realCreate = URL.createObjectURL;
+    window.__realClick = HTMLAnchorElement.prototype.click;
+    navigator.canShare = () => false;
+    URL.createObjectURL = (blob) => {
+      window.__exported = blob;
+      return window.__realCreate.call(URL, blob);
+    };
+    HTMLAnchorElement.prototype.click = function () {};
+  };
+  window.__exportedText = () => (window.__exported ? window.__exported.text() : null);
+  window.__stopCatching = () => {
+    navigator.canShare = window.__realShare;
+    URL.createObjectURL = window.__realCreate;
+    HTMLAnchorElement.prototype.click = window.__realClick;
+  };
+  /**
+   * Hands a file to the import input, the way \`__photograph\` hands over a
+   * photo and for the same reason: \`input.files\` is read-only, and a
+   * \`DataTransfer\` is the one way to fill it.
+   */
+  window.__importFile = (json) => {
+    const input = document.querySelector('[data-field="import"]');
+    if (!input) throw new Error('missing the import input');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([json], 'cabas.json', { type: 'application/json' }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
   window.__clickText = (selector, text) => window.__find(selector, text).click();
   /** The roster as People.svelte renders it — one place that knows its shape. */
   window.__roster = () =>
@@ -1849,6 +1889,118 @@ for (const claim of ['Camille', 'vous', 'a supprimé', "l'ingrédient", 'Cannell
 ok('and a deletion made here lands at the top of it, named and attributed');
 await shot('16-journal');
 
+// --- the library, out to a file and back in (DECISIONS 0076) ----------------
+//
+// Four uses, one mechanism: a backup somebody holds themselves, a library
+// typed on a keyboard rather than a thumb, a move into a new group, and
+// recipes sent to somebody else. What is proved here is the round trip and
+// the merge — that the file really carries the library, that the photo toggle
+// is the difference between a document and a backup, and that importing adds
+// without removing.
+
+await evaluate(`__clickText('button', 'Retour')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings, on the way to the file door');
+await evaluate(`__clickText('button', 'Données')`);
+await waitFor(`__text('h1') === 'Données'`, 'the export and import screen');
+
+await evaluate(`__catchExport()`);
+await evaluate(`document.querySelector('[data-action="export"]').click()`);
+await waitFor(`window.__exported !== null`, 'the exported file');
+const exported = JSON.parse(await evaluate(`__exportedText()`));
+
+if (exported.format !== 'cabas.library' || exported.format_version !== 1) {
+  throw failed(`the file does not say what it is: ${JSON.stringify(exported).slice(0, 120)}`);
+}
+const tomatoes = exported.ingredients.find((i) => i.name === 'Tomates');
+if (!tomatoes) {
+  throw failed(
+    `the library is not in the file: ${JSON.stringify(exported.ingredients.map((i) => i.name))}`,
+  );
+}
+if (exported.recipes.length === 0) {
+  throw failed('the recipes are not in the file');
+}
+// The default is a document, not a backup: the ingredient names its photo and
+// the file does not carry it, so this stays small enough to open in an editor.
+if (exported.photos !== undefined) {
+  throw failed('photos rode along without being asked for');
+}
+if (typeof tomatoes.photo !== 'string') {
+  throw failed('the exported ingredient forgot the photo it has');
+}
+ok(`the whole library exports as one readable file (${exported.ingredients.length} ingredients)`);
+
+// And the toggle is the whole difference. But this device joined by typing
+// twelve words: it has the document and none of the pictures, because the
+// transfer half of M10 does not exist yet — so an export with photos asked
+// for would honestly carry nothing. Giving it one of its own is what makes
+// the toggle observable at all, and the stubs come off first because a photo
+// preview goes through `createObjectURL` too.
+await evaluate(`__stopCatching()`);
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__text('h1') === 'Ingrédients'`, 'the shelf, to put a photo on this device');
+await evaluate(`__clickText('li button', 'Tomates')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Tomates, open on this device');
+await evaluate(`__photograph('[data-field="photo-import"]')`);
+await waitFor(
+  `__photoSrc('.photo-field .photo img')?.startsWith('blob:')`,
+  'a photo this device actually holds',
+);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings');
+await evaluate(`__clickText('button', 'Données')`);
+await waitFor(`__text('h1') === 'Données'`, 'the file door again');
+
+await evaluate(`__catchExport()`);
+await evaluate(`document.querySelector('[data-field="with-photos"]').click()`);
+await evaluate(`document.querySelector('[data-action="export"]').click()`);
+await waitFor(`window.__exported !== null`, 'the export with photos');
+const withPhotos = JSON.parse(await evaluate(`__exportedText()`));
+const named = withPhotos.ingredients.find((i) => i.name === 'Tomates')?.photo;
+if (typeof withPhotos.photos?.[named] !== 'string') {
+  throw failed(
+    `the photo was not carried: ${JSON.stringify(Object.keys(withPhotos.photos ?? {}))}`,
+  );
+}
+await evaluate(`__stopCatching()`);
+ok('and a photo rides along when asked, base64, under the id the document uses');
+
+// Back in, with one line added by hand — which is the "edit it on a computer"
+// half. Everything else in the file is already here and must merge in place
+// rather than double.
+const amended = JSON.stringify({
+  ...exported,
+  ingredients: [...exported.ingredients, { name: 'Curcuma', aisle: 'pantry' }],
+});
+await evaluate(`__importFile(${JSON.stringify(amended)})`);
+await waitFor(`document.querySelector('[data-report]')`, 'the receipt');
+const receipt = await evaluate(`__all('[data-report] div')`);
+const ingredientRow = receipt.find((row) => row.startsWith('Ingrédients'));
+if (!ingredientRow?.includes('1 ajouté') || !ingredientRow.includes('mis à jour')) {
+  throw failed(`the receipt does not add up: ${JSON.stringify(receipt)}`);
+}
+ok(`an edited file merges: ${JSON.stringify(ingredientRow)}`);
+
+await evaluate(`__clickText('nav button', 'Ingrédients')`);
+await waitFor(`__all('li .name').includes('Curcuma')`, 'the ingredient that was typed into a file');
+if (!(await evaluate(`__all('li .name').includes('Tomates')`))) {
+  throw failed('the import removed something it did not mention');
+}
+const doubled = await evaluate(
+  `__all('li .name').filter((n) => n === 'Tomates').length`,
+);
+if (doubled !== 1) {
+  throw failed(`the import duplicated an ingredient it already had (${doubled} of them)`);
+}
+ok('what the file added is there, what it did not mention is untouched, and nothing doubled');
+
+await evaluate(`__clickText('nav button', 'Réglages')`);
+await waitFor(`__text('h1') === 'Réglages'`, 'settings');
+await evaluate(`__clickText('button', 'Données')`);
+await waitFor(`__text('h1') === 'Données'`, 'the file door again');
+await shot('17-data');
+
 // Rotating the key is the whole of revocation, and it is destructive enough to
 // be the last thing this file does: the group it leaves behind is the one
 // every assertion above was made against.
@@ -1911,7 +2063,7 @@ if (!abandonedNow.equals(abandonedLog)) {
   throw failed(`rotating wrote ${abandonedNow.length - abandonedLog.length} bytes into the old group`);
 }
 ok(`and the relay holds a second group (${arrived.bytes} bytes), the first one untouched`);
-await shot('17-rotated');
+await shot('18-rotated');
 
 if (consoleErrors.length > 0) {
   throw new Error(`the page logged errors:\n${consoleErrors.join('\n')}`);

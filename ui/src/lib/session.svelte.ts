@@ -25,6 +25,7 @@
 
 import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
+import type { ImportReport } from './bindings/ImportReport';
 import type { StateView } from './bindings/StateView';
 import { Core, rememberIdentity } from './core';
 import { Sync } from './sync.svelte';
@@ -159,6 +160,42 @@ export class Session {
    */
   photo(id: string): Promise<Uint8Array<ArrayBuffer> | undefined> {
     return this.#core.photo(id);
+  }
+
+  /**
+   * The whole library as a file (DECISIONS 0076). The core decides its shape
+   * and its text; this hands back the string and nothing more.
+   */
+  exportLibrary(withPhotos: boolean): Promise<string> {
+    return this.#core.exportLibrary(withPhotos);
+  }
+
+  /**
+   * Merges a file in, and returns the receipt.
+   *
+   * Not `run`, because it is asynchronous — the photos in the file are a
+   * browser transaction each — but it ends the same way a command does: the
+   * new state renders, the write is scheduled, and the other phone is told
+   * there is something to pull. An import is the largest single change this
+   * app can make, and the one most worth pushing promptly.
+   *
+   * It throws rather than returning a boolean, unlike `run`: an import fails
+   * for reasons that need saying — the wrong file, a newer format, a picture
+   * that does not decode — where a refused command is nearly always a
+   * concurrent edit.
+   */
+  async importLibrary(json: string): Promise<ImportReport> {
+    try {
+      const { report, state } = await this.#core.importLibrary(json);
+      this.state = state;
+      this.error = null;
+      this.#scheduleFlush();
+      this.sync.localChange();
+      return report;
+    } catch (cause) {
+      this.error = cause instanceof Error ? cause.message : String(cause);
+      throw cause;
+    }
   }
 
   /**

@@ -30,6 +30,7 @@ use crate::command::Command;
 use crate::photos::Photos;
 use crate::platform::{Identity, SystemPlatform};
 use crate::sync::{SyncCursor, SyncSession};
+use crate::transfer::{Imported, LibraryFile};
 
 /// Serialises a view-model the way the generated TypeScript declares it.
 ///
@@ -228,6 +229,67 @@ impl CabasApp {
             .map(|id| id.to_string())
             .collect();
         to_js(&missing)
+    }
+
+    // --- the library as a file (DECISIONS 0076) -----------------------------
+    //
+    // Two calls, both asynchronous, and both for the same reason as the photo
+    // pair above: the document is read and written synchronously, and the
+    // photos are a browser transaction each. The borrow of the app is taken
+    // and released in a statement that ends, never held across an await.
+
+    /// The whole library as JSON text, for the host to hand to a share sheet
+    /// or a download.
+    ///
+    /// `with_photos` is not a detail. Without them the file is a few tens of
+    /// kilobytes and can be read and edited in any text editor — which is the
+    /// point of it being JSON. With them it carries every picture base64'd,
+    /// which is a third more than the bytes themselves (DECISIONS 0062 has
+    /// what that weighs), and is a backup rather than a document.
+    #[wasm_bindgen(js_name = exportLibrary)]
+    pub async fn export_library(&self, with_photos: bool) -> Result<String, JsError> {
+        // The borrow ends with this statement; the awaits are all below it.
+        let mut file = self.inner.borrow().export_library()?;
+        if with_photos {
+            for id in file.photo_ids() {
+                if let Some(bytes) = self.photos.get(&id).await? {
+                    file.attach_photo(&id, &bytes);
+                }
+                // A photo this device does not hold is skipped in silence: it
+                // was taken on the other phone and its bytes have not arrived
+                // (Rule 6). The entity keeps naming it, so the file stays
+                // truthful about what exists.
+            }
+        }
+        Ok(file.to_json()?)
+    }
+
+    /// Merges a file into this replica and returns `{ report, state }`.
+    ///
+    /// Photos go in **first**, before a single entity is written. That is
+    /// what makes a file with one unreadable picture in it fail with nothing
+    /// changed, rather than with a library half merged behind a photo nobody
+    /// can open.
+    #[wasm_bindgen(js_name = importLibrary)]
+    pub async fn import_library(&self, json: String) -> Result<JsValue, JsError> {
+        let file = LibraryFile::from_json(&json)?;
+
+        let mut photos_added = 0u32;
+        for (id, bytes) in file.carried_photos()? {
+            self.photos.restore(&id, &bytes).await?;
+            photos_added += 1;
+        }
+
+        // One statement, one borrow, no await under it.
+        let (mut report, state) = {
+            let mut app = self.inner.borrow_mut();
+            let report = app.import_library(&file)?;
+            let state = app.state()?;
+            (report, state)
+        };
+        report.photos_added = photos_added;
+
+        to_js(&Imported { report, state })
     }
 
     // --- sync ---------------------------------------------------------------

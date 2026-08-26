@@ -447,6 +447,20 @@ Then, on paper, beside the twelve words: **Home Assistant's backup encryption
 key**. A restored `/data` without the words and an archive without the key are
 the same object, and it is a pile of bytes.
 
+**There is a fourth copy now, and it is the only one a person holds.**
+Settings · Données writes the whole library — shops, ingredients, recipes, and
+the photos if the toggle is on — to one JSON file, to be put wherever a file
+goes: iCloud, a laptop, a USB stick
+([0076](docs/DECISIONS.md#0076--the-library-travels-as-a-json-file-of-the-apps-own-inputs)).
+Importing it back merges: what the file holds wins, what it does not mention is
+left alone, and nothing is ever deleted. It is worth doing after an evening of
+data entry, and it is the copy that survives losing the Pi *and* both phones at
+once.
+
+It does **not** replace what follows. The file carries the library and nothing
+else — no list, no cart, no roster, no event log, and none of the relay's own
+log or its epoch. Restoring the appliance still needs the archive and the key.
+
 The add-on is deliberately left `backup: hot` — the Supervisor keeps it running
 while the archive is taken. `log.rs` writes `log` and `meta` through a
 temporary file and a rename, `sync_all`s every append, and recovers a torn tail

@@ -203,6 +203,18 @@ plumbing. Three of them reach the domain:
   cold** (0074): nothing selected, no search, at the top. Which screen you
   were on is still remembered; where you were inside it is not.
 
+**0.8.0 adds one thing, and it is not on a milestone either: the library
+travels as a file** (DECISIONS 0076). Settings · Données exports the shops,
+the ingredients and the recipes as one readable JSON file — the photos with
+them if asked — and imports one back, merging by id and then by name, never
+deleting. It is one mechanism because it is four wants: a copy somebody holds
+themselves, a library correctable on a keyboard rather than with a thumb, a
+move into a new group without retyping it, and recipes sent to somebody
+outside the group. It is **not** a substitute for the appliance backup below —
+it carries the library and nothing else, no list, no roster and none of the
+relay's log — but it is the first dated copy of the expensive half that lives
+anywhere except the Pi.
+
 **Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
