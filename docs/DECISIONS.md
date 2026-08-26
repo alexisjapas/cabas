@@ -84,6 +84,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount) | The gesture keeps counting, and holding a row types the amount | Product |
 | [0073](#0073--an-ingredients-editor-opens-under-the-ingredient) | An ingredient's editor opens under the ingredient | Product |
 | [0074](#0074--a-tab-opens-cold) | A tab opens cold | Product |
+| [0075](#0075--main-may-not-advertise-a-version-nothing-published) | `main` may not advertise a version nothing published | Deployment |
 
 ---
 
@@ -3401,3 +3402,65 @@ recipe.** Half of the surprise is the scroll: a shelf that comes back
 mid-scroll reads as a shelf that has lost your place, not one that kept it.
 **A timeout — cold after an hour.** A rule nobody can see, which is worse than
 either behaviour on its own.
+
+## 0075 — `main` may not advertise a version nothing published
+
+**Date** 2026-08-26 · **Status** Accepted · **Relates to**
+[0010](#0010--the-relay-ships-as-a-home-assistant-os-add-on),
+[0049](#0049--the-add-on-is-cross-compiled-here-and-never-built-on-the-pi)
+
+**Context.** `cabas-relay/config.yaml`'s `version` is not a label. It is the
+image tag the Supervisor pulls, and the Supervisor reads it off this
+repository's **default branch**, continuously — so a bump landing on `main`
+offers that version to every installed add-on from that moment. Publishing an
+image, on the other hand, happens only from a `vX.Y.Z` tag (0049).
+
+Nothing connected the two. `0230fdb` bumped the workspace to 0.6.1 and was
+never tagged; the Pi was offered 0.6.1 for a day and could not pull it,
+because `ghcr.io/…:0.6.1` never existed. The `image` job knew at the time and
+said so —
+
+> `::notice::0.6.1 is a release version — publish it from its vX.Y.Z tag, not
+> from main`
+
+— in a log nobody reads. That is the actual failure, and it is the same one
+this repository has already written down once: *a red gate that goes unread is
+worse than an absent one* (ROADMAP's own opening). A green run with a notice in
+it is the same thing wearing a better colour.
+
+**Decision.** A job, `main advertises a released version`, on pushes to `main`
+only. A `-dev` version passes — it publishes its own image. A release version
+must have a `vX.Y.Z` tag or the run is red, with a message naming the command
+that fixes it.
+
+Three choices inside that, each of which matters:
+
+1. **It checks the tag, not the registry.** If the tag exists, its own run
+   either published the image or went red trying, and *that* run is the one to
+   look at. Polling ghcr from here would be a second place to be wrong about
+   what shipped, and it would go red for the ten minutes a release takes to
+   build.
+2. **The tag need not point at HEAD.** A docs commit landing after a release
+   leaves the version untouched and already published, which is fine. What
+   must never exist is a version with no tag anywhere.
+3. **It waits three minutes before failing.** A release is normally two pushes
+   seconds apart — the branch, then the tag — so this run can legitimately
+   start before the tag ref exists, and failing a correct release is how a
+   gate gets ignored. A genuinely stranded version is still stranded three
+   minutes later.
+
+**Consequences.** Bumping the version and tagging it become one act; push them
+together. A bump that is not ready to ship has to carry `-dev`, which is what
+the `image` job already assumed and nothing enforced.
+
+The job needs no Nix and no cache — it is a `grep` and a `git ls-remote` — so
+it costs seconds and cannot be the reason somebody stops reading CI.
+
+**Rejected.** **Leaving it as a notice.** That is the state that produced the
+bug. **Making `main` always carry `-dev`.** A `-dev` version publishes an
+image, so the Pi would be offered development builds continuously — on the
+appliance actually used to do the shopping. **Blocking the *tag* run instead**
+— by then the branch has already been advertising the version for however long
+it took to notice. **A scheduled job that reconciles `main` against ghcr
+nightly.** It would find this, a day late, in a place nobody is looking; the
+push is when the mistake is made and the push is where it belongs.

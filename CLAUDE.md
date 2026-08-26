@@ -457,6 +457,14 @@ Key domain shapes, all settled in DECISIONS:
   is the semver of the *shipped artifact* (the relay image and the bundle it
   serves), not a commit counter. `cabas-relay/config.yaml` carries the same
   string and `check-addon` fails when the two disagree.
+- **A version bump and its tag are one act.** `config.yaml`'s version is the
+  image tag the Supervisor pulls and it reads it off `main` continuously, so
+  a bump that lands untagged offers every installed add-on a version nothing
+  published — which is what stranded 0.6.1 for a day. CI's
+  `main advertises a released version` job fails a push to `main` carrying a
+  release version with no `vX.Y.Z` tag anywhere (DECISIONS 0075); it waits
+  three minutes first, because the branch and the tag are normally two pushes
+  seconds apart. Push them together.
 - **A release is an annotated `vX.Y.Z` tag whose message *is* the
   changelog**, and it is the only thing that ships. `main` publishes a
   `-dev` version and nothing else; a version with no `-dev` on `main`

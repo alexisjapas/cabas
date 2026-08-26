@@ -310,6 +310,66 @@ jobs:
             BUILD_REVISION=${{ steps.tags.outputs.revision }}
             BUILD_CREATED=${{ steps.tags.outputs.created }}
 
+  # `main` must never advertise a version the appliance cannot pull.
+  #
+  # `cabas-relay/config.yaml`'s `version` is not a label: it is the image tag
+  # the Supervisor pulls, and the Supervisor reads it off this repository's
+  # default branch, continuously. So the moment a bump lands on `main`, every
+  # installed add-on is offered that version — while only a `vX.Y.Z` tag
+  # actually publishes an image.
+  #
+  # That gap stranded 0.6.1 for a day: bumped on main by a commit that was
+  # never tagged, offered to the Pi, and impossible to pull. The `image` job
+  # said so at the time — "publish it from its vX.Y.Z tag, not from main" —
+  # as a `::notice::`, in a log nobody reads. A notice is not a gate, which is
+  # the whole lesson: this job is the same statement, in red (DECISIONS 0075).
+  #
+  # It checks the **tag**, not the registry. If the tag exists, its own run
+  # published the image or went red trying, and that run is the one to look
+  # at; polling ghcr from here would just be a second place to be wrong about
+  # what shipped.
+  #
+  # The tag is not required to point at HEAD. A docs commit landing on main
+  # after a release leaves the version untouched and already published, which
+  # is fine; what must never happen is a version with no tag anywhere.
+  advertised-version:
+    name: main advertises a released version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: the version on main has a tag
+        run: |
+          set -euo pipefail
+          version="$(grep -oP '^version:\s*"\K[^"]+' cabas-relay/config.yaml)"
+
+          if [ "${version%-dev}" != "$version" ]; then
+            echo "::notice::$version is a development version — it publishes its own image from main"
+            exit 0
+          fi
+
+          # A release is normally two pushes seconds apart — the branch, then
+          # the tag — so this run can legitimately start before the tag ref
+          # exists. Waiting a few minutes turns that race into a pass instead
+          # of a red run on a correct release; a version that is genuinely
+          # stranded is still stranded three minutes later.
+          for attempt in $(seq 1 12); do
+            if git ls-remote --tags --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
+              echo "::notice::v$version exists — main advertises a version that has a release"
+              exit 0
+            fi
+            echo "no v$version yet (attempt $attempt/12), waiting for the tag push…"
+            sleep 15
+          done
+
+          echo "::error::main advertises $version and no v$version tag exists."
+          echo "::error::cabas-relay/config.yaml's version is the image tag the Supervisor pulls, so every"
+          echo "::error::installed add-on is now offered $version — and nothing published it."
+          echo "::error::Fix it by tagging this version: git tag -a v$version -F <changelog> && git push origin v$version"
+          echo "::error::(or, if it was never meant to ship, move the version on and tag that one instead)."
+          exit 1
+
   # The Android shell is not built here (a multi-GB SDK for a milestone that
   # has not started), but it must keep *evaluating*: a flake that breaks at
   # eval is discovered at M7 otherwise, long after the change that broke it.
