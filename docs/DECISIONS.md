@@ -88,6 +88,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0076](#0076--the-library-travels-as-a-json-file-of-the-apps-own-inputs) | The library travels as a JSON file of the app's own inputs | Product |
 | [0077](#0077--the-list-is-where-an-amount-is-changed-too) | The list is where an amount is changed, too | Product |
 | [0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at) | No field is small enough for iOS to zoom at | Platform |
+| [0079](#0079--asking-for-more-of-a-line-purges-its-tick-and-both-amounts-are-one-control) | Asking for more of a line purges its tick, and both amounts are one control | Product |
+| [0080](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives) | The photo protocol: one round trip, then a conversation the device drives | Sync |
 
 ---
 
@@ -3835,3 +3837,116 @@ thirds of it.
 
 **Raising the banner with `!important` or a bigger number.** The numbers were
 the problem, not their size.
+
+## 0080 — The photo protocol: one round trip, then a conversation the device drives
+
+**Date** 2026-08-26 · **Status** Accepted · **Implements**
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it) · **Relates
+to** [0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0042](#0042--the-relay-keeps-a-sequenced-log-it-cannot-read),
+[0050](#0050--an-abandoned-family-log-is-forgotten-by-hand-or-not-at-all),
+[0051](#0051--the-relay-pings-because-the-proxy-closes-a-silent-socket)
+
+**Context.** 0062 settled that photos travel on a socket of their own with a
+protocol byte of their own, and that every device ends up holding every photo
+its replica references. It did not settle the messages, and the log's protocol
+(0042) cannot simply be copied over: that one is built around an ordering the
+relay assigns and a cursor the device remembers, and **a photo library has no
+order**. Two devices fetching the same photos in different sequences are both
+right, and a photo that arrives twice is the same photo.
+
+What replaces the cursor is that the set is small and nameable. A device knows
+what bytes it holds, and it knows what its replica references; the difference
+between those two lists is the whole of the work. Reconciliation is a set
+difference over ids, computed once per connection.
+
+Three constraints shape the rest. **The bytes are large** — up to
+`MAX_PHOTO_BYTES`, half a megabyte each — so a phone that has just joined a
+group and references two hundred photos is asking for tens of megabytes, and
+whoever controls the pace controls that phone's memory. **The relay has to
+name a blob to store it**, which puts photo ids in the clear. And **the port
+faces the internet** (0012), where the group id is the only access control
+there is.
+
+**Decision.**
+
+1. **One round trip reconciles.** `Hello { protocol, group, have, want }`:
+   `have` is every photo this device holds bytes for, `want` is what its
+   replica references and it lacks. `Welcome { upload, available }` answers
+   with the subset of `have` the relay does not hold and the subset of `want`
+   it does. After that one message both sides know the whole of the work — and
+   the device knows which of the photos it is missing are on a phone that has
+   not connected since.
+2. **A device asks for what it can name, not for whatever the relay holds.**
+   `want` comes from `Photos::missing(referenced)`, so a device behind on
+   `/sync` does not fetch photos for entities it has never heard of, and one
+   that has swept its unreferenced copies (0062's decision 8) does not fetch
+   them straight back.
+3. **After the welcome, nothing moves unbidden.** `Fetch { id }` is answered
+   with `Photo { id, payload }`, `Push { id, payload }` with `Stored { id }`.
+   One photo per message, and the device decides how many are in flight. The
+   relay never streams and never forwards live: a photo is a background
+   prefetch, not an event to watch arrive (0011's spirit), so there is no
+   subscription, no broadcast, and no forward buffer measured in megabytes.
+4. **The device decides when the conversation is over.** There is no
+   `CaughtUp` here: the welcome already stated the work, and the socket closes
+   when the queue drains (0062). "Done" is not a fact the relay can compute for
+   a party whose wants it cannot see.
+5. **`Absent { id }` is an answer.** A `forget` (0050) is run by a person and
+   can land between the welcome and the fetch. Silence would stall that
+   device's queue for good.
+6. **A refusal is against a photo, never against the connection.**
+   `Rejected { id, reason }` is how the per-group byte cap surfaces. Killing
+   the connection would abandon a queue with nothing wrong with it, and the
+   reconnect would offer the same photo first, forever.
+7. **A name is a checked token, checked as it is decoded.** `PhotoName` is 1
+   to 64 bytes of `[A-Za-z0-9_-]` — what every id in this workspace already is
+   — and the check lives in its `Deserialize`, so a name that could traverse a
+   path never reaches the code that names a file after it. It is in
+   `cabas-sync` rather than in `cabas-relay` because the relay is the party
+   that must not be able to forget it.
+8. **`PHOTO_PROTOCOL` starts at 1 and moves on its own.** A change to the
+   photo conversation must not bump the number a phone in a pocket has to
+   match in order to keep converging, which is what 0062 asked for.
+9. **The payload is the sealed photo, stored verbatim.** Sealed by the device
+   that took it, opened by the device that asked for it, re-encoded by nobody
+   (Rule 7). The relay deduplicates by id, so a photo it already holds is
+   never uploaded a second time, whoever offers it.
+
+**Consequences.** The relay's photo side is put, get, list and refuse: no
+ordering, no epoch, no truncation, no forwarding, and a directory of sealed
+blobs per group as the whole of its state. It owes two policies that are not
+in this protocol — a maximum WebSocket message size, since a hello's lists and
+a push's payload are the two unbounded things a stranger holding the group id
+can send, and 0062's byte cap — and both of them surface as words rather than
+as a dropped socket.
+
+There is no resume state, which is the compensation for having no cursor: a
+transfer interrupted halfway costs one round trip on the next connection and
+nothing else, because the next hello re-derives the difference from what is
+actually on disk at both ends. The keepalive (0051) applies here too and
+matters less, since a photo connection is short by construction.
+
+A photo id in the clear tells the relay how many photos a group has and
+roughly when each arrived — which it sees anyway, watching bytes go by. It
+tells it nothing about the pixels, because 0062 minted those ids random for
+exactly this reason; content-addressed ids would have handed the party holding
+the ciphertext a way to confirm a guessed photo.
+
+**Rejected.** **Streaming every available photo straight after the welcome.**
+It saves a round trip per photo and hands a fresh phone tens of megabytes with
+no way to slow them down — and the fresh phone is the common case, not the
+edge one. **The relay listing everything it holds and letting the device
+diff**: a simpler relay, at the price of a device fetching photos for entities
+it has not heard of yet and re-fetching what it deliberately swept.
+**Chunking a photo across messages, with resume** — bookkeeping on both sides
+for a case whose cost today is one retry of half a megabyte. **A live forward
+like `/sync`'s**: a subscription per connection and a buffer sized for
+shopping-list deltas, to deliver faster something nobody is looking at.
+**Sealing the id, or a handle minted by the relay** — the relay cannot serve
+what it cannot name, and a handle it minted would have to be written into the
+document, which is the one thing that must stay small and identical on every
+device, offline. **One protocol byte for both sockets**, which is the coupling
+0062 removed. **A hash of the plaintext beside each blob for integrity**: the
+AEAD tag is that check, and `Photos::restore` re-runs the format and the
+ceiling on arrival anyway.

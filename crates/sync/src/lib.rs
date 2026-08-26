@@ -23,6 +23,11 @@
 //!   stay thin adapters next to their event loops (DECISIONS 0043). No socket
 //!   type appears in this crate's public API, and neither does
 //!   `std::time::Instant`.
+//! - **Two protocols, one key.** [`protocol`] is the sequenced log every
+//!   replica converges through; [`photo`] is the blob store beside it, on a
+//!   socket of its own and with a version byte of its own, so that photos
+//!   cannot delay a list edit and a change to either leaves the other alone
+//!   (DECISIONS 0062, 0080). Both seal with the same [`GroupKey`].
 //!
 //! The relay side of the protocol lives in `cabas-relay`; the convergence
 //! test that drives both ends is `crates/relay/tests/convergence.rs`.
@@ -31,10 +36,12 @@
 
 pub mod error;
 pub mod key;
+pub mod photo;
 pub mod protocol;
 mod seal;
 mod session;
 
 pub use error::{Result, SyncError};
 pub use key::{GroupId, GroupKey, PHRASE_WORDS};
+pub use photo::PhotoName;
 pub use session::{Event, Session};

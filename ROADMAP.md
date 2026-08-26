@@ -933,19 +933,33 @@ first, where every bug has one replica and one cause, then the transfer.
 
 ### Half two — the photo reaches the other phone
 
-- [ ] **`sync`**: the photo protocol — a `Hello` naming the group, one round
-      trip reconciling what each side has and wants, one sealed payload per
-      photo, and **its own protocol byte**, so `/sync`'s `PROTOCOL` stays 1
-      and an older phone keeps converging without photos. `seal`/`open`
-      unchanged (Rule 7)
-- [ ] **`app::photos`**: `PhotoSession`, sans-IO exactly like `SyncSession` —
-      it decides what to offer and what to ask for, seals and opens, and
+- [x] **`sync`**: the photo protocol — `crates/sync/src/photo.rs`, with the
+      reasoning in DECISIONS 0080. A `Hello` naming the group and carrying
+      what this device **has** and what it **wants**, a `Welcome` answering
+      with what to upload and what is available, and after that one photo per
+      message in whichever direction asked for it — the relay never streams
+      and never forwards live, so the device paces both directions and a
+      phone that has just joined is not handed tens of megabytes to buffer.
+      **Its own protocol byte**, so `/sync`'s `PROTOCOL` stays 1 and an older
+      phone keeps converging without photos; `seal`/`open` unchanged (Rule 7).
+      Two things the writing settled: a **`PhotoName` is checked in its own
+      `Deserialize`**, because the relay names a file after one and its port
+      faces the internet, and a cap **rejects a photo rather than the
+      connection**, or the queue behind it dies with the socket
+- [ ] **`sync::PhotoSession`, then `app::photos`**: the client, sans-IO, split
+      the way `Session` and `SyncSession` already are — sealing and opening in
+      `cabas-sync`, which is where all cryptography lives and why `seal` is
+      private (Rule 7), and the composition with `Photos` and the replica's
+      references in `app`. It decides what to offer and what to ask for and
       returns one event per message. The socket belongs to whoever calls it,
       which is what lets M7's Tauri host drive the same code
 - [ ] **`relay`**: `/photos`, a per-group directory of sealed blobs, a byte
       cap that refuses a push rather than filling the SD card Home Assistant
       runs on, `survey` reporting the count and the weight, and `forget`
-      taking the photos with the log
+      taking the photos with the log. Plus the one policy the protocol
+      deliberately leaves to it: a **maximum WebSocket message size**, since a
+      hello's lists and a push's payload are the two unbounded things a
+      stranger holding the group id can send (DECISIONS 0080)
 - [ ] **`ui`**: the socket is opened when there is work and closed when the
       queue drains. A photo taken offline is attached immediately and uploaded
       later (Rule 6); a photo referenced but not here yet renders as a

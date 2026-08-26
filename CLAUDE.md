@@ -148,7 +148,7 @@ on `CabasApp`) **and the library's file form** (`app::transfer`, and
 (phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
 `crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 241 native tests plus 20 in
+its own binary**. 251 native tests plus 20 in
 a real browser — 9 over IndexedDB and the photo store, 11 through the app —
 and all of them run
 in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
@@ -329,6 +329,7 @@ Every crate holds code since M5's first half. `crates/sync` — read
 | `key` | `GroupKey`, `GroupId` — both derived from the 12-word phrase's BIP39 seed |
 | `seal` | XChaCha20-Poly1305 `seal`/`open`, the only cipher anywhere (Rule 7) |
 | `protocol` | `ClientMessage`/`ServerMessage`, `FrameKind`, the postcard codec |
+| `photo` | The photo protocol (0080) — `PhotoName`, a `Hello` carrying what this device has and wants, a `Welcome` answering with what to upload and what is available, one sealed photo per message after that. Its own version byte, on `/photos` |
 | `session` | `Session` — the sans-IO client: cursor, epoch reset, seal/push, one `Event` per wire message |
 | `error` | `SyncError` — no vendor type crosses the boundary |
 
