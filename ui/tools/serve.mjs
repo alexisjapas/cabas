@@ -75,6 +75,7 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/vnd.microsoft.icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.woff2': 'font/woff2',
 };
 
 const https = createHttpsServer(

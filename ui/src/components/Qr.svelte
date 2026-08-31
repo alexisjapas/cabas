@@ -48,6 +48,8 @@
 <style>
   .qr {
     display: block;
+    padding: var(--space-2);
+    background: var(--bubble);
     width: 100%;
     max-width: 15rem;
     height: auto;
@@ -56,8 +58,11 @@
     shape-rendering: crispedges;
   }
 
+  /* Cream and ink. A QR code is read by a camera before it is read by a
+     person: the two fills have to be the extremes of the palette, not the
+     tile colours around it. */
   .field {
-    fill: var(--surface-raised);
+    fill: var(--bubble);
   }
 
   .module {

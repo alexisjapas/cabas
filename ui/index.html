@@ -26,9 +26,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="cabas" />
 
-    <!-- Both, so the status bar follows the theme rather than fighting it. -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f7" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#17161a" />
+    <!--
+      One colour, because there is one theme: the apricot the shell is painted
+      in (DECISIONS 0081). The status bar matches the page rather than fighting
+      it, and a dark variant would repaint it under an app that has no dark
+      version.
+    -->
+    <meta name="theme-color" content="#f9c77e" />
 
     <!--
       The browser-tab icon. Its absence is a 404 that `ui-test` treats as a
@@ -45,6 +49,31 @@
     -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!--
+      The two faces, self-hosted and preloaded. The screen title is the first
+      thing painted, so a swap that lands after the first render moves the whole
+      page; and `crossorigin` is not optional on a font preload — without it the
+      browser fetches the file twice and uses neither copy for the other.
+
+      They are also in the service worker's precache list (`vite.config.ts`),
+      because `public/` does not go through the bundle and a font fetched at
+      runtime is a font that is missing on the first launch in a shop.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/shrikhand-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/quicksand-variable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
 
     <title>cabas</title>
   </head>

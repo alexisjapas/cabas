@@ -23,6 +23,26 @@ import type { Plugin } from 'vite';
 const BUILD_TOKEN = /(['"`])__CABAS_BUILD__\1/;
 
 /**
+ * The files under `public/` that have to be in the precache, named by hand.
+ *
+ * Vite copies `public/` straight to `dist/` without passing it through the
+ * bundle, so this plugin cannot see it without `node:fs` — which this file
+ * deliberately does not use. Everything else in there (the manifest, the
+ * icons, the favicon) is picked up by the worker's runtime cache on the first
+ * launch that asks for it, and that is good enough for all of them.
+ *
+ * The two faces are not. A font fetched at runtime is a font that is absent
+ * the first time the app is opened with no signal, and the app falls back to
+ * the system face — which is precisely the trip this app exists for
+ * (DECISIONS 0081).
+ *
+ * The cost of naming a file here is that `cache.addAll` rejects as a whole if
+ * any one of them 404s, which would leave the app with no precache at all. So
+ * these are committed assets, and a rename has to be made here too.
+ */
+const PUBLIC_SHELL = ['/fonts/shrikhand-400.woff2', '/fonts/quicksand-variable.woff2'];
+
+/**
  * Writes the precache list and the cache name into the service worker, from the
  * build that just happened (DECISIONS 0038).
  *
@@ -75,10 +95,12 @@ function serviceWorker(): Plugin {
 
         // Source maps are a development aid, not part of the app, and
         // precaching them would put megabytes on a phone that never reads them.
-        const shell = Object.keys(bundle)
-          .filter((name) => name !== 'sw.js' && !name.endsWith('.map'))
-          .map((name) => (name === 'index.html' ? '/' : `/${name}`))
-          .sort();
+        const shell = [
+          ...Object.keys(bundle)
+            .filter((name) => name !== 'sw.js' && !name.endsWith('.map'))
+            .map((name) => (name === 'index.html' ? '/' : `/${name}`)),
+          ...PUBLIC_SHELL,
+        ].sort();
 
         const build = {
           version: hash(`${shell.join('\n')}\n${String(index.source)}`),

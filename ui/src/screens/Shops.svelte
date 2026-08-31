@@ -70,7 +70,7 @@
   {onback}
 >
   {#if shops.length === 0}
-    <p class="empty">
+    <p class="empty bubble">
       Les magasins se créent depuis la fiche d'un ingrédient, là où on dit où il s'achète.
     </p>
   {/if}
@@ -106,7 +106,7 @@
     {/each}
   </ul>
 
-  <p class="note">
+  <p class="note bubble">
     Oublier un magasin ne touche à aucun ingrédient : ceux qui le citaient redeviennent
     disponibles partout.
   </p>
@@ -114,7 +114,7 @@
 
 <style>
   .empty {
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
   }
@@ -128,13 +128,14 @@
     gap: var(--space-2);
   }
 
+  /* A row here holds a field, so it is a tile with a cream field in it rather
+     than a cream card (DECISIONS 0081). */
   li {
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
     gap: var(--space-2) var(--space-3);
     padding: var(--space-3);
-    border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface-raised);
   }
@@ -143,15 +144,15 @@
     grid-column: 1;
     min-width: 0;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
   }
 
   .meta {
     grid-column: 1;
     margin: 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
@@ -159,11 +160,12 @@
     grid-column: 2;
     grid-row: 1 / span 2;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--danger);
-    border-radius: var(--radius-md);
-    background: none;
+    border: 2px solid var(--danger);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
     color: var(--danger);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
@@ -178,3 +180,4 @@
     font-size: var(--text-sm);
   }
 </style>
+

@@ -153,7 +153,7 @@
     </dl>
 
     <section class="group">
-      <h2>Groupe</h2>
+      <h2 class="display">Groupe</h2>
       <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
 
       {#if session.sync.group === null}
@@ -221,9 +221,9 @@
       </button>
     </div>
 
-    <p class="note">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
+    <p class="note bubble">Tout est enregistré sur cet appareil et fonctionne sans réseau.</p>
 
-    <p class="note build" data-version={version}>
+    <p class="note build bubble" data-version={version}>
       Version {version}. Une mise à jour s'installe en arrière-plan et s'applique à l'ouverture
       suivante.
     </p>
@@ -231,11 +231,16 @@
 {/if}
 
 <style>
+  /* A form is a lilac tile and its fields are cream (DECISIONS 0081). */
   form {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
   }
 
   label {
@@ -248,9 +253,9 @@
 
   input {
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
     font-weight: var(--weight-normal);
   }
 
@@ -262,31 +267,37 @@
   button {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   button:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
     cursor: default;
   }
 
+  /* Facts, on cream: this is read, not pressed. */
   dl {
     margin: 0 0 var(--space-5);
-    padding: 0;
-    border: 1px solid var(--border);
+    padding: 0 var(--space-3);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
   }
 
   dl div {
     display: flex;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: var(--space-3);
+    padding: var(--space-3) 0;
   }
 
   dl div + div {
@@ -300,11 +311,12 @@
 
   dd {
     margin: 0;
+    font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
   }
 
   .note {
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-sm);
   }
 
@@ -314,13 +326,16 @@
     gap: var(--space-3);
     margin-bottom: var(--space-5);
     padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-raised);
   }
 
+  /* `--text` and not `--display-ink`: the olive is prescribed for the display
+     face on anis or apricot, and this heading sits on a lilac tile. */
   h2 {
     margin: 0;
+    color: var(--text);
     font-size: var(--text-lg);
   }
 
@@ -340,13 +355,16 @@
 
   .group form {
     margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
     gap: var(--space-3);
   }
 
   .phrase {
     margin: 0;
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
     background: var(--surface-sunken);
     font-family: var(--font-numeric);
@@ -357,14 +375,24 @@
   }
 
   .secondary {
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     background: var(--surface-raised);
     color: var(--text);
+    box-shadow: none;
   }
 
   .switch {
     width: 100%;
     margin-bottom: var(--space-5);
+  }
+
+  /* `Pairing` is a tile of its own, and this group is already one: nesting
+     the two draws a border inside a border. It is flattened here rather than
+     given a prop, because the difference is entirely this screen's. */
+  .group :global(.pairing) {
+    padding: 0;
+    border: 0;
+    background: none;
   }
 
   .elsewhere {
@@ -374,3 +402,4 @@
     margin-bottom: var(--space-5);
   }
 </style>
+

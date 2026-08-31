@@ -2,39 +2,114 @@
  * Design tokens, and the handful of base styles every screen assumes.
  *
  * Rule 10: no component writes a colour, a size, a radius or an easing. They
- * are all declared here, once. The current look is deliberately vanilla and
- * temporary (DECISIONS 0026) — this file is the entire reason that is
- * affordable, because restyling later is a change to these values rather than
- * a sweep through every component. Dark mode falls out of the same discipline
- * for free.
+ * are all declared here, once. That rule is what made the Cabas look a change
+ * to this file plus the handful of components that own a *shape* — everything
+ * else restyled itself (DECISIONS 0081).
+ *
+ * The look is a checked tablecloth, cream bubbles, pink rings and a leaning
+ * display face. Three rules hold it together and each of them is a colour
+ * mistake waiting to happen if it is forgotten:
+ *
+ *   - **The cloth never carries a word.** Text sits on a cream bubble, a lilac
+ *     tile or an anis band, never straight on the checks.
+ *   - **Orange, pink, anis and lilac are surfaces, never inks.** What is
+ *     written on one takes the matching `--on-*`; a word that has to *be*
+ *     orange on a light ground takes `--accent-strong`, because `--accent` on
+ *     the apricot shell reads 2:1.
+ *   - **One screen, one cloth.** The checks are the page's, and nothing inside
+ *     it repeats them.
+ *
+ * Every pair prescribed here passes AA — 4.5:1, or 3:1 above 24px. The muted
+ * and faint inks are darker than they would be if they had been chosen by eye;
+ * they were measured against the cream, and lightening them again breaks the
+ * screens that read them.
  */
 
+/*
+ * The two faces, self-hosted under `public/fonts/`. The whole point of this
+ * app is opening with no network, and a Google Fonts <link> is a request that
+ * fails in a shop — so both files are committed, precached by the service
+ * worker (`vite.config.ts` names them) and preloaded by `index.html`.
+ *
+ * Both are OFL. Shrikhand has one weight; Quicksand is variable over 400–700,
+ * declared as plain `woff2` rather than `woff2-variations` because that is
+ * what every browser recognises — an unknown format string makes the source be
+ * skipped entirely, which is a silent fall back to the system face and exactly
+ * the failure these files exist to prevent.
+ *
+ * Both are the `latin` subset, which covers French including œ and Œ
+ * (U+0152-0153).
+ */
+@font-face {
+  font-family: 'Shrikhand';
+  src: url('/fonts/shrikhand-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Quicksand';
+  src: url('/fonts/quicksand-variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* Native form controls follow this, which is most of what makes a vanilla
-     UI look deliberate rather than unfinished in dark mode. */
-  color-scheme: light dark;
+  /* One scheme, deliberately. The tablecloth has no night version, and letting
+     iOS repaint the native controls dark under an apricot shell is worse than
+     not offering a dark theme at all. This replaces the
+     `prefers-color-scheme: dark` block this file used to carry; a real dark
+     theme is a new palette and its own DECISIONS entry, not an inversion. */
+  color-scheme: light;
 
   /* --- Colour: surfaces and text ------------------------------------- */
-  --surface: #faf9f7;
-  --surface-raised: #ffffff;
-  --surface-sunken: #f1efeb;
-  --border: #e4e0d9;
-  --border-strong: #cfc9bf;
-  --text: #1d1b19;
-  --text-muted: #6d675e;
-  --text-faint: #948d82;
+  /* Apricot. The shell: the page behind the cloth, the sticky header, the tab
+     bar. Not something to write on. */
+  --surface: #f9c77e;
+  /* Lilac. Tiles, secondary buttons, the panel, a tab at rest. */
+  --surface-raised: #c3b4d6;
+  --surface-sunken: #efe6d0;
+  /* Cream. What carries a word when the cloth is underneath: rows, fields,
+     cards, anything read rather than pressed. */
+  --bubble: #fffaec;
+  --border: #e3d4b4;
+  --border-strong: #a292bf;
+  --text: #4a3a2c;
+  --text-muted: #5c4b3a;
+  --text-faint: #7a6957;
 
   /* --- Colour: meaning ------------------------------------------------ */
-  --accent: #3f6f4f;
-  --accent-soft: #e7efe9;
-  --on-accent: #ffffff;
-  --danger: #a83c2b;
-  --danger-soft: #fbeae7;
-  --on-danger: #ffffff;
-  /* What dims the app behind a panel that has to be answered. Dark in both
-     themes on purpose: a scrim says "this is on top of that", and a light one
-     over a dark app says the opposite. */
-  --scrim: rgb(0 0 0 / 40%);
+  --accent: #ee7b2b;
+  /* The same orange as an ink. `--accent` on cream is 2.6:1 and on the
+     apricot shell 2:1 — invisible either way. */
+  --accent-strong: #b04e0a;
+  --accent-soft: #dff07a;
+  --on-accent: #3a2a17;
+  /* Coral. Deletion — and the name of a recipe, which is the one decorative
+     job this token has and the reason it cannot be tuned as "the red". */
+  --danger: #b23a2f;
+  --danger-soft: #fbe3df;
+  --on-danger: #fff6e8;
+  /* Grape. The logotype and nothing else. */
+  --brand: #8e7cc8;
+  /* Pink. The ring round a photo, and every quantity. */
+  --ring: #f0a5dc;
+  --on-ring: #3a2a17;
+  --done: #4e5e1a;
+  --on-done: #fff6e8;
+  /* The display face set on anis or apricot. **Not** `--check-a`: the cloth's
+     olive is a square of fill, and it reads 2.14:1 on the anis band. */
+  --display-ink: #4a4a10;
+  /* What dims the app behind a panel that has to be answered. */
+  --scrim: rgb(58 42 23 / 45%);
+
+  /* --- The tablecloth -------------------------------------------------- */
+  /* Fill colours for one square. Neither is ever an ink. */
+  --check-a: #a9a24a;
+  --check-b: #e9c3e4;
+  --check-size: 40px;
 
   /* --- Spacing -------------------------------------------------------- */
   --space-1: 0.25rem;
@@ -46,31 +121,46 @@
   --space-7: 3rem;
 
   /* --- Radii ---------------------------------------------------------- */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1rem;
+  --radius-sm: 0.625rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.375rem;
   --radius-pill: 999px;
 
   /* --- Typography ----------------------------------------------------- */
+  /* Shrikhand: screen titles, section headings, the logotype. Never a tab
+     label and never data. Quicksand falls in behind it while the file loads,
+     so a swap changes the drawing and not the metrics wholesale. */
+  --font-display: 'Shrikhand', 'Quicksand', system-ui, sans-serif;
   --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+    'Quicksand', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji';
   --font-numeric: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
+  /* Every display line leans, at one angle, declared once. `skewX` does not
+     change the layout box, so display text without a padded container needs
+     about 8px of `padding-right` per 20px of size. */
+  --display-skew: -8deg;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.1875rem;
   --text-xl: 1.375rem;
   --text-2xl: 1.75rem;
+  /* Five tab labels across the narrowest phone, and "Ingrédients" is the long
+     one. Smaller than anything else in the app on purpose, and safe there
+     because a tab is not a field: the 16px floor below is about iOS zooming
+     towards what it is about to put a keyboard under. */
+  --text-tab: 0.625rem;
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+  --weight-bold: 700;
   --leading-tight: 1.25;
   --leading-normal: 1.5;
 
   /* --- Elevation ------------------------------------------------------ */
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 6%);
-  --shadow-md: 0 6px 20px rgb(0 0 0 / 10%);
+  /* Flat and offset, never blurred: a soft shadow under a cartoon is mud. */
+  --shadow-sm: 0 2px 0 rgb(74 58 44 / 12%);
+  --shadow-md: 0 4px 0 rgb(74 58 44 / 14%);
 
   /* --- Motion --------------------------------------------------------- */
   --duration-fast: 120ms;
@@ -85,6 +175,10 @@
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   /* --- The swipe that puts a row on the list (DECISIONS 0067, 0072) ----- */
+  /* Distances, not decoration: these describe a gesture and are deliberately
+     the ones measured on a phone rather than the ones drawn in a mockup. They
+     are also read back by `SwipeToAdd` through `getComputedStyle`, which does
+     not resolve units — so they stay in `px`. */
   /* How far a row travels before it hits its stop. Long on purpose: this
      gesture edits a list that is not on screen, and a short one would fire
      on every scroll that started slightly sideways. It is also the distance
@@ -112,6 +206,10 @@
      against the row it sits in rather than against the picture — recognising
      a product takes very little of one (DECISIONS 0062). */
   --photo-thumb: 3rem;
+  /* The pink ring round a photo, at each of its two sizes. */
+  --photo-ring: 3px;
+  --photo-ring-full: 5px;
+
   /* --- Layering -------------------------------------------------------- */
   /* One scale, because a `z-index` only means anything against the others and
      these are written in five different components. They share the root
@@ -141,30 +239,6 @@
   --keyboard-inset: 0px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #17161a;
-    --surface-raised: #201f25;
-    --surface-sunken: #111015;
-    --border: #322f38;
-    --border-strong: #4a4653;
-    --text: #ece9f0;
-    --text-muted: #a49eae;
-    --text-faint: #7b7488;
-
-    --accent: #7fb98f;
-    --accent-soft: #23302a;
-    --on-accent: #10220f;
-    --danger: #e08375;
-    --danger-soft: #33211f;
-    --on-danger: #2a100b;
-    --scrim: rgb(0 0 0 / 60%);
-
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
-    --shadow-md: 0 6px 20px rgb(0 0 0 / 50%);
-  }
-}
-
 /* Honour the system setting rather than animating regardless. */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -192,7 +266,16 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
-  background: var(--surface);
+  /* The cloth, and the flat apricot under it. `background-color` is what the
+     sticky header and the tab bar sit on, so both stay declared — an alpha
+     anywhere in either and a title becomes unreadable as the checks scroll
+     past behind it. `fixed` keeps the squares still under a moving list;
+     where a browser ignores it the pattern simply scrolls, which costs
+     nothing. */
+  background-color: var(--surface);
+  background-image: repeating-conic-gradient(var(--check-a) 0% 25%, var(--check-b) 0% 50%);
+  background-size: var(--check-size) var(--check-size);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-base);
@@ -221,7 +304,7 @@ textarea {
  * 16px never triggers it, so the floor lives here (DECISIONS 0078).
  *
  * `font: inherit` above is what makes this necessary at all: a field inside
- * a `--text-sm` label inherits 14px and zooms, which is most of the fields
+ * a `--text-sm` label inherits 15px and zooms, which is most of the fields
  * in the app. `1em` is the inherited size, so anything deliberately larger
  * stays larger and only the small end is lifted.
  */
@@ -232,9 +315,10 @@ textarea {
 }
 
 /* Every focusable thing gets the same visible ring, and only from the
-   keyboard — a tap on a phone should not leave one behind. */
+   keyboard — a tap on a phone should not leave one behind. The ink and not
+   the accent: orange on apricot is 2:1, which is a focus ring nobody sees. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -244,4 +328,38 @@ h3 {
   margin: 0;
   line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
+}
+
+/*
+ * The two global classes, and the only ones. Both exist because they say
+ * something about the *page* rather than about a component, and repeating
+ * either in fourteen scoped stylesheets is how the two of them drift.
+ */
+
+/* The display face, leaning. A screen title, a section heading, a logotype —
+   never a tab label (five words in a heavy display face at 10px is a smudge)
+   and never data. `transform-origin` matters: the default centre pushes the
+   first letter left, into whatever sits beside it. */
+.display {
+  /* `inline-block`, and not for looks: a transform does not apply to a
+     non-replaced inline box, so the same class on a <span> inside a <summary>
+     would silently not lean. */
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: var(--weight-normal);
+  transform: skewX(var(--display-skew));
+  transform-origin: left center;
+  /* `skewX` does not change the layout box, so the last letter leans out of
+     it. Roughly 8px per 20px of size; these are the sizes the app uses. */
+  padding-right: var(--space-2);
+}
+
+/* A block of prose that would otherwise be written straight onto the cloth:
+   an empty state, a note under a form, a hint inside a folded section. The
+   checks make anything set on them unreadable, so every loose paragraph in
+   the app gets one of these rather than each screen inventing its own. */
+.bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bubble);
 }

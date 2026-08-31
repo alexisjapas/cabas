@@ -31,7 +31,7 @@
     padding-top: calc(var(--safe-top) + var(--space-3));
     background: var(--danger-soft);
     color: var(--danger);
-    border-bottom: 1px solid var(--danger);
+    border-bottom: 2px solid var(--danger);
   }
 
   p {

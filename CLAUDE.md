@@ -133,6 +133,26 @@ scale in `app.css`), every accessible name on those rows carries the row and
 the value it is showing, the controls are `--tapsize` in both directions, and
 `.notch` is not `.step` because `RecipeEditor` already has one.
 
+**0.10.0 is the look** (0081), and it is the entry 0026 was written to make
+cheap: the vanilla palette is replaced by the Cabas one — a checked
+tablecloth as the page, **cream bubbles** carrying what is read, **lilac
+tiles** carrying what is filled in, an **anis title band** on every screen,
+**pink pills** for every quantity and every photo ring, and **Shrikhand**
+leaning at −8° over **Quicksand**, both OFL, self-hosted under
+`ui/public/fonts/`, precached by name in `vite.config.ts` and preloaded by
+`index.html`. Nothing functional moved. Four rules came with it and each is a
+mistake already made: **the cloth never carries a word** (hence the one
+global `.bubble` class); **orange, pink, anis and lilac are surfaces, never
+inks** (so every `color: var(--accent)` became `--accent-strong`); **the
+display face on anis or apricot is `--display-ink`, and `--text` on a lilac
+tile**; and **the focus ring is `--text`**. Two shapes are the whole layout
+vocabulary — *a form is a lilac tile and its fields are cream*, *a row that is
+read is a cream card spaced by `--space-2`* — and **dark mode is dropped
+outright** rather than inverted. With it, one layout change with its own entry
+and a number behind it: **the keeping badge goes under the name on a cart
+line, never beside it** (0082), because beside it the name is left about 43 px
+on a 390 px phone.
+
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
@@ -444,11 +464,11 @@ file:
 | `lib/keyboard.svelte.ts` | The soft keyboard as a length — `--keyboard-inset`, and the scroll CSS cannot do (0040) |
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
-| `app.css` | The tokens, `--layer-*` among them. No component writes a literal value, a `z-index` included (Rule 10, 0079) |
+| `app.css` | The tokens, `--layer-*` among them, and the two global classes `.display` and `.bubble` (0081). No component writes a literal value, a `z-index` included (Rule 10, 0079) |
 | `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, whichever kind of line it is, which is the third screen that opens it (0077, 0079); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
-| `vite.config.ts` | The build, and the plugin that writes the precache list into the worker |
-| `public/` | Served verbatim: the manifest, the favicon, the icons |
+| `vite.config.ts` | The build, and the plugin that writes the precache list into the worker — plus `PUBLIC_SHELL`, the handful of `public/` files named by hand because the plugin reads the bundle and never the disk (0081) |
+| `public/` | Served verbatim: the manifest, the favicon, the icons — and `fonts/`, the two OFL faces `app.css` declares (0081) |
 | `tools/render-icons.mjs` | SVG → the committed PNGs, over CDP. Not part of any loop |
 | `tools/serve.mjs` | `ui/dist` over TLS for the phone, plus the CA over plain HTTP (0041) |
 | `tests/smoke.mjs` | The vertical in a browser, over CDP, zero dependencies — including sync, against the real relay `ui-test` starts on 8788, which also serves the bundle (0048) |
@@ -819,6 +839,51 @@ Key domain shapes, all settled in DECISIONS:
   `textarea { font: inherit }` outranks the floor exactly the same way.
   `app.css` already sets it on every control, so a component repeating it is
   saying nothing and exempting one field (0079).
+- **Orange, pink, anis and lilac are surfaces. They are never inks** (DECISIONS
+  0081). `color: var(--accent)` on anything light is 2:1 to 2.6:1 and reads as
+  a smudge; the ink is `--accent-strong`, and what is written *on* one of those
+  surfaces takes its `--on-*`. The trap is that `--accent` still looks like the
+  obvious token for "make this word the accent colour", and the result is
+  legible enough on a desktop monitor at full brightness to survive review. The
+  same shape twice more: `--display-ink` is the olive for the display face **on
+  anis or apricot** and `--text` for one on a lilac tile, and the focus ring is
+  `--text` because orange on apricot is a ring nobody sees.
+- **Nothing is written straight onto the tablecloth.** The page background is a
+  40px chequerboard, so any loose paragraph needs a surface under it — the
+  global `.bubble` class in `app.css`, added beside the component's own class
+  (`class="empty bubble"`). The exception is deliberate and narrow: a heading
+  in the display face at `--text-lg` or bigger clears 3:1 against both checks,
+  which is what lets an aisle title sit on the cloth. Anything at body size
+  does not.
+- **Two shapes, and picking the wrong one leaves a field with no edge.** *A
+  form is a lilac tile (`--surface-raised`) and its fields are cream
+  (`--bubble`)*; *a row that is only read is a cream card, spaced by
+  `--space-2`, with the cloth between the cards instead of a hairline*. Cream
+  fields inside a cream card vanish into it, which is why `Shops.svelte`'s rows
+  are tiles and `People.svelte`'s are cards.
+- **A `--radius-pill` button that also sets `background` can be outranked by
+  the rule above it.** `.amount button` and `.quantity` are both one class deep,
+  so the plain class lost and the list's amount pill came out cream instead of
+  pink. It is written `.amount .quantity` for that reason, and anything new
+  inside a container that styles `button` inherits the same trap.
+- **`.display` is `inline-block`, and that is load-bearing.** A transform does
+  not apply to a non-replaced inline box, so the same class on a `<span>`
+  inside a `<summary>` would silently not lean. That `<span>` exists so the
+  disclosure marker stays upright while the words lean.
+- **The two faces are precached by name, and a rename breaks the install.**
+  `PUBLIC_SHELL` in `vite.config.ts` lists them because Vite copies `public/`
+  straight to `dist/` without passing it through the bundle, and the
+  service-worker plugin deliberately reads the bundle rather than the disk. The
+  price is that `cache.addAll` rejects **as a whole** if any one entry 404s,
+  which leaves the app with no precache at all — so they are committed assets
+  and a rename has to be made in both places. `format('woff2')` and not
+  `format('woff2-variations')` for the variable Quicksand: an unknown format
+  string makes the browser skip the source and fall back to the system face,
+  silently, which is the exact failure self-hosting exists to prevent.
+- **There is one theme.** `color-scheme: light`, no `prefers-color-scheme: dark`
+  block, and nothing in the app may reintroduce one piecemeal: the cloth has no
+  night version and a half-inverted palette is worse than none. A real dark
+  theme is a new palette and its own DECISIONS entry.
 - **A `z-index` is a `--layer-*` token, and the scale lives in `app.css`.**
   The handful in this app all share the root stacking context — nothing
   between them and `<body>` sets a `position`, a `z-index` or a `transform` —

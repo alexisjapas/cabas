@@ -690,3 +690,9 @@ enabling background sync — starts with a new DECISIONS entry, not with code
 
 MIT OR Apache-2.0 (provisional —
 [0027](docs/DECISIONS.md#0027--license-mit-or-apache-20)).
+
+The two typefaces bundled under `ui/public/fonts/` are third-party and keep
+their own licence: **Shrikhand** and **Quicksand**, both under the
+[SIL Open Font License 1.1](https://openfontlicense.org). They are
+self-hosted rather than linked, because a Google Fonts request is a request
+that fails in a shop ([0081](docs/DECISIONS.md#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)).

@@ -155,12 +155,12 @@
     {/snippet}
 
     {#if recipes.length === 0}
-      <p class="empty">Aucune recette. Écrivez la première avec « Nouvelle ».</p>
+      <p class="empty bubble">Aucune recette. Écrivez la première avec « Nouvelle ».</p>
     {:else}
       <SearchField bind:value={query} placeholder="Chercher une recette…" />
       {#if shown.length === 0}
         <div class="nothing">
-          <p class="empty">Aucune recette ne correspond.</p>
+          <p class="empty bubble">Aucune recette ne correspond.</p>
           <button type="button" class="create" onclick={() => write(blank(query))}>
             + Nouvelle recette «&nbsp;{query.trim()}&nbsp;»
           </button>
@@ -229,13 +229,16 @@
 {/if}
 
 <style>
+  /* The one orange button on the screen, in the title band. */
   .add {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 0;
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
+    background: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
@@ -245,7 +248,7 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-3);
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
   }
 
   .nothing .empty {
@@ -253,30 +256,33 @@
   }
 
   .create {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
-    color: var(--accent);
+    background: var(--bubble);
+    /* Orange as an ink is the dark one; `--accent` on cream is 2.6:1. */
+    color: var(--accent-strong);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
   .empty {
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
   }
 
+  /* Cards, spaced, with the cloth between them instead of a rule. The card
+     itself is `SwipeToAdd`'s `.front`: this row slides, and the cream has to
+     slide with it. */
   ul {
     margin: 0;
     padding: 0;
     list-style: none;
-  }
-
-  li + li {
-    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   li button {
@@ -304,7 +310,11 @@
     flex-direction: column;
   }
 
+  /* Coral. `--danger` has a decorative half in this palette and this is it —
+     a recipe's name, everywhere one is listed (DECISIONS 0081). */
   .name {
+    color: var(--danger);
+    font-weight: var(--weight-semibold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -313,19 +323,23 @@
   .meta {
     color: var(--text-muted);
     font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* A quantity is a pink pill, here as everywhere. */
   .yield {
     flex: none;
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-pill);
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    background: var(--ring);
+    color: var(--on-ring);
     font-family: var(--font-numeric);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
   }
 </style>
+

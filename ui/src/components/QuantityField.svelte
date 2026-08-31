@@ -99,9 +99,9 @@
     flex: 1;
     min-width: 0;
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
   }
 
   /* `flex: none` is what made this overflow the line it sits on: a select that
@@ -115,9 +115,9 @@
     min-width: var(--space-7);
     max-width: 45%;
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
     text-overflow: ellipsis;
   }
 </style>

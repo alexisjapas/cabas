@@ -5,6 +5,15 @@
    * The frame every screen sits in: a title that stays put, and a body that
    * scrolls under it. Shared so the header spacing is decided once rather
    * than re-invented per screen (Rule 10).
+   *
+   * The title is an **anis band** (DECISIONS 0081), not a bare heading: the
+   * body scrolls a checked tablecloth underneath, and a title set straight on
+   * the checks cannot be read. Two things follow and neither is decoration:
+   *
+   * - the `header` stays sticky and **opaque** — the least alpha and the
+   *   title becomes unreadable while a list scrolls past behind it;
+   * - the band has horizontal padding, which is what catches the last letter
+   *   of a display face leaning out of its own layout box.
    */
   let {
     title,
@@ -28,16 +37,18 @@
 </script>
 
 <header>
-  <div class="titles">
-    <h1>{title}</h1>
-    {#if subtitle}<p>{subtitle}</p>{/if}
-  </div>
-  {#if onback || actions}
-    <div class="actions">
-      {#if onback}<button type="button" class="back" onclick={onback}>Retour</button>{/if}
-      {#if actions}{@render actions()}{/if}
+  <div class="band">
+    <div class="titles">
+      <h1 class="display">{title}</h1>
+      {#if subtitle}<p>{subtitle}</p>{/if}
     </div>
-  {/if}
+    {#if onback || actions}
+      <div class="actions">
+        {#if onback}<button type="button" class="back" onclick={onback}>Retour</button>{/if}
+        {#if actions}{@render actions()}{/if}
+      </div>
+    {/if}
+  </div>
 </header>
 
 <div class="body">
@@ -49,13 +60,22 @@
     position: sticky;
     top: 0;
     z-index: var(--layer-header);
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-3);
     padding: var(--space-4);
     padding-top: calc(var(--safe-top) + var(--space-4));
+    /* Opaque, and the flat shell colour rather than the cloth: this is the one
+       strip the checks must not run under. */
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+  }
+
+  /* The band itself. No rule under the header — this is the separation. */
+  .band {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--accent-soft);
+    box-shadow: var(--shadow-md);
   }
 
   .titles {
@@ -65,26 +85,32 @@
 
   h1 {
     font-size: var(--text-2xl);
+    /* Not `--check-a`: the cloth's olive falls to 2.14:1 on the anis. */
+    color: var(--display-ink);
   }
 
   p {
-    margin: var(--space-1) 0 0;
+    margin: 0;
     color: var(--text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
   }
 
   .actions {
+    flex: none;
     display: flex;
     gap: var(--space-2);
   }
 
   .back {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
     background: var(--surface-raised);
     color: var(--text);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
     cursor: pointer;
   }
 

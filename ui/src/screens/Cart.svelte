@@ -138,16 +138,16 @@
   {/if}
 
   {#if cart.total === 0}
-    <p class="empty">
+    <p class="empty bubble">
       Ajoutez une recette ou un ingrédient à la liste : le panier se remplit tout seul.
     </p>
   {:else if inThisShop.length === 0 && elsewhere.length > 0}
-    <p class="empty">Rien à prendre ici. Le reste est plus bas.</p>
+    <p class="empty bubble">Rien à prendre ici. Le reste est plus bas.</p>
   {/if}
 
   {#each groups as group (group.aisle)}
     <section>
-      <h2>{AISLE_LABEL[group.aisle]}</h2>
+      <h2 class="display">{AISLE_LABEL[group.aisle]}</h2>
       <ul>
         {#each group.lines as line (line.ingredient)}
           <li animate:flip={{ duration: 180 }}>
@@ -160,7 +160,7 @@
 
   {#if elsewhere.length > 0}
     <details>
-      <summary>Ailleurs ({elsewhere.length})</summary>
+      <summary><span class="display">Ailleurs ({elsewhere.length})</span></summary>
       <p class="hint">Ce que ce magasin ne vend pas. Toujours à prendre, mais pas ici.</p>
       <ul>
         {#each elsewhere as line (line.ingredient)}
@@ -172,7 +172,7 @@
 
   {#if cart.bought.length > 0}
     <details>
-      <summary>{CHECK_STATE_LABEL.checked} ({cart.bought.length})</summary>
+      <summary><span class="display">{CHECK_STATE_LABEL.checked} ({cart.bought.length})</span></summary>
       <ul>
         {#each bought as line (line.ingredient)}
           <li><CartLine {session} {line} ontoggle={() => toggle(line.ingredient)} /></li>
@@ -183,7 +183,7 @@
 
   {#if cart.at_home.length > 0}
     <details>
-      <summary>{CHECK_STATE_LABEL.auto_checked} ({cart.at_home.length})</summary>
+      <summary><span class="display">{CHECK_STATE_LABEL.auto_checked} ({cart.at_home.length})</span></summary>
       <p class="hint">
         Des ingrédients de base, décochés d'un geste s'il en manque un.
       </p>
@@ -210,10 +210,10 @@
     height: var(--space-2);
     margin-bottom: var(--space-4);
     border-radius: var(--radius-pill);
-    /* The border token, not the sunken surface: a groove one shade off the
-       background disappears in dark mode, and this is the one thing on the
-       screen a person reads without stopping to look. */
-    background: var(--border);
+    /* Cream, not `--border`: over a checked cloth a groove one shade off the
+       ground disappears, and this is the one thing on the screen a person
+       reads without stopping to look (DECISIONS 0081). */
+    background: var(--bubble);
     overflow: hidden;
   }
 
@@ -226,7 +226,7 @@
   }
 
   .empty {
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
   }
@@ -245,11 +245,11 @@
 
   .shops button {
     flex: none;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
-    color: inherit;
+    background: var(--bubble);
+    color: var(--text);
     font-size: var(--text-sm);
     white-space: nowrap;
     cursor: pointer;
@@ -258,46 +258,57 @@
   .shops button.on {
     border-color: var(--accent);
     background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: var(--weight-medium);
+    color: var(--on-accent);
+    font-weight: var(--weight-bold);
   }
 
   section {
     margin-bottom: var(--space-5);
   }
 
+  /* The aisle, in the display face. It sits on the cloth rather than on a
+     surface, which the contrast rule allows for one reason only: at
+     `--text-lg` in a heavy face it is over the 24px-equivalent that AA reads
+     at 3:1, and `--display-ink` clears that against both checks. */
   h2 {
     margin-bottom: var(--space-2);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    color: var(--display-ink);
+    font-size: var(--text-lg);
   }
 
   ul {
     margin: 0;
     padding: 0;
     list-style: none;
+    /* Cards, spaced. No rule between them — the cloth showing through is the
+       separation. */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
+  /* A folded section is a sunken card, not a ruled-off strip of page. */
   details {
     margin-top: var(--space-4);
-    padding: var(--space-2) 0;
-    border-top: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
   }
 
   summary {
     padding: var(--space-2) var(--space-1);
     color: var(--text-muted);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-size: var(--text-lg);
     cursor: pointer;
   }
 
+  details ul {
+    margin-top: var(--space-2);
+  }
+
   .hint {
-    margin: 0 var(--space-3) var(--space-2);
-    color: var(--text-faint);
+    margin: 0 var(--space-1) var(--space-2);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
@@ -305,16 +316,16 @@
     width: 100%;
     margin-top: var(--space-6);
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-weight: var(--weight-semibold);
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
   .finish.confirming {
-    border-color: var(--danger);
     background: var(--danger);
     color: var(--on-danger);
   }
@@ -324,9 +335,12 @@
     margin-top: var(--space-2);
     padding: var(--space-2);
     border: 0;
-    background: none;
-    color: var(--text-muted);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--text);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 </style>
+

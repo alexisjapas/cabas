@@ -80,7 +80,7 @@
 
 <div class="pairing">
   {#if step.at === 'choose'}
-    <h1>cabas</h1>
+    <h1 class="display logo">cabas</h1>
     <p class="lead">Les courses et les recettes, à deux, hors ligne.</p>
     <div class="choice">
       <button type="button" onclick={start}>Créer un groupe</button>
@@ -96,7 +96,7 @@
       <button type="button" class="quiet" onclick={oncancel}>Annuler</button>
     {/if}
   {:else if step.at === 'created'}
-    <h1>Votre phrase</h1>
+    <h1 class="display">Votre phrase</h1>
     <p class="lead">Douze mots. C'est la clé de votre groupe, et il n'y en a pas d'autre.</p>
 
     <p class="phrase" data-phrase>{step.phrase}</p>
@@ -116,7 +116,7 @@
       </button>
     </div>
   {:else if step.at === 'joining'}
-    <h1>Rejoindre</h1>
+    <h1 class="display">Rejoindre</h1>
     <p class="lead">Saisissez les douze mots affichés sur l'autre appareil.</p>
 
     <form onsubmit={join}>
@@ -134,22 +134,43 @@
       <button type="button" class="quiet" onclick={() => (step = { at: 'choose' })}>Retour</button>
     </form>
   {:else}
-    <h1>Raté</h1>
+    <h1 class="display">Raté</h1>
     <p class="problem" role="alert">{step.message}</p>
     <button type="button" onclick={() => (step = { at: 'choose' })}>Recommencer</button>
   {/if}
 </div>
 
 <style>
+  /* A tile, because this is a form and the page behind it is a tablecloth
+     (DECISIONS 0081). Settings renders the same component inside its own
+     group tile and flattens this one — see `Settings.svelte`. */
   .pairing {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+    padding: var(--space-4);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
   }
 
   h1 {
     margin: 0;
+    color: var(--display-ink);
     font-size: var(--text-2xl);
+  }
+
+  /* The one place `--brand` is allowed: the logotype, and only the logotype.
+     It sits on the cream rather than on the tile, because grape on lilac is
+     two purples (DECISIONS 0081). */
+  .logo {
+    align-self: flex-start;
+    padding: var(--space-1) var(--space-4) var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--bubble);
+    color: var(--brand);
+    font-size: 2.75rem;
+    letter-spacing: 0.01em;
   }
 
   .lead {
@@ -175,7 +196,7 @@
   .phrase {
     margin: 0;
     padding: var(--space-4);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
     background: var(--surface-sunken);
     font-family: var(--font-numeric);
@@ -188,9 +209,9 @@
 
   textarea {
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
     font-family: var(--font-numeric);
     font-size: var(--text-base);
     resize: vertical;
@@ -199,30 +220,39 @@
   button {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
     font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   button:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
     cursor: default;
   }
 
   .secondary {
-    border: 1px solid var(--border-strong);
-    background: var(--surface-raised);
+    border: 2px solid var(--border-strong);
+    background: var(--bubble);
     color: var(--text);
+    box-shadow: none;
   }
 
   .quiet {
     padding: var(--space-2);
+    border: 0;
     background: none;
     color: var(--text-muted);
     font-weight: var(--weight-normal);
+    box-shadow: none;
   }
 
   .note {
@@ -237,3 +267,4 @@
     font-size: var(--text-sm);
   }
 </style>
+

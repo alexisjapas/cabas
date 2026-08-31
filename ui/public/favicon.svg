@@ -3,15 +3,19 @@
     The same basket as the cart tab, which is the screen this app opens on.
 
     An asset cannot read the CSS custom properties of Rule 10 — it is not a
-    component and has no document to inherit from — so the two theme colours
-    are declared here, once, and switched by a media query inside the file.
-    SVG favicons honour `prefers-color-scheme`; a tab strip is dark far more
-    often than a page is.
+    component and has no document to inherit from — so the two colours are
+    declared here, once, and switched by a media query inside the file. The app
+    itself has one theme (DECISIONS 0081); a browser's tab strip does not, and
+    it is dark far more often than a page is, so this file keeps both.
+
+    Light: `--accent-strong`, which is the orange that survives being an ink.
+    Dark: `--accent`, the surface orange, which only works against something
+    darker than anything in the app.
   -->
   <style>
-    .basket { fill: none; stroke: #3f6f4f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    .basket { fill: none; stroke: #b04e0a; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
     @media (prefers-color-scheme: dark) {
-      .basket { stroke: #7fb98f; }
+      .basket { stroke: #ee7b2b; }
     }
   </style>
   <path class="basket" d="M4 9h16l-1.4 10.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 9Zm5 0V6a3 3 0 0 1 6 0v3" />

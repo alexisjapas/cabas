@@ -28,7 +28,7 @@
 
 <Screen title="Journal" {onback}>
   {#if events.length === 0}
-    <p class="empty">
+    <p class="empty bubble">
       Rien pour l'instant. Les modifications et les suppressions apparaîtront ici.
     </p>
   {:else}
@@ -51,7 +51,7 @@
     </ul>
   {/if}
 
-  <p class="note">
+  <p class="note bubble">
     Les deux cents dernières modifications, et seulement celles que la liste elle-même ne peut pas
     montrer. Les noms disent qui l'a probablement fait : la clé est partagée, donc rien ici n'est
     une preuve.
@@ -71,9 +71,8 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-3);
-    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
   }
 
   li + li {
@@ -90,19 +89,20 @@
     font-weight: var(--weight-semibold);
   }
 
+  /* Anis is a surface; the word on it takes the dark ink. */
   .tag {
     padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
   }
 
   .when {
     flex: none;
     margin: 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
     white-space: nowrap;
   }
@@ -114,7 +114,7 @@
 
   .note {
     margin: var(--space-4) 0 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-sm);
   }
 </style>

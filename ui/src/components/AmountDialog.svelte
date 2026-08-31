@@ -145,18 +145,20 @@
     flex-direction: column;
     gap: var(--space-4);
     padding: var(--space-4);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
+    border-bottom: 0;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     background: var(--surface-raised);
   }
 
+  /* A spaced capital, which is what a label looks like in this system. */
   h2 {
     margin: 0;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.12em;
   }
 
   fieldset {
@@ -172,26 +174,41 @@
     font-weight: var(--weight-medium);
   }
 
+  /* One pink pill holding − , the count, and + . Never shorter than
+     `--tapsize`: it is tapped with a basket on the arm. */
   .stepper {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-4);
+    width: fit-content;
+    min-height: var(--tapsize);
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-pill);
+    background: var(--ring);
+    color: var(--on-ring);
   }
 
   .stepper button {
     width: var(--tapsize);
     height: var(--tapsize);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    font-size: var(--text-lg);
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: 1;
     cursor: pointer;
   }
 
   .stepper span {
+    font-family: var(--font-numeric);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
   }
 
+  /* Valider first and taking everything that is left; Annuler only its own
+     width. In that order, because the panel was opened to say yes. */
   .buttons {
     display: flex;
     gap: var(--space-2);
@@ -201,23 +218,31 @@
     flex: 1;
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   .submit:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
   }
 
   .cancel {
     flex: none;
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
     background: var(--surface);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 </style>
+

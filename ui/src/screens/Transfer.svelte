@@ -131,7 +131,7 @@
 
 <Screen title="Données" {onback}>
   <section>
-    <h2>Exporter</h2>
+    <h2 class="display">Exporter</h2>
     <p class="note">
       Tout ce qui a été saisi — ingrédients, recettes, magasins — dans un seul fichier lisible.
       À garder ailleurs que sur ce téléphone, ou à envoyer à quelqu'un.
@@ -155,7 +155,7 @@
   </section>
 
   <section>
-    <h2>Importer</h2>
+    <h2 class="display">Importer</h2>
     <p class="note">
       Ce que contient le fichier est ajouté, et ce qui existe déjà sous le même nom est mis à
       jour. <strong>Rien n'est jamais supprimé</strong> — ce que le fichier ne mentionne pas est
@@ -206,26 +206,29 @@
     {/if}
   </section>
 
-  <p class="note">
+  <p class="note bubble">
     Les deux téléphones du groupe partagent la même bibliothèque : ce qui est importé ici arrive
     aussi sur l'autre.
   </p>
 </Screen>
 
 <style>
+  /* A tile, and the fields inside it are cream (DECISIONS 0081). */
   section {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
     margin-bottom: var(--space-6);
     padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-raised);
   }
 
+  /* `--text` and not `--display-ink`: this heading sits on a lilac tile. */
   h2 {
     margin: 0;
+    color: var(--text);
     font-size: var(--text-lg);
   }
 
@@ -258,22 +261,29 @@
   button {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   button:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
     cursor: default;
   }
 
   .secondary {
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    background: var(--bubble);
     color: var(--text);
+    box-shadow: none;
   }
 
   .done {
@@ -284,17 +294,16 @@
 
   dl {
     margin: 0;
-    padding: 0;
-    border: 1px solid var(--border);
+    padding: 0 var(--space-3);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
   }
 
   dl div {
     display: flex;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: var(--space-3);
+    padding: var(--space-3) 0;
   }
 
   dl div + div {
@@ -308,6 +317,7 @@
 
   dd {
     margin: 0;
+    font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
   }
 

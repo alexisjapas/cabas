@@ -627,6 +627,13 @@ destroy exactly the information that prevents making the same mistake twice.
 
 ## 0026 — The visual identity is deliberately deferred
 
+**Status** Superseded by
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+— the vanilla look was replaced by the Cabas one. The discipline below is
+what made that a change to `app.css` plus a handful of components rather than
+a sweep, so the reasoning stands; only "dark mode falls out of it for free"
+does not, because 0081 drops dark mode outright.
+
 **Context.** "Fluid and elegant" is a stated product requirement, but the
 visual direction is explicitly postponed: low-effort and vanilla for now.
 
@@ -3950,3 +3957,162 @@ device, offline. **One protocol byte for both sockets**, which is the coupling
 0062 removed. **A hash of the plaintext beside each blob for integrity**: the
 AEAD tag is that check, and `Photos::restore` re-runs the format and the
 ceiling on arrival anyway.
+
+## 0081 — The Cabas look: a tablecloth, cream bubbles, and colours that are surfaces
+
+**Date** 2026-08-31 · **Status** Accepted · **Supersedes**
+[0026](#0026--the-visual-identity-is-deliberately-deferred) · **Relates to**
+[0038](#0038--the-service-worker-is-written-by-hand),
+[0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at)
+
+**Context.** 0026 shipped a deliberately vanilla look and said so: system
+fonts, one green accent, a light and a dark palette, and the whole of it
+declared as tokens in `app.css` precisely so that replacing it later would be
+a change to values rather than a sweep through every component. Rule 10 has
+been kept since — no component writes a colour, a size, a radius or an easing
+— and this is the entry that spends that.
+
+A design system was drawn for the app and handed over as a token block, a
+reference mockup and a written brief. It is not a functional redesign: no
+screen changes structure, no command moves, no component gains or loses a
+responsibility.
+
+**Decision.** The app takes the Cabas visual language: a **checked tablecloth**
+as the page, **cream bubbles** carrying everything that is read, **lilac
+tiles** carrying everything that is filled in, an **anis title band** on every
+screen, **pink pills** for every quantity and every photo ring, and
+**Shrikhand** leaning at −8° for titles over **Quicksand** for the interface.
+
+Four rules come with it, and each of them is a bug that has already been
+made:
+
+1. **The cloth never carries a word.** Checks behind text are unreadable at
+   any weight. Every loose paragraph in the app therefore sits on a surface —
+   which is what the one global `.bubble` class in `app.css` is for, rather
+   than fourteen scoped copies of the same three declarations.
+2. **Orange, pink, anis and lilac are surfaces, never inks.** What is written
+   on one takes the matching `--on-*`; a word that has to *be* orange on a
+   light ground takes `--accent-strong` (#b04e0a), because `--accent`
+   (#ee7b2b) reads 2:1 on the apricot shell and 2.6:1 on the cream. Every
+   `color: var(--accent)` in the app was an ink and every one of them moved.
+3. **The display face on anis or apricot takes `--display-ink`** (#4a4a10) and
+   **not `--check-a`**: the cloth's olive is a square of fill and falls to
+   2.14:1 on the anis. On a lilac tile it takes `--text` instead — the olive
+   is prescribed for anis and apricot and is merely odd anywhere else.
+4. **The focus ring is `--text`, not `--accent`.** Orange on apricot is a ring
+   nobody can see.
+
+`--text-muted` (#5c4b3a), `--text-faint` (#7a6957), `--danger` (#b23a2f) and
+`--done` (#4e5e1a) are darker than the prettier values they replace because
+they were measured against the cream rather than chosen by eye. Raising any of
+them again needs a measurement, not a preference.
+
+**Dark mode is dropped.** `color-scheme: light`, and the
+`prefers-color-scheme: dark` block is gone. The cloth has no night version,
+and letting iOS repaint the native controls dark under an apricot shell is
+worse than not offering the theme at all. A real dark theme is a new palette
+and its own entry — never an inversion of this one.
+
+**The two faces are self-hosted, precached and preloaded.** Shrikhand and
+Quicksand are both OFL, both the `latin` subset (which covers French including
+œ and Œ), and both committed under `ui/public/fonts/`. A Google Fonts `<link>`
+is a request that fails in a shop, which is the trip this app exists for. They
+are named by hand in `vite.config.ts`'s `PUBLIC_SHELL`, because Vite copies
+`public/` straight to `dist/` without passing it through the bundle and the
+service-worker plugin reads the bundle rather than the file system (0038); the
+price of naming a file there is that `cache.addAll` rejects as a whole if it
+404s, so they are committed assets and a rename has to be made in both places.
+`format('woff2')` and not `format('woff2-variations')` for the variable
+Quicksand: an unrecognised format string makes a browser skip the source
+entirely and fall silently back to the system face.
+
+**Two shapes are the whole of the layout vocabulary.** *A form is a lilac tile
+and its fields are cream* — cream on cream leaves a field with no edge against
+the card it sits in. *A row that is read is a cream card, spaced by
+`--space-2`, with the cloth between the cards instead of a hairline.* Every
+list in the app is one or the other, and the `<details>` sections that fold
+away are sunken cream rather than a rule across the page.
+
+**A settled cart line changes surface; it does not fade.** `opacity: 0.55`
+over checks is grey text on a chequerboard.
+
+**A disabled primary is a sunken pill in muted ink**, not a half-transparent
+orange one: over a lilac tile the alpha turns the label to mud.
+
+**Consequences.** The gesture tokens are untouched — `--swipe-reach`,
+`--swipe-rest`, `--press-delay`, `--duration-spring` and `--ease-spring`
+describe a gesture measured on a phone, not a style, and two of them are
+parsed back out of CSS as `px` by `SwipeToAdd`. The keyboard, safe-area,
+layering and picker-height tokens are untouched for the same reason. The 16px
+floor on every control stays exactly as 0078 left it; `--text-base` is now
+17px, which clears it.
+
+`--text-tab` (0.625rem) is new, and is the one size in the app below the
+floor: five tab labels have to fit across the narrowest phone and a tab is not
+something a keyboard opens under. The labels stay in Quicksand bold — five
+words in a heavy display face at that size are a smudge.
+
+`--brand` (grape) exists and is used exactly once, on the logotype of the
+first-launch screen. `--danger` gains a second, decorative job: **a recipe's
+name**, wherever one is listed. That is the design system's own assignment and
+it is why the token cannot be re-tuned as "the red" without looking at the
+recipe shelf.
+
+Two of the tokens the design system offered are deliberately absent, because
+nothing in the app uses them and an unused token in this file is the thing
+that rots: `--shadow-lg` (a third, heavier drop shadow — the panel that might
+have wanted one is anchored to the bottom edge, where a downward shadow is
+invisible) and `--radius-bubble` (the asymmetric cloud of a hand-drawn label,
+which belongs to the mascot work that has no deliverable yet). Both are one
+line to reinstate the day something needs them.
+
+The icons, the favicon, `theme-color` and the manifest's colours move with the
+palette. They are literals in their own files because an asset has no document
+to inherit a custom property from; Rule 10 governs components.
+
+**Rejected.** **Keeping a dark theme by inverting the palette** — see above.
+**The scalloped panel edge** from the original mockup: a scallop is painted in
+the colour of what is *behind* the panel, and here the panel is the body, so
+on a wide screen it would cut the centred column in half against an apricot
+field. It needs to be a real column edge or nothing. **The mascot**, which is
+in the visual language — one frog per screen, only on an empty state, a
+welcome or a success, never beside data — but has no deliverable illustration
+yet. **Re-tuning `--swipe-rest` from the mockup**: 104 px fits "4 pers." and
+"1,2 kg" and only just fits "1½ botte", and the place to settle that is a
+phone. **A `.card` utility for every surface**: the two shapes above are
+already the rule, and a second vocabulary of class names beside the tokens is
+what Rule 10 exists to avoid — `.bubble` earns its place because it is prose
+on the page, which belongs to no component.
+
+## 0082 — The keeping badge goes under the name, never beside it
+
+**Date** 2026-08-31 · **Status** Accepted · **Relates to**
+[0070](#0070--an-ingredient-says-where-it-is-kept),
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** 0070 put "frigo" and "congélateur" on the cart line, because that
+is the row still on screen when the bags are being emptied onto a counter. It
+sat beside the name, in a row that also carries a checkbox, a photo thumbnail
+and an amount.
+
+**Decision.** The badge goes **under** the name, in a flex column with
+`align-items: flex-start`, at 11px in a 2px pill.
+
+**This is a legibility arbitration, not a taste one, and it has a number
+behind it.** On a 390 px phone the cart line is about 302 px of content. A
+1.625rem checkbox, a 3 rem thumbnail, three `--space-3` gaps, a "Congélateur"
+badge and a "1½ botte" amount leave the name roughly **43 px**. The name is
+the only thing anybody reads at arm's length in an aisle; the badge is read
+once, at home.
+
+**Consequences.** `CartLine`'s `.text` becomes a column that starts at the
+left edge rather than stretching, so the badge is the width of its own word.
+The freezer keeps its `--done` ring — it is the one that costs something to
+get wrong — and the cupboard still shows nothing at all, because a badge on
+almost every row says nothing.
+
+**Rejected.** **Shortening the labels.** "Frais" is not "Frigo" and the words
+come from `labels.ts` for one reason: they are the words on the appliance.
+**Dropping the thumbnail on a line that has a badge**, which makes the row
+whose ingredient is hardest to recognise the one without a picture.
+**Truncating the name.** That is the thing being protected.

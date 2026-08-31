@@ -170,12 +170,12 @@
   {/if}
 
   {#if ingredients.length === 0 && writing === null}
-    <p class="empty">Aucun ingrédient. Créez le premier avec « Nouveau ».</p>
+    <p class="empty bubble">Aucun ingrédient. Créez le premier avec « Nouveau ».</p>
   {:else if ingredients.length > 0}
     <SearchField bind:value={query} placeholder="Chercher un ingrédient…" />
     {#if shown.length === 0}
       <div class="nothing">
-        <p class="empty">Aucun ingrédient ne correspond.</p>
+        <p class="empty bubble">Aucun ingrédient ne correspond.</p>
         <button type="button" class="create" onclick={() => create(query)}>
           + Nouvel ingrédient «&nbsp;{query.trim()}&nbsp;»
         </button>
@@ -257,12 +257,14 @@
 
 <style>
   .add {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 0;
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
+    background: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
@@ -276,16 +278,17 @@
   /* Under a row rather than above the shelf: it belongs to the row, and the
      margin is what stops it from reading as part of the next one. */
   .panel.under {
-    margin: var(--space-3) 0 var(--space-4);
+    margin: var(--space-3) 0 0;
   }
 
   .delete {
-    padding: var(--space-2);
-    border: 1px solid var(--danger);
-    border-radius: var(--radius-md);
-    background: none;
+    padding: var(--space-2) var(--space-4);
+    border: 2px solid var(--danger);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
     color: var(--danger);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
@@ -300,7 +303,7 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-3);
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
   }
 
   .nothing .empty {
@@ -308,34 +311,38 @@
   }
 
   .create {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
-    color: var(--accent);
+    background: var(--bubble);
+    color: var(--accent-strong);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
   .empty {
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
   }
 
+  /* Cards, spaced, with the cloth between them. The cream belongs to the row
+     that slides (`SwipeToAdd`'s `.front`), not to the item. */
   ul {
     margin: 0;
     padding: 0;
     list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  li + li {
-    border-top: 1px solid var(--border);
-  }
-
-  /* The row whose editor is showing reads as one block with it. */
+  /* The row whose editor is showing reads as one block with it: a sunken
+     tray around both, rather than a tint on the row alone. */
   li.open {
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
     background: var(--surface-sunken);
   }
 
@@ -365,6 +372,7 @@
   }
 
   .name {
+    font-weight: var(--weight-medium);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -373,18 +381,21 @@
   .meta {
     color: var(--text-muted);
     font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Anis is a surface: the word on it takes the dark ink, never the orange. */
   .badge {
     flex: none;
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-pill);
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
   }
 </style>
+

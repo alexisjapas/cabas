@@ -334,9 +334,9 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
   }
 
   .field.open {
@@ -389,9 +389,9 @@
        obscured. A visual value, so it stays in CSS (Rule 10). */
     scroll-margin-bottom: var(--space-4);
     list-style: none;
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
     box-shadow: var(--shadow-md);
   }
 
@@ -435,8 +435,9 @@
     font-size: var(--text-xs);
   }
 
+  /* Orange as an ink is the dark one: --accent on cream reads 2.6:1. */
   .door {
-    color: var(--accent);
+    color: var(--accent-strong);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
   }

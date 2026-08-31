@@ -70,9 +70,11 @@
   <Photo {session} photo={recipe.photo} alt={recipe.name} size="full" />
 
   <div class="servings">
-    <button type="button" aria-label="Moins" onclick={() => read(recipe.servings - 1)}>−</button>
-    <span class="count">{recipe.servings} pers.</span>
-    <button type="button" aria-label="Plus" onclick={() => read(recipe.servings + 1)}>+</button>
+    <div class="stepper">
+      <button type="button" aria-label="Moins" onclick={() => read(recipe.servings - 1)}>−</button>
+      <span class="count">{recipe.servings} pers.</span>
+      <button type="button" aria-label="Plus" onclick={() => read(recipe.servings + 1)}>+</button>
+    </div>
     {#if recipe.servings !== recipe.written_for}
       <small>écrite pour {recipe.written_for}</small>
     {/if}
@@ -82,9 +84,9 @@
     {added ? 'Ajoutée à la liste' : 'Ajouter à la liste'}
   </button>
 
-  <h2>Ingrédients</h2>
+  <h2 class="display">Ingrédients</h2>
   {#if recipe.components.length === 0}
-    <p class="empty">Aucun ingrédient.</p>
+    <p class="empty bubble">Aucun ingrédient.</p>
   {/if}
   <ul class="components">
     {#each recipe.components as component (component.usage)}
@@ -110,8 +112,8 @@
   </ul>
 
   {#if recipe.steps.length > 0}
-    <h2>Préparation</h2>
-    <ol class="steps">
+    <h2 class="display">Préparation</h2>
+    <ol class="steps" role="list">
       {#each recipe.steps as step, index (index)}
         <li><p class="prose">{#each step.segments as segment, position (position)}{#if segment.kind === 'text'}{segment.text}{:else if segment.kind === 'missing'}<span class="gone">ligne supprimée</span>{:else}<span class="ref">{#if segment.name !== null}{segment.name}{/if}{#if segment.name !== null && segment.quantity !== null}&nbsp;{/if}{#if segment.quantity !== null}<span class="refamount">{formatQuantity(segment.quantity)}</span>{/if}</span>{/if}{/each}</p></li>
       {/each}
@@ -129,59 +131,84 @@
 <style>
   .close {
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-pill);
     background: var(--surface-raised);
+    color: var(--text);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
     cursor: pointer;
   }
 
   .servings {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-4);
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin: var(--space-4) 0;
   }
 
-  .servings button {
+  /* The same pink pill as `AmountDialog`'s, because it is the same control:
+     how many people this is being read at. */
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: var(--tapsize);
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-pill);
+    background: var(--ring);
+    color: var(--on-ring);
+  }
+
+  .stepper button {
     width: var(--tapsize);
-    height: var(--space-6);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface-raised);
+    height: var(--tapsize);
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: 1;
     cursor: pointer;
   }
 
   .count {
+    font-family: var(--font-numeric);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
-    font-weight: var(--weight-medium);
   }
 
   .servings small {
-    color: var(--text-faint);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
+    color: var(--text-muted);
     font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
   }
 
   .primary {
     width: 100%;
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
     font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* Section headings lean, like every other title in the app. They sit on the
+     cloth, which the contrast rule allows at this size and weight. */
   h2 {
     margin: var(--space-5) 0 var(--space-2);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--display-ink);
+    font-size: var(--text-lg);
   }
 
   .empty {
@@ -189,17 +216,21 @@
     color: var(--text-muted);
   }
 
+  /* One cream card holding the whole list, with hairlines inside it rather
+     than a rule between free-standing rows. */
   .components {
     margin: 0;
-    padding: 0;
+    padding: 0 var(--space-4);
     list-style: none;
+    border-radius: var(--radius-md);
+    background: var(--bubble);
   }
 
   .components li {
     display: flex;
     align-items: baseline;
     gap: var(--space-3);
-    padding: var(--space-2) 0;
+    padding: var(--space-3) 0;
   }
 
   .components li + li {
@@ -209,43 +240,78 @@
   .what {
     flex: 1;
     min-width: 0;
+    font-weight: var(--weight-medium);
   }
 
   .amount {
     flex: none;
-    color: var(--text-muted);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--ring);
+    color: var(--on-ring);
     font-family: var(--font-numeric);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
   }
 
+  /* The steps, in their own cream card. The number is drawn rather than left
+     to `::marker`, because a lilac disc is the shape this system uses for a
+     small ordinal — `role="list"` is what keeps the list semantics Safari
+     drops the moment `list-style` goes away. */
   .steps {
     margin: 0;
-    padding-left: var(--space-5);
+    padding: var(--space-4);
+    list-style: none;
+    counter-reset: step;
+    border-radius: var(--radius-md);
+    background: var(--bubble);
   }
 
   .steps li {
-    margin-bottom: var(--space-3);
+    display: flex;
+    gap: var(--space-3);
   }
 
-  .steps li::marker {
-    color: var(--text-faint);
-    font-size: var(--text-sm);
+  .steps li + li {
+    margin-top: var(--space-3);
+  }
+
+  .steps li::before {
+    counter-increment: step;
+    content: counter(step);
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.625rem;
+    height: 1.625rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--on-accent);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
   }
 
   /* The authored spacing is the cook's: a step is a run of segments and the
      spaces live inside the text ones (DECISIONS 0022). */
   .prose {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     line-height: var(--leading-normal);
     white-space: pre-wrap;
   }
 
+  /* An anis pill carrying the name and the amount together, unbreakable. The
+     quantity arrives already scaled to the servings on screen — nothing here
+     recomputes it. */
   .ref {
-    padding: 0 var(--space-1);
+    padding: 2px 7px;
     border-radius: var(--radius-sm);
     background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: var(--weight-medium);
+    color: var(--on-accent);
+    font-weight: var(--weight-semibold);
     white-space: normal;
   }
 
@@ -268,21 +334,23 @@
   .edit {
     flex: 1;
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
     background: var(--surface-raised);
-    font-weight: var(--weight-medium);
+    color: var(--text);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
   .delete {
     flex: none;
-    padding: var(--space-3);
-    border: 1px solid var(--danger);
-    border-radius: var(--radius-md);
-    background: none;
+    padding: var(--space-3) var(--space-4);
+    border: 2px solid var(--danger);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
     color: var(--danger);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 
@@ -291,3 +359,4 @@
     color: var(--on-danger);
   }
 </style>
+

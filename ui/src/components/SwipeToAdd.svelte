@@ -298,20 +298,27 @@
   .swipe {
     position: relative;
     /* The row slides sideways over this box and must not paint outside it,
-       or a half-swiped row overlaps the one below on the way past. */
+       or a half-swiped row overlaps the one below on the way past. The radius
+       is here rather than only on the card, so the strip that is uncovered is
+       clipped to the same shape. */
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
+  /* Two strips, one at each end, and **two grounds** (DECISIONS 0081): anis
+     while the row is not on the list yet, sunken cream once it is. The colour
+     is the answer to "is this already on the list", read before the words
+     are. */
   .behind {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
-    /* Two strips, one at each end: the way out and the amount on the left,
-       because the row leaves to the right; "one less" on the right, because
-       that is what the row uncovers on its way back past home. */
+    /* The way out and the amount on the left, because the row leaves to the
+       right; "one less" on the right, because that is what the row uncovers on
+       its way back past home. */
     justify-content: space-between;
-    padding-left: var(--space-3);
+    padding-left: var(--space-4);
     background: var(--accent-soft);
   }
 
@@ -320,10 +327,11 @@
     padding-left: 0;
   }
 
+  /* Orange as an ink, which is the darker one: `--accent` on anis is 2:1. */
   .hint {
-    color: var(--accent);
+    color: var(--accent-strong);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
     white-space: nowrap;
     opacity: 0.7;
     transition: opacity var(--duration-fast) var(--ease-out);
@@ -351,9 +359,12 @@
   }
 
   /* What the list holds, under the word that takes it back off. Read far
-     more often than "Annuler" is pressed, which is why it is here at all. */
+     more often than "Annuler" is pressed, which is why it is here at all —
+     and under it rather than over it, because the word is the action and the
+     number is the information. */
   .undo small {
     color: var(--text-muted);
+    font-family: var(--font-numeric);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     font-weight: var(--weight-normal);
@@ -378,8 +389,11 @@
 
   .front {
     position: relative;
-    /* Opaque, or the row it is covering reads through it. */
-    background: var(--surface);
+    /* The cream card that slides. Opaque, or the strip it is covering reads
+       through it — and the radius travels with it, so the row still looks
+       like a card while it is parked. */
+    background: var(--bubble);
+    border-radius: var(--radius-md);
     /* Vertical scrolling stays the browser's; horizontal is ours. */
     touch-action: pan-y;
     /* A press is held, and holding a row is how a phone offers to select its
@@ -393,3 +407,4 @@
     transition: transform var(--duration-spring) var(--ease-spring);
   }
 </style>
+

@@ -195,15 +195,22 @@ them.
 
 Colors, spacing, radii, typography and easings live in CSS custom
 properties declared once at the root. A component never writes a literal
-colour or pixel size. Dark mode follows from the tokens plus
-`prefers-color-scheme`.
+colour or pixel size. There is **one** scheme: `color-scheme: light`, and a
+dark theme would be a new palette and its own DECISIONS entry, never an
+inversion of this one (DECISIONS 0081).
 
-**Why.** The visual identity is deliberately deferred (DECISIONS 0026):
-the current look is vanilla and temporary by decision, not by neglect. That
-is only affordable if restyling later is a token change rather than a sweep
-through every component.
+**Why.** The visual identity was deliberately deferred (DECISIONS 0026) and
+then replaced wholesale (0081). That was affordable only because this rule
+held: the restyle was a change to `app.css` plus the handful of components
+that own a *shape*, rather than a sweep through every one of them. It has to
+go on holding, because the next change to the look will be the same shape.
 
-**Anchored in.** `ui/` (token stylesheet); DECISIONS 0026; ROADMAP M4.
+Two global classes live beside the tokens for the same reason — `.display`
+and `.bubble` — and there are no others: they say something about the page
+rather than about a component, and a vocabulary of utility classes beside the
+tokens is what this rule exists to avoid.
+
+**Anchored in.** `ui/` (token stylesheet); DECISIONS 0026, 0081; ROADMAP M4.
 
 ---
 

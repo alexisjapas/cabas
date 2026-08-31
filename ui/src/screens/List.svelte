@@ -360,9 +360,9 @@
   {/each}
 
   {#if entries.length === 0}
-    <p class="empty">Rien sur la liste pour l'instant.</p>
+    <p class="empty bubble">Rien sur la liste pour l'instant.</p>
   {:else if pending.length === 0}
-    <p class="empty">Tout est réglé. « Terminer les courses » vide la liste.</p>
+    <p class="empty bubble">Tout est réglé. « Terminer les courses » vide la liste.</p>
   {/if}
 
   <ul class="pending">
@@ -373,7 +373,7 @@
 
   {#if done.length > 0}
     <details class="done">
-      <summary>Terminées ({done.length})</summary>
+      <summary><span class="display">Terminées ({done.length})</span></summary>
       <p class="hint">
         Tout ce qu'elles demandaient est réglé. Elles quittent la liste à « Terminer les courses ».
       </p>
@@ -398,15 +398,20 @@
 
 <style>
   .add {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-strong);
+    padding: var(--space-2) var(--space-4);
+    border: 0;
     border-radius: var(--radius-pill);
-    background: var(--surface-raised);
+    background: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A form is a lilac tile and its fields are cream — one shape, used by every
+     form in the app (DECISIONS 0081). Cream on cream would leave a field with
+     no edge against the card it sits in. */
   form {
     display: flex;
     flex-direction: column;
@@ -414,7 +419,7 @@
     min-width: 0;
     margin-bottom: var(--space-5);
     padding: var(--space-4);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--surface-raised);
   }
@@ -427,9 +432,10 @@
   .modes button {
     flex: 1;
     padding: var(--space-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
+    color: var(--text);
     font-size: var(--text-sm);
     cursor: pointer;
   }
@@ -437,8 +443,8 @@
   .modes button.on {
     border-color: var(--accent);
     background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: var(--weight-medium);
+    color: var(--on-accent);
+    font-weight: var(--weight-bold);
   }
 
   .modes button:disabled {
@@ -467,39 +473,48 @@
   .pour button {
     width: var(--tapsize);
     height: var(--tapsize);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
+    color: var(--text);
     cursor: pointer;
   }
 
   .pour span {
+    font-family: var(--font-numeric);
+    font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
   }
 
   .pour small {
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
   .submit {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   .submit:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
   }
 
   .problem {
     margin-bottom: var(--space-3);
     padding: var(--space-3);
-    border: 1px solid var(--danger);
+    border: 2px solid var(--danger);
     border-radius: var(--radius-md);
     background: var(--danger-soft);
     color: var(--danger);
@@ -522,7 +537,7 @@
   }
 
   .empty {
-    margin: var(--space-6) 0;
+    margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
   }
@@ -538,30 +553,33 @@
 
   li {
     padding: var(--space-3);
-    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
   }
 
   /* The same shape as the cart's folded sections, because it is the same
      statement: this is settled, and it is out of the way (DECISIONS 0059). */
   .done {
     margin-top: var(--space-4);
-    padding: var(--space-2) 0;
-    border-top: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
   }
 
   .done summary {
     padding: var(--space-2) var(--space-1);
     color: var(--text-muted);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-size: var(--text-lg);
     cursor: pointer;
+  }
+
+  .done ul {
+    margin-top: var(--space-2);
   }
 
   .hint {
     margin: 0 var(--space-1) var(--space-2);
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
@@ -574,7 +592,7 @@
   .name {
     flex: 1;
     min-width: 0;
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-semibold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -611,14 +629,15 @@
      and the one either side of it takes the row off the list. */
   .amount button {
     height: var(--tapsize);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
+    color: var(--text);
     cursor: pointer;
   }
 
   .amount small {
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
@@ -629,16 +648,26 @@
   .notch {
     flex: none;
     width: var(--tapsize);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    line-height: 1;
   }
 
-  /* It hugs what it says rather than filling the row: full width reads as a
-     text field, and this is a door to one. */
-  .quantity {
+  /* A pink pill, like every other quantity — and it hugs what it says rather
+     than filling the row: full width would read as a text field, and this is
+     a door to one. */
+  /* `.amount .quantity` and not `.quantity`: the rule above it is `.amount
+     button`, which outranks a lone class and quietly kept the pill cream. */
+  .amount .quantity {
     flex: 0 1 auto;
     min-width: var(--tapsize);
-    padding: 0 var(--space-3);
-    color: var(--text-muted);
+    padding: 0 var(--space-4);
+    background: var(--ring);
+    border-color: transparent;
+    color: var(--on-ring);
+    font-family: var(--font-numeric);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -647,7 +676,8 @@
 
   .meta {
     margin: var(--space-2) 0 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 </style>
+

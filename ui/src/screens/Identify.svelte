@@ -131,7 +131,7 @@
 </script>
 
 {#snippet who()}
-  <p class="lead">
+  <p class="lead bubble">
     {#if arriving}
       Ce groupe est partagé entre plusieurs personnes. Dites laquelle vous êtes, pour que les
       autres sachent qui a ajouté quoi.
@@ -182,7 +182,7 @@
   {/if}
 
   {#if waiting !== undefined}
-    <p class="note" data-waiting>
+    <p class="note bubble" data-waiting>
       {waiting}
       {#if people.length === 0}
         La liste des membres arrive avec la première synchronisation.
@@ -192,7 +192,7 @@
 {/snippet}
 
 {#snippet device()}
-  <p class="lead">Pour distinguer vos appareils dans la liste des membres.</p>
+  <p class="lead bubble">Pour distinguer vos appareils dans la liste des membres.</p>
   <form onsubmit={nameDevice}>
     <label>
       Nom de cet appareil
@@ -214,7 +214,7 @@
 {#if arriving}
   <!-- No frame of its own: the first launch renders this inside `main.first`,
        which is the same page shape pairing has (App.svelte). -->
-  <h1>{step.at === 'who' ? 'Qui êtes-vous ?' : 'Cet appareil'}</h1>
+  <h1 class="display">{step.at === 'who' ? 'Qui êtes-vous ?' : 'Cet appareil'}</h1>
   {#if step.at === 'who'}{@render who()}{:else}{@render device()}{/if}
 {:else}
   <Screen title="Changer d'utilisateur" onback={() => oncancel?.()}>
@@ -224,21 +224,22 @@
 
 <style>
   h1 {
+    color: var(--display-ink);
     font-size: var(--text-2xl);
   }
 
   .lead {
-    margin: var(--space-2) 0 var(--space-5);
+    margin: var(--space-3) 0 var(--space-4);
     color: var(--text-muted);
   }
 
+  /* The roster: read, so cream (DECISIONS 0081). */
   ul {
     margin: 0 0 var(--space-4);
     padding: 0;
     list-style: none;
-    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
     overflow: hidden;
   }
 
@@ -260,6 +261,7 @@
     font-size: var(--text-base);
     font-weight: var(--weight-normal);
     text-align: left;
+    box-shadow: none;
     cursor: pointer;
   }
 
@@ -279,20 +281,26 @@
     white-space: nowrap;
   }
 
+  /* Anis is a surface; the word on it takes the dark ink. */
   .tag {
     flex: none;
     padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
   }
 
+  /* A form is a tile and its fields are cream. */
   form {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+    padding: var(--space-4);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
   }
 
   label {
@@ -305,9 +313,9 @@
 
   input {
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
     font-size: var(--text-base);
     font-weight: var(--weight-normal);
   }
@@ -324,37 +332,46 @@
   button {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
     font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
+  /* A disabled primary is a sunken pill in muted ink, not a half-transparent
+     orange one: over a lilac tile the alpha turns the label to mud
+     (DECISIONS 0081). */
   button:disabled {
-    opacity: 0.5;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    box-shadow: none;
     cursor: default;
   }
 
   .secondary {
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     background: var(--surface-raised);
     color: var(--text);
+    box-shadow: none;
   }
 
   .create {
     width: 100%;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-raised);
-    color: var(--accent);
+    border: 2px solid var(--border-strong);
+    background: var(--bubble);
+    color: var(--accent-strong);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
+    box-shadow: none;
   }
 
   .note {
     margin: var(--space-5) 0 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-sm);
   }
 </style>
+

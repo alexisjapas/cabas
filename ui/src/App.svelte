@@ -94,9 +94,9 @@
 </script>
 
 {#if phase.step === 'loading'}
-  <p class="notice" role="status">Chargement…</p>
+  <p class="notice bubble" role="status">Chargement…</p>
 {:else if phase.step === 'failed'}
-  <p class="notice" role="alert">
+  <p class="notice bubble" role="alert">
     L'application n'a pas pu démarrer.<br />
     <span class="detail">{phase.message}</span>
   </p>
@@ -153,10 +153,15 @@
 
   .notice {
     max-width: var(--content-width);
-    margin: 0 auto;
-    padding: var(--space-7) var(--space-4);
+    margin: var(--space-7) var(--space-4);
     color: var(--text-muted);
     text-align: center;
+  }
+
+  @media (min-width: 34rem) {
+    .notice {
+      margin: var(--space-7) auto;
+    }
   }
 
   .detail {

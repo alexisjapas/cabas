@@ -170,10 +170,11 @@
     flex: 1;
     min-width: 0;
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-    font-weight: var(--weight-medium);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
+    color: var(--text);
+    font-weight: var(--weight-bold);
     cursor: pointer;
   }
 

@@ -63,8 +63,9 @@
     justify-content: center;
     gap: var(--space-1);
     padding: var(--space-2) var(--space-2) calc(var(--safe-bottom) + var(--space-2));
-    background: var(--surface-raised);
-    border-top: 1px solid var(--border);
+    /* Opaque, the flat shell colour, and no rule on top: the pills are the
+       separation (DECISIONS 0081). */
+    background: var(--surface);
     /* The bar belongs at the bottom of the layout viewport, and the keyboard
        covers the bottom of the layout viewport — so it goes down with it. That
        holds whichever viewport a browser anchors a fixed element to: where the
@@ -75,6 +76,9 @@
     transition: transform var(--duration-base) var(--ease-out);
   }
 
+  /* A lilac pill at rest, an anis one with an orange rim when it is the screen
+     you are on — read at a metre, with a basket on the arm. The border is
+     already there when it is transparent, so activation moves nothing. */
   button {
     flex: 1;
     /* Five tabs across the narrowest phone: the labels ellipsize rather than
@@ -87,22 +91,31 @@
     gap: var(--space-1);
     padding: var(--space-2) var(--space-1);
     min-height: var(--tapsize);
-    border: 0;
+    border: 3px solid transparent;
     border-radius: var(--radius-md);
-    background: none;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-size: var(--text-tab);
+    font-weight: var(--weight-bold);
     cursor: pointer;
-    transition: color var(--duration-fast) var(--ease-out);
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
   }
 
   button.current {
-    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    /* The glyph inherits `color`, so this carries the icon as well as the
+       word — which is the second reason the cloth's olive would be wrong
+       here and not merely unreadable. */
+    color: var(--display-ink);
   }
 
   svg {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.75;
@@ -118,3 +131,4 @@
     white-space: nowrap;
   }
 </style>
+

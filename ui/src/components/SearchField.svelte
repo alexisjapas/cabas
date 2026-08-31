@@ -38,12 +38,19 @@
     margin-bottom: var(--space-3);
   }
 
+  /* Cream and pill-shaped (DECISIONS 0081). The page behind it is a
+     tablecloth now: a field painted in the page colour would be indistinct
+     from it, and one painted in the checks would be unreadable. */
   input {
     width: 100%;
-    padding: var(--space-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface);
+    padding: var(--space-3) var(--space-4);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--bubble);
     font-weight: var(--weight-normal);
+  }
+
+  input:focus {
+    border-color: var(--accent);
   }
 </style>

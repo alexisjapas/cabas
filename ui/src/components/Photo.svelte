@@ -72,22 +72,28 @@
 {/if}
 
 <style>
+  /* The pink ring is the shape a photo takes in this app (DECISIONS 0081):
+     round on a row, a rounded 4/3 frame where the picture is the subject.
+     `box-sizing: border-box` means the ring eats into the fixed thumb size
+     rather than growing the row. */
   .photo {
     display: block;
     flex: none;
     overflow: hidden;
-    border-radius: var(--radius-md);
     background: var(--surface-sunken);
   }
 
   .thumb {
     width: var(--photo-thumb);
     height: var(--photo-thumb);
+    border: var(--photo-ring) solid var(--ring);
+    border-radius: var(--radius-pill);
   }
 
   .full {
     width: 100%;
     aspect-ratio: 4 / 3;
+    border: var(--photo-ring-full) solid var(--ring);
     border-radius: var(--radius-lg);
   }
 
@@ -101,9 +107,11 @@
   }
 
   /* Named by the document, not here yet — the other phone took it and the
-     bytes are still on their way. A quiet frame, deliberately not a spinner:
-     there is nothing to wait for on this device. */
+     bytes are still on their way. A quiet dashed frame, deliberately not a
+     spinner and deliberately not the pink ring: there is nothing to wait for
+     on this device, and it must not read as a photo that failed. */
   .waiting {
-    border: 1px dashed var(--border);
+    border-style: dashed;
+    border-color: var(--border);
   }
 </style>

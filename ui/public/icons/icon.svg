@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512">
   <!--
     The home-screen icon: the same basket as the favicon and the cart tab, on
-    an opaque accent square.
+    an opaque orange square.
 
     Opaque on purpose. A transparent home-screen icon composites onto black on
     iOS, and the corner radius is the platform's to apply — drawing our own
@@ -10,18 +10,20 @@
     This file is also the source the PNGs beside it are rasterised from, since
     iOS reads `apple-touch-icon` as a bitmap and ignores SVG:
 
-      chromium --headless --screenshot=icon-512.png --window-size=512,512 \
-               --force-device-scale-factor=1 <an html wrapper around this file>
+      nix develop .#wasm-test -c node ui/tools/render-icons.mjs
 
-    The colours are the light-theme `--accent` and `--surface` of `app.css`.
+    The colours are `--accent` and `--on-done` from `app.css` (DECISIONS 0081).
     They are literals here for the reason the favicon's are: an asset has no
     document to inherit custom properties from (Rule 10 governs components).
+    Cream on orange rather than the dark `--on-accent`: this is a drawing seen
+    at 60px on a home screen among other icons, not a word to be read, and the
+    light stroke is what makes the basket carry at that size.
   -->
-  <rect width="24" height="24" fill="#3f6f4f" />
+  <rect width="24" height="24" fill="#ee7b2b" />
   <g transform="translate(12 12) scale(0.72) translate(-12 -12)">
     <path
       fill="none"
-      stroke="#faf9f7"
+      stroke="#fff6e8"
       stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"

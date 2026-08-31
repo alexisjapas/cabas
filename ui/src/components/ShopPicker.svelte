@@ -184,9 +184,9 @@
     padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
     border-radius: var(--radius-pill);
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
   }
 
   .chosen button {
@@ -205,17 +205,17 @@
 
   input {
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
   }
 
   .offered {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--bubble);
     overflow: hidden;
   }
 
@@ -240,8 +240,8 @@
   }
 
   .offered .create {
-    color: var(--accent);
-    font-weight: var(--weight-medium);
+    color: var(--accent-strong);
+    font-weight: var(--weight-bold);
   }
 
   small {

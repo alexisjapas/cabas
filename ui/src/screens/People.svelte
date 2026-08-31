@@ -83,14 +83,14 @@
     {/each}
   </ul>
 
-  <p class="note">
+  <p class="note bubble">
     Ces noms disent qui a probablement fait quoi. Ce ne sont pas des comptes : la clé du groupe
     est la même pour tout le monde, donc n'importe quel appareil appairé peut tout lire et tout
     écrire, sous n'importe quel nom.
   </p>
 
   <section class="revoke">
-    <h2>Retirer un appareil</h2>
+    <h2 class="display">Retirer un appareil</h2>
 
     {#if rotation.at === 'done'}
       <p>Voici la nouvelle phrase. Saisissez-la sur les appareils que vous gardez.</p>
@@ -148,15 +148,15 @@
     list-style: none;
   }
 
+  /* Read, not pressed: a cream card (DECISIONS 0081). */
   .people > li {
     padding: var(--space-3);
-    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface-raised);
+    background: var(--bubble);
   }
 
   .people > li + li {
-    margin-top: var(--space-3);
+    margin-top: var(--space-2);
   }
 
   .name {
@@ -181,23 +181,24 @@
   }
 
   .when {
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
   .empty {
     margin: var(--space-1) 0 0;
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-size: var(--text-sm);
   }
 
+  /* Anis is a surface; the word on it takes the dark ink. */
   .tag {
     padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--on-accent);
     font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-bold);
   }
 
   .note {
@@ -212,13 +213,15 @@
     gap: var(--space-3);
     margin-top: var(--space-5);
     padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-raised);
   }
 
+  /* `--text` and not `--display-ink`: this heading sits on a lilac tile. */
   .revoke h2 {
     margin: 0;
+    color: var(--text);
     font-size: var(--text-lg);
   }
 
@@ -249,18 +252,20 @@
   button {
     padding: var(--space-3);
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--on-accent);
     font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
   }
 
   .secondary {
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     background: var(--surface-raised);
     color: var(--text);
+    box-shadow: none;
   }
 
   .danger {
@@ -270,7 +275,7 @@
 
   .phrase {
     padding: var(--space-3);
-    border: 1px solid var(--border-strong);
+    border: 2px solid var(--border-strong);
     border-radius: var(--radius-md);
     background: var(--surface-sunken);
     font-family: var(--font-numeric);
@@ -284,3 +289,4 @@
     color: var(--danger);
   }
 </style>
+

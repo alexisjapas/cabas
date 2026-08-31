@@ -252,6 +252,34 @@ and `ui-test` now measures the library form at 390px — which 0078 said was the
 one place its 16px floor could cost something, and had never actually been
 opened for the measurement.
 
+**0.10.0 is the look.** The app had a deliberately vanilla one, and said so
+from the start (DECISIONS 0026): system fonts, one green accent, a light and a
+dark palette, and every value declared once in `app.css` precisely so that
+replacing it later would be a change to that file rather than a sweep through
+every component. A design system was drawn for it and handed over as a token
+block, a reference mockup and a brief; **DECISIONS 0081** is what it became
+here. A checked tablecloth as the page, cream bubbles carrying what is read,
+lilac tiles carrying what is filled in, an anis title band on every screen,
+pink pills for every quantity and every photo ring, and Shrikhand leaning at
+−8° over Quicksand. Both faces are OFL, self-hosted, precached and preloaded,
+because a Google Fonts request is a request that fails in a shop.
+
+Nothing functional moved: no screen changed structure, no command moved, no
+component gained or lost a responsibility. What did move is everything the
+palette's own rule touches — **orange, pink, anis and lilac are surfaces and
+never inks**, so every `color: var(--accent)` in the app was an ink and every
+one of them became `--accent-strong`; and **the cloth never carries a word**,
+so every loose paragraph now sits on a surface. Dark mode is dropped outright
+rather than inverted: the cloth has no night version, and a real dark theme is
+a new palette and its own entry.
+
+One layout change came with it and has an entry of its own, because it is a
+legibility arbitration with a number behind it rather than a matter of taste:
+**the keeping badge goes under the name on a cart line, never beside it**
+(DECISIONS 0082). Beside it, on a 390px phone, the name is left about 43px —
+and the name is the only thing anybody reads at arm's length in an aisle.
+
+
 **Read the marker off the relay, not off a phone.** `cabas-relay groups`
 before and after is what says whether the restore happened; the planted
 ingredient survives in the replica of every phone that saw it, and a restore
