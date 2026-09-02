@@ -2,6 +2,7 @@
   import { flip } from 'svelte/animate';
 
   import CartLine from '../components/CartLine.svelte';
+  import Confetti, { type Origin } from '../components/Confetti.svelte';
   import Screen from '../components/Screen.svelte';
   import type { AisleTag } from '../lib/bindings/AisleTag';
   import type { CartLineView } from '../lib/bindings/CartLineView';
@@ -25,6 +26,37 @@
 
   let cart = $derived(session.state.cart);
   let picked = $derived(cart.total - cart.remaining);
+
+  // --- the bar, full (DECISIONS 0088) ---------------------------------------
+
+  /**
+   * Confetti when the last line is ticked.
+   *
+   * The moment worth marking is the bar reaching the end, not the "Terminer
+   * les courses" that follows it: finishing empties the cart, so the bar is
+   * gone by then and there would be nothing to celebrate over. It fires on the
+   * *transition* into a full bar and not on the state, so switching to this
+   * tab with everything already ticked does not throw confetti at somebody who
+   * is merely passing through. `wasFull` starts as `null` rather than as the
+   * current value for exactly that: the first run of the effect is the one
+   * that records where the cart already was, and it is the only run that never
+   * bursts.
+   */
+  let bar = $state<HTMLElement | null>(null);
+  let burst = $state<Origin | null>(null);
+  let full = $derived(cart.total > 0 && cart.remaining === 0);
+  let wasFull: boolean | null = null;
+
+  $effect(() => {
+    const now = full;
+    const was = wasFull;
+    wasFull = now;
+    if (!now || was !== false || bar === null) return;
+    // Measured here rather than in the component: the burst is fixed to the
+    // viewport, so where it goes is where the bar is at the instant it fires.
+    const box = bar.getBoundingClientRect();
+    burst = { top: box.bottom, left: box.left, width: box.width };
+  });
 
   /**
    * Which shop this trip is (DECISIONS 0071). `null` is "Tous" — one list,
@@ -121,7 +153,12 @@
   subtitle={cart.total === 0 ? 'Rien à acheter' : `${cart.remaining} à prendre sur ${cart.total}`}
 >
   {#if cart.total > 0}
-    <div class="progress" style="--picked: {(picked / cart.total) * 100}%">
+    <div
+      class="progress"
+      class:full
+      bind:this={bar}
+      style="--picked: {(picked / cart.total) * 100}%"
+    >
       <div class="fill"></div>
     </div>
   {/if}
@@ -205,6 +242,10 @@
   {/if}
 </Screen>
 
+{#if burst !== null}
+  <Confetti origin={burst} oncomplete={() => (burst = null)} />
+{/if}
+
 <style>
   .progress {
     height: var(--space-2);
@@ -222,7 +263,16 @@
     height: 100%;
     border-radius: var(--radius-pill);
     background: var(--accent);
-    transition: width var(--duration-base) var(--ease-out);
+    transition:
+      width var(--duration-base) var(--ease-out),
+      background-color var(--duration-base) var(--ease-out);
+  }
+
+  /* Full. The confetti says it once and goes; the colour is what is still
+     saying it a minute later (DECISIONS 0088). Anis is the app's "settled" —
+     it is what a checked cart line and the current tab already wear. */
+  .progress.full .fill {
+    background: var(--done);
   }
 
   .empty {

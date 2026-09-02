@@ -3,6 +3,7 @@
   import Screen from '../components/Screen.svelte';
   import type { FocusView } from '../lib/bindings/FocusView';
   import { decimal, formatQuantity } from '../lib/format';
+  import { chosenLines, entriesBySource } from '../lib/list';
   import type { Session } from '../lib/session.svelte';
 
   /**
@@ -45,12 +46,99 @@
     session.run({ command: 'open_recipe', recipe: recipe.id, servings });
   }
 
+  /**
+   * The whole recipe, at the servings being read — not the servings it was
+   * written for: the stepper above is the "we are six tonight" the list entry
+   * records.
+   *
+   * Two commands behind one button, and which one it is depends on whether
+   * some of this recipe is *already* asked for (DECISIONS 0091). Over a
+   * half-added recipe it says "Ajouter le reste" and clears the restriction on
+   * that entry, because a second entry beside it would ask for the chosen
+   * lines twice. Otherwise it adds an entry, including when one already exists
+   * — asking for a recipe twice is a thing people do, and it was true before
+   * any of this.
+   */
   function addToList(): void {
-    // At the servings being read, not the servings it was written for: the
-    // stepper above is the "we are six tonight" the list entry records.
-    if (session.run({ command: 'add_recipe_to_list', recipe: recipe.id, servings: recipe.servings })) {
+    if (
+      partial && entry !== undefined
+        ? session.run({ command: 'set_entry_components', entry: entry.id, only: null })
+        : session.run({
+            command: 'add_recipe_to_list',
+            recipe: recipe.id,
+            servings: recipe.servings,
+            only: null,
+          })
+    ) {
       addedAt = `${recipe.id}:${recipe.servings}`;
     }
+  }
+
+  // --- a line at a time (DECISIONS 0091) -------------------------------------
+
+  /**
+   * This recipe's entry on the list, and which of its lines that entry asks
+   * for.
+   *
+   * Read off the core's list rather than remembered here, like every other
+   * shelf that can push a row onto it (DECISIONS 0067): it is what makes the
+   * ticks right after a reload and right when the other phone changes them.
+   * An empty set is "all of them" — see `chosenLines`.
+   */
+  let entry = $derived(entriesBySource(session.state.list).get(recipe.id));
+  let chosen = $derived(chosenLines(entry));
+  let partial = $derived(entry !== undefined && chosen.size > 0);
+
+  function asked(usage: string): boolean {
+    if (entry === undefined) return false;
+    return chosen.size === 0 || chosen.has(usage);
+  }
+
+  /**
+   * Adds or removes one line of the recipe.
+   *
+   * Four cases, and the shape of each is decided by what the entry currently
+   * is rather than by a mode this screen holds:
+   *
+   * - nothing on the list yet → a new entry asking for this line alone;
+   * - a restricted entry → the line joins or leaves the selection, and the
+   *   last one leaving takes the entry off the list, exactly the way the last
+   *   notch off a bare ingredient does (0072);
+   * - a whole recipe, line ticked → the selection becomes *every other line*,
+   *   which is what "I already have this one" means;
+   * - a whole recipe, line unticked → impossible, since a whole recipe asks
+   *   for all of them.
+   */
+  function toggleLine(usage: string): void {
+    if (entry === undefined) {
+      session.run({
+        command: 'add_recipe_to_list',
+        recipe: recipe.id,
+        servings: recipe.servings,
+        only: [usage],
+      });
+      return;
+    }
+
+    const lines = recipe.components.map((component) => component.usage);
+    const next = new Set(chosen.size === 0 ? lines : chosen);
+    if (next.has(usage)) next.delete(usage);
+    else next.add(usage);
+
+    if (next.size === 0) {
+      // Not `set_entry_components` with an empty list: the core refuses that,
+      // and rightly — an entry asking for nothing is an entry to remove.
+      session.run({ command: 'remove_list_entry', entry: entry.id });
+      return;
+    }
+    // Every line ticked is the whole recipe again, and saying so keeps a row
+    // that asks for all of it from reading as a restriction that happens to
+    // cover everything.
+    session.run({
+      command: 'set_entry_components',
+      entry: entry.id,
+      only: next.size === lines.length ? null : [...next],
+    });
   }
 
   function remove(): void {
@@ -81,32 +169,62 @@
   </div>
 
   <button type="button" class="primary" onclick={addToList}>
-    {added ? 'Ajoutée à la liste' : 'Ajouter à la liste'}
+    {#if partial}
+      Ajouter le reste à la liste
+    {:else}
+      {added ? 'Ajoutée à la liste' : 'Ajouter à la liste'}
+    {/if}
   </button>
 
   <h2 class="display">Ingrédients</h2>
   {#if recipe.components.length === 0}
     <p class="empty bubble">Aucun ingrédient.</p>
+  {:else}
+    <p class="hint">
+      {#if partial}
+        {chosen.size} sur {recipe.components.length} sur la liste. Touchez une ligne pour
+        l'ajouter ou la retirer.
+      {:else}
+        Touchez une ligne pour n'ajouter qu'elle : pratique quand on a déjà le reste.
+      {/if}
+    </p>
   {/if}
   <ul class="components">
     {#each recipe.components as component (component.usage)}
+      {@const on = asked(component.usage)}
       <li>
-        {#if component.name === null}
-          <span class="gone">
-            {component.kind === 'ingredient' ? 'Ingrédient supprimé' : 'Sous-recette supprimée'}
-          </span>
-        {:else}
-          <span class="what">{component.name}</span>
-        {/if}
-        <span class="amount">
-          {#if component.kind === 'ingredient'}
-            {formatQuantity(component.quantity)}
-          {:else if component.amount.kind === 'factor'}
-            ×{decimal(component.amount.factor)}
+        <!-- The whole row is the control (DECISIONS 0091): a line of a recipe
+             is read and decided about in one glance, and a separate checkbox
+             beside it would take width off the one thing a phone has little
+             of. -->
+        <button
+          type="button"
+          class="pick"
+          class:on
+          aria-pressed={on}
+          aria-label="{component.name ?? 'Ligne supprimée'} : {on
+            ? 'sur la liste'
+            : 'pas sur la liste'}"
+          onclick={() => toggleLine(component.usage)}
+        >
+          <span class="tick" aria-hidden="true">{on ? '✓' : '+'}</span>
+          {#if component.name === null}
+            <span class="gone">
+              {component.kind === 'ingredient' ? 'Ingrédient supprimé' : 'Sous-recette supprimée'}
+            </span>
           {:else}
-            {formatQuantity(component.amount.quantity)}
+            <span class="what">{component.name}</span>
           {/if}
-        </span>
+          <span class="amount">
+            {#if component.kind === 'ingredient'}
+              {formatQuantity(component.quantity)}
+            {:else if component.amount.kind === 'factor'}
+              ×{decimal(component.amount.factor)}
+            {:else}
+              {formatQuantity(component.amount.quantity)}
+            {/if}
+          </span>
+        </button>
       </li>
     {/each}
   </ul>
@@ -216,6 +334,18 @@
     color: var(--text-muted);
   }
 
+  /* On the cloth at body size, so it needs a surface under it — the global
+     `.bubble` is the wrong shape here (it is padded like a card and this is
+     one line), so it takes the cream and a small radius of its own. */
+  .hint {
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--bubble);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
   /* One cream card holding the whole list, with hairlines inside it rather
      than a rule between free-standing rows. */
   .components {
@@ -226,15 +356,48 @@
     background: var(--bubble);
   }
 
-  .components li {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    padding: var(--space-3) 0;
-  }
-
   .components li + li {
     border-top: 1px solid var(--border);
+  }
+
+  /* One row, one control (DECISIONS 0091). `--tapsize` tall because it is
+     pressed in a kitchen, and the whole width because that is what a line of
+     a recipe is. */
+  .pick {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    min-height: var(--tapsize);
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* The tick, in the ring that means "a quantity" everywhere else — because
+     that is what pressing it puts on the list. Unticked it is an outline, so
+     the row reads the same width either way and nothing shifts on a tap. */
+  .tick {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--space-6);
+    height: var(--space-6);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    line-height: 1;
+  }
+
+  .pick.on .tick {
+    border-color: transparent;
+    background: var(--done);
+    color: var(--on-done);
   }
 
   .what {

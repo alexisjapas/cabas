@@ -27,7 +27,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::app::App;
 use crate::command::Command;
-use crate::photos::Photos;
+use crate::photos::{PhotoSync, Photos};
 use crate::platform::{Identity, SystemPlatform};
 use crate::sync::{SyncCursor, SyncSession};
 use crate::transfer::{Imported, LibraryFile};
@@ -58,6 +58,11 @@ pub struct CabasApp {
     /// socket: it is created from the persisted cursor when the socket opens
     /// and dropped when it closes, which is also when the key leaves memory.
     session: RefCell<Option<SyncSession>>,
+    /// The current *photo* connection, on its own socket (DECISIONS 0080).
+    /// A second field rather than a second field on `SyncSession`, because
+    /// the two sockets open and close independently: a photo transfer runs
+    /// for as long as it runs, and the list keeps syncing beside it.
+    photo_session: RefCell<Option<PhotoSync>>,
 }
 
 #[wasm_bindgen]
@@ -145,6 +150,7 @@ impl CabasApp {
             photos: Photos::new(IndexedDbPhotoStore::new()),
             storage,
             session: RefCell::new(None),
+            photo_session: RefCell::new(None),
         })
     }
 
@@ -394,6 +400,95 @@ impl CabasApp {
     pub fn sync_close(&self) {
         *self.session.borrow_mut() = None;
     }
+
+    // --- the photo transfer (DECISIONS 0080, 0092) --------------------------
+    //
+    // A second socket with the same shape as the one above: bytes cross as
+    // `Uint8Array` and are opaque, sealed outbound and opened inbound, and
+    // nothing here decides anything. What differs is that every call is
+    // asynchronous, because a photo is a browser transaction — which is
+    // exactly why they are on a socket of their own and not on `/sync`, where
+    // a tick in a shop would end up queued behind a picture of a jar.
+    //
+    // **The session is taken out of its cell and put back**, rather than
+    // borrowed across the await. An exported async method holds its borrow
+    // for as long as its promise is pending (DECISIONS 0032), and these
+    // promises are pending for as long as IndexedDB takes.
+
+    /// Starts a photo connection and returns the hello to send on it.
+    ///
+    /// The hello is a function of what this device holds and what its replica
+    /// names and it lacks, both read here — so the work is re-derived from
+    /// what is actually on disk on every connection, and there is no cursor to
+    /// persist and nothing to get out of step (DECISIONS 0080).
+    #[wasm_bindgen(js_name = photoHello)]
+    pub async fn photo_hello(&self, phrase: &str) -> Result<Vec<u8>, JsError> {
+        // The borrow ends with this statement; the await is below it.
+        let referenced = self.inner.borrow().referenced_photos()?;
+        let session = PhotoSync::open(phrase, &self.photos, &referenced).await?;
+        let hello = session.hello()?;
+        *self.photo_session.borrow_mut() = Some(session);
+        Ok(hello)
+    }
+
+    /// Feeds one binary message in, and gets one `PhotoEvent` out. A photo
+    /// that opens is **written to this device's store before this returns**,
+    /// so a screen showing a placeholder can ask for it again and get bytes.
+    #[wasm_bindgen(js_name = photoHandle)]
+    pub async fn photo_handle(&self, wire: Vec<u8>) -> Result<JsValue, JsError> {
+        let mut session = self
+            .photo_session
+            .borrow_mut()
+            .take()
+            .ok_or_else(no_photo_session)?;
+        let outcome = session.handle(&self.photos, &wire).await;
+        // Put back before the `?`: a message this build could not make sense
+        // of must not also lose the connection its queue is on.
+        *self.photo_session.borrow_mut() = Some(session);
+        to_js(&outcome?)
+    }
+
+    /// The next photo to ask for, encoded — or `null` when there is nothing
+    /// left to ask for.
+    #[wasm_bindgen(js_name = photoFetch)]
+    pub fn photo_fetch(&self) -> Result<Option<Vec<u8>>, JsError> {
+        let mut session = self.photo_session.borrow_mut();
+        let session = session.as_mut().ok_or_else(no_photo_session)?;
+        Ok(session.fetch()?)
+    }
+
+    /// The next photo to offer, read from the store and sealed — or `null`
+    /// when there is nothing left to offer.
+    #[wasm_bindgen(js_name = photoPush)]
+    pub async fn photo_push(&self) -> Result<Option<Vec<u8>>, JsError> {
+        let mut session = self
+            .photo_session
+            .borrow_mut()
+            .take()
+            .ok_or_else(no_photo_session)?;
+        let outcome = session.push(&self.photos).await;
+        *self.photo_session.borrow_mut() = Some(session);
+        Ok(outcome?)
+    }
+
+    /// Where the transfer has got to, including whether it is finished —
+    /// which is this side's call to make and the host's cue to close the
+    /// socket. `null` when no photo connection is open.
+    #[wasm_bindgen(js_name = photoStatus)]
+    pub fn photo_status(&self) -> Result<JsValue, JsError> {
+        match self.photo_session.borrow().as_ref() {
+            Some(session) => to_js(&session.status()),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// Drops the photo session, for the reason [`CabasApp::sync_close`] drops
+    /// the other one: the next connection re-derives everything, key
+    /// included.
+    #[wasm_bindgen(js_name = photoClose)]
+    pub fn photo_close(&self) {
+        *self.photo_session.borrow_mut() = None;
+    }
 }
 
 /// Calling a session method with no socket open is a bug in the engine
@@ -401,4 +496,15 @@ impl CabasApp {
 /// call was skipped rather than returning a silent `null`.
 fn no_session() -> JsError {
     JsError::new("no sync session: syncHello has not been called on this connection")
+}
+
+/// The same, for the photo socket — and it also covers the shape peculiar to
+/// this pair: `photoHandle` and `photoPush` take the session *out* of its
+/// cell while they await, so two of them running at once would find it empty.
+/// The engine drives them one at a time; this is what says so if it stops.
+fn no_photo_session() -> JsError {
+    JsError::new(
+        "no photo session: photoHello has not been called on this connection, \
+         or two photo calls are in flight at once",
+    )
 }

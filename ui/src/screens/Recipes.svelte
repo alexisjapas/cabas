@@ -124,6 +124,7 @@
             command: 'add_recipe_to_list',
             recipe: pressed.id,
             servings: chosen.servings,
+            only: null,
           })
         : session.run({
             command: 'set_entry_servings',
@@ -183,6 +184,7 @@
                 // As written: a gesture cannot ask, and what to use instead
                 // is the core's rule, not this screen's (DECISIONS 0067).
                 servings: null,
+                only: null,
               })}
             onnudge={(steps) =>
               entry !== undefined &&
@@ -194,7 +196,8 @@
             type="button"
             onclick={() => session.run({ command: 'open_recipe', recipe: recipe.id, servings: null })}
           >
-            <Photo {session} photo={recipe.photo} alt="" />
+            <!-- The dish, at the size a dish is chosen by (DECISIONS 0086). -->
+            <Photo {session} photo={recipe.photo} alt="" size="dish" />
             <span class="text">
               <span class="name">{recipe.name}</span>
               <span class="meta">
@@ -285,12 +288,16 @@
     gap: var(--space-2);
   }
 
+  /* A dish is `--photo-dish` tall, so this row is taller than the shelves
+     either side of it and deliberately so (DECISIONS 0086): a recipe is
+     chosen by looking at it. `--space-2` rather than `--space-3` of padding
+     keeps the growth to the picture rather than to the padding around it. */
   li button {
     width: 100%;
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     min-height: var(--tapsize);
     border: 0;
     background: none;
@@ -311,9 +318,12 @@
   }
 
   /* Coral. `--danger` has a decorative half in this palette and this is it —
-     a recipe's name, everywhere one is listed (DECISIONS 0081). */
+     a recipe's name, everywhere one is listed (DECISIONS 0081). At `--text-lg`
+     beside a photo this size, because the two are one unit: the picture is
+     what catches the eye and the name is what confirms it. */
   .name {
     color: var(--danger);
+    font-size: var(--text-lg);
     font-weight: var(--weight-semibold);
     overflow: hidden;
     text-overflow: ellipsis;

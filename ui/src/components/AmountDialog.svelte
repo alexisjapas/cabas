@@ -107,7 +107,16 @@
         </div>
       </fieldset>
     {:else}
-      <QuantityField bind:amount={draft.amount} bind:unit={draft.unit} field="entry-amount" required />
+      <!-- "et unité", because this panel is the only place either can be
+           changed once a line is on the list, and a legend reading "Quantité"
+           over a dropdown is not an invitation to open it (DECISIONS 0090). -->
+      <QuantityField
+        bind:amount={draft.amount}
+        bind:unit={draft.unit}
+        label="Quantité et unité"
+        field="entry-amount"
+        required
+      />
     {/if}
 
     <div class="buttons">

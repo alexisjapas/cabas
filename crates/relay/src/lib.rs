@@ -34,6 +34,7 @@
 pub mod admin;
 mod assets;
 mod log;
+mod photos;
 mod server;
 
 pub use assets::embedded;

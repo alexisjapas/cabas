@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import AmountDialog, {
     quantityDraft,
     type AmountDraft,
@@ -99,8 +101,55 @@
     confirmingDelete = false;
   }
 
+  /**
+   * The row that was just saved, so it can say where it went (DECISIONS
+   * 0087).
+   *
+   * The editor opens *under* its row (0073), so saving one halfway down a
+   * long shelf collapses a tall panel and leaves the eye on whatever slid up
+   * to fill the gap — and a new ingredient lands wherever the alphabet puts
+   * it, which is nowhere near the form that made it. Both are answered by the
+   * same two acts: put the row on screen, and flash it.
+   *
+   * Cleared by the animation's own `animationend` rather than by a timer, so
+   * the duration lives in `app.css` and is read from nowhere else — a token
+   * parsed back out of `getComputedStyle` is the trap `--press-delay` already
+   * carries.
+   */
+  let flashing = $state<string | null>(null);
+
   function save(ingredient: IngredientInput): void {
-    if (session.run({ command: 'save_ingredient', ingredient })) writing = null;
+    if (!session.run({ command: 'save_ingredient', ingredient })) return;
+    writing = null;
+    // Always a string in practice — `blankDraft` mints one and `draftOf`
+    // carries one — but `IngredientInput` lets the core name its own, and a
+    // row nobody can name is a row nobody can scroll to.
+    if (ingredient.id !== null) void reveal(ingredient.id);
+  }
+
+  /**
+   * Scrolls a row into view and marks it for the flash.
+   *
+   * Two `tick()`s and a search that may be cleared in between: a *new*
+   * ingredient is filed by the alphabet and can perfectly well fall outside
+   * the query that was on screen when "Nouveau" was pressed, in which case
+   * there is no row to scroll to. Dropping the search is the only way to show
+   * the thing that was just created, and it is what somebody who has just
+   * created it wants to see.
+   */
+  async function reveal(id: string): Promise<void> {
+    await tick();
+    if (document.querySelector(`[data-ingredient="${id}"]`) === null) {
+      query = '';
+      await tick();
+    }
+    const row = document.querySelector(`[data-ingredient="${id}"]`);
+    if (row === null) return;
+    row.scrollIntoView({
+      block: 'center',
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+    flashing = id;
   }
 
   function remove(): void {
@@ -186,7 +235,14 @@
   <ul>
     {#each shown as ingredient (ingredient.id)}
       {@const entry = onList.get(ingredient.id)}
-      <li class:open={writing !== null && writing.under === ingredient.id}>
+      <li
+        data-ingredient={ingredient.id}
+        class:open={writing !== null && writing.under === ingredient.id}
+        class:flashing={flashing === ingredient.id}
+        onanimationend={() => {
+          if (flashing === ingredient.id) flashing = null;
+        }}
+      >
         <SwipeToAdd
           label={ingredient.name}
           entry={entry?.id ?? null}
@@ -344,6 +400,31 @@
     padding: var(--space-2);
     border-radius: var(--radius-lg);
     background: var(--surface-sunken);
+  }
+
+  /*
+   * "Here I am", once, after a save (DECISIONS 0087).
+   *
+   * A pink ring rather than a tint: the row's cream belongs to `SwipeToAdd`'s
+   * `.front`, which slides, so anything painted on the `<li>` would be a
+   * colour behind a row that can move away from it. An outline is drawn
+   * outside the box and needs no room reserved for it, which is what keeps
+   * the shelf from shifting by two pixels as the flash starts and stops.
+   */
+  li.flashing {
+    border-radius: var(--radius-md);
+    animation: flash var(--duration-flash) var(--ease-out);
+  }
+
+  @keyframes flash {
+    from {
+      outline: var(--photo-ring) solid var(--ring);
+      outline-offset: var(--space-1);
+    }
+    to {
+      outline: var(--photo-ring) solid transparent;
+      outline-offset: var(--space-1);
+    }
   }
 
   li button {

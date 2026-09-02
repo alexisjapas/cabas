@@ -33,10 +33,12 @@ use axum::response::Response;
 use axum::routing::{any, get};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
-use cabas_sync::GroupId;
+use cabas_sync::photo::{self, PHOTO_PROTOCOL, PhotoClientMessage, PhotoName, PhotoServerMessage};
 use cabas_sync::protocol::{self, ClientMessage, PROTOCOL, ServerMessage};
+use cabas_sync::{GroupId, SyncError};
 
 use crate::log::GroupLog;
+use crate::photos::GroupPhotos;
 
 /// Everything the process holds: where the logs live, and which are open.
 /// Groups load lazily on their first `Hello` and stay open — a group is
@@ -55,6 +57,11 @@ struct Group {
     /// Pre-encoded `ServerMessage::Frame`s, fanned out to every connection.
     /// `Bytes` so a frame is encoded once and cloned by reference count.
     forward: broadcast::Sender<Bytes>,
+    /// The photos, beside the log and sharing nothing with it but the
+    /// directory (DECISIONS 0080). A second lock rather than one over both:
+    /// a photo transfer is slow and a tick in a shop is not, and a shared
+    /// lock would put the second behind the first.
+    photos: Mutex<GroupPhotos>,
 }
 
 /// Frames a slow connection may fall behind before it is disconnected and
@@ -101,23 +108,32 @@ impl Relay {
         if let Some(group) = groups.get(&id) {
             return Ok(group.clone());
         }
-        let log = GroupLog::open(self.root.join(id.to_hex()))?;
+        let dir = self.root.join(id.to_hex());
+        let log = GroupLog::open(dir.clone())?;
+        let photos = GroupPhotos::open(GroupPhotos::dir_of(&dir))?;
         let (forward, _) = broadcast::channel(FORWARD_BUFFER);
         let group = Arc::new(Group {
             log: Mutex::new(log),
             forward,
+            photos: Mutex::new(photos),
         });
         groups.insert(id, group.clone());
         Ok(group)
     }
 }
 
-/// The two named routes, and the PWA under everything else.
+/// The three named routes, and the PWA under everything else.
 ///
-/// Order matters only in that `/sync` and `/healthz` are named: the fallback
-/// answers every other path out of the embedded bundle, so a file called
-/// `sync` in `ui/dist` would be unreachable — which is a rule the bundler
-/// cannot break, since it names its own outputs.
+/// Order matters only in that `/sync`, `/photos` and `/healthz` are named: the
+/// fallback answers every other path out of the embedded bundle, so a file
+/// called `sync` in `ui/dist` would be unreachable — which is a rule the
+/// bundler cannot break, since it names its own outputs.
+///
+/// `/photos` is a second socket rather than a second message on the first,
+/// and the reason is what the two carry (DECISIONS 0080): a photo is hundreds
+/// of kilobytes and a list edit is a hundred bytes, so sharing a socket would
+/// put a tick in a shop behind a picture of a jar. It has a protocol byte of
+/// its own too, so a change to one never stops a phone speaking the other.
 ///
 /// `get` rather than `any` for the assets: it covers HEAD, whose body axum
 /// discards for us, and answers 405 to a POST at a static file instead of
@@ -125,6 +141,7 @@ impl Relay {
 pub fn router(relay: Arc<Relay>) -> Router {
     Router::new()
         .route("/sync", any(ws_handler))
+        .route("/photos", any(photo_handler))
         // For the M6 add-on's watchdog; says the process is up, nothing else.
         .route("/healthz", get(|| async { "ok" }))
         .fallback(get(crate::assets::handler))
@@ -133,6 +150,22 @@ pub fn router(relay: Arc<Relay>) -> Router {
 
 async fn ws_handler(ws: WebSocketUpgrade, State(relay): State<Arc<Relay>>) -> Response {
     ws.on_upgrade(move |socket| connection(socket, relay))
+}
+
+/// How large a photo message may be before the socket refuses to assemble it
+/// at all (DECISIONS 0080, 0092).
+///
+/// The policy the protocol deliberately leaves to the relay. Two things a
+/// stranger who guessed a group id can make arbitrarily long — a hello's two
+/// lists and a push's payload — and `GroupPhotos::store` rejecting an oversized
+/// blob is one step too late: by then the bytes are in this process's memory.
+/// Comfortably above [`crate::photos::MAX_PHOTO_BYTES`] plus its postcard
+/// framing, and far below axum's own 64 MB default.
+const MAX_PHOTO_MESSAGE: usize = 2 * 1024 * 1024;
+
+async fn photo_handler(ws: WebSocketUpgrade, State(relay): State<Arc<Relay>>) -> Response {
+    ws.max_message_size(MAX_PHOTO_MESSAGE)
+        .on_upgrade(move |socket| photo_connection(socket, relay))
 }
 
 /// Runs one connection to completion. Exits on close, on error, and on the
@@ -276,6 +309,186 @@ async fn connection(mut socket: WebSocket, relay: Arc<Relay>) {
             }
         }
     }
+}
+
+/// Runs one photo connection to completion (DECISIONS 0080).
+///
+/// A different shape from [`connection`], and the difference is the whole of
+/// the protocol: **there is nothing to replay and nothing to forward.** A
+/// photo library has no order, so there is no cursor and no epoch; the hello
+/// says what this device holds and what it wants, the welcome answers with the
+/// two set differences, and after that every message is one photo, asked for
+/// or offered. Nothing is pushed at a device that did not ask.
+///
+/// The device decides when the conversation is over, because it is the only
+/// party that knows what it still wants — so this loop simply serves requests
+/// until the socket closes.
+async fn photo_connection(mut socket: WebSocket, relay: Arc<Relay>) {
+    let Some((id, have, want)) = expect_photo_hello(&mut socket).await else {
+        return;
+    };
+    let group = match relay.group(id).await {
+        Ok(group) => group,
+        Err(e) => {
+            tracing::error!(error = %e, "group photos failed to open");
+            photo_refuse(&mut socket, "storage failed").await;
+            return;
+        }
+    };
+
+    // The whole reconciliation, in one round trip. Under the lock so a push
+    // landing from the other phone right now is either in `available` or
+    // still to come — never counted and then absent.
+    let welcome = {
+        let photos = group.photos.lock().await;
+        PhotoServerMessage::Welcome {
+            upload: photos.missing(&have),
+            available: photos.present(&want),
+        }
+    };
+    if photo_send(&mut socket, &welcome).await.is_err() {
+        return;
+    }
+
+    let mut ping = tokio::time::interval_at(
+        tokio::time::Instant::now() + relay.ping_every,
+        relay.ping_every,
+    );
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            incoming = socket.recv() => {
+                let bytes = match incoming {
+                    Some(Ok(Message::Binary(bytes))) => bytes,
+                    Some(Ok(Message::Close(_))) | None => return,
+                    Some(Ok(_)) => continue, // text, ping, pong — not ours
+                    Some(Err(_)) => return,
+                };
+                let answer = match photo::decode_client(&bytes) {
+                    Ok(PhotoClientMessage::Push { id, payload }) => {
+                        let mut photos = group.photos.lock().await;
+                        match photos.store(&id, &payload) {
+                            Ok(Ok(())) => PhotoServerMessage::Stored { id },
+                            // A cap, not a fault: against this photo and not
+                            // against the connection, because the rest of the
+                            // queue has nothing wrong with it.
+                            Ok(Err(why)) => PhotoServerMessage::Rejected { id, reason: why.0 },
+                            Err(e) => {
+                                tracing::error!(error = %e, "storing a photo failed");
+                                drop(photos);
+                                photo_refuse(&mut socket, "storage failed").await;
+                                return;
+                            }
+                        }
+                    }
+                    Ok(PhotoClientMessage::Fetch { id }) => {
+                        let read = { group.photos.lock().await.read(&id) };
+                        match read {
+                            Ok(Some(payload)) => PhotoServerMessage::Photo { id, payload },
+                            // Forgotten between the welcome and the fetch: a
+                            // hand runs `forget`, and a hand can run during a
+                            // connection (DECISIONS 0050). Answered rather
+                            // than ignored — a device waiting on bytes that
+                            // will never come stalls its queue for good.
+                            Ok(None) => PhotoServerMessage::Absent { id },
+                            Err(e) => {
+                                tracing::error!(error = %e, "reading a photo failed");
+                                photo_refuse(&mut socket, "storage failed").await;
+                                return;
+                            }
+                        }
+                    }
+                    Ok(PhotoClientMessage::Hello { .. }) => {
+                        photo_refuse(&mut socket, "one hello per connection").await;
+                        return;
+                    }
+                    Err(_) => {
+                        photo_refuse(&mut socket, "unparsable message").await;
+                        return;
+                    }
+                };
+                if photo_send(&mut socket, &answer).await.is_err() {
+                    return;
+                }
+            }
+            _ = ping.tick() => {
+                // The same keepalive as `/sync`, for the same reason and
+                // rather more sharply: a device with nothing to fetch holds
+                // this socket open saying nothing at all, which is exactly
+                // what a proxy in front of us closes (DECISIONS 0051).
+                if socket.send(Message::Ping(Bytes::new())).await.is_err() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// The first message must be a well-formed photo `Hello` speaking this
+/// protocol; anything else is refused by name.
+///
+/// A hostile name never reaches this function: `PhotoName`'s `Deserialize`
+/// checks it, so a `../` in `have` is an unparsable hello (DECISIONS 0080).
+/// That is what makes naming a file after one safe in [`crate::photos`].
+async fn expect_photo_hello(
+    socket: &mut WebSocket,
+) -> Option<(GroupId, Vec<PhotoName>, Vec<PhotoName>)> {
+    let bytes = loop {
+        match socket.recv().await? {
+            Ok(Message::Binary(bytes)) => break bytes,
+            Ok(Message::Close(_)) => return None,
+            Ok(_) => continue,
+            Err(_) => return None,
+        }
+    };
+    match photo::decode_client(&bytes) {
+        Ok(PhotoClientMessage::Hello {
+            protocol: version,
+            group,
+            have,
+            want,
+        }) => {
+            if version != PHOTO_PROTOCOL {
+                photo_refuse(socket, &format!("speak photo protocol {PHOTO_PROTOCOL}")).await;
+                return None;
+            }
+            Some((group, have, want))
+        }
+        Ok(_) => {
+            photo_refuse(socket, "hello first").await;
+            None
+        }
+        Err(SyncError::Wire(why)) => {
+            // Says which rule the hello broke — a name with a slash in it is
+            // the interesting case, and a bare "unparsable" would leave
+            // whoever hits it reading postcard's source.
+            photo_refuse(socket, &format!("unparsable hello: {why}")).await;
+            None
+        }
+        Err(_) => {
+            photo_refuse(socket, "unparsable hello").await;
+            None
+        }
+    }
+}
+
+async fn photo_send(socket: &mut WebSocket, message: &PhotoServerMessage) -> Result<(), ()> {
+    let wire = photo::encode_server(message).map_err(|_| ())?;
+    socket
+        .send(Message::Binary(Bytes::from(wire)))
+        .await
+        .map_err(|_| ())
+}
+
+async fn photo_refuse(socket: &mut WebSocket, reason: &str) {
+    let _ = photo_send(
+        socket,
+        &PhotoServerMessage::Refused {
+            reason: reason.to_string(),
+        },
+    )
+    .await;
 }
 
 /// The first message must be a well-formed `Hello` speaking this protocol;

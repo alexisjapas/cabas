@@ -90,6 +90,18 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0078](#0078--no-field-is-small-enough-for-ios-to-zoom-at) | No field is small enough for iOS to zoom at | Platform |
 | [0079](#0079--asking-for-more-of-a-line-purges-its-tick-and-both-amounts-are-one-control) | Asking for more of a line purges its tick, and both amounts are one control | Product |
 | [0080](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives) | The photo protocol: one round trip, then a conversation the device drives | Sync |
+| [0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces) | The Cabas look: a tablecloth, cream bubbles, and colours that are surfaces | Product |
+| [0082](#0082--the-keeping-badge-goes-under-the-name-never-beside-it) | The keeping badge goes under the name, never beside it | Product |
+| [0083](#0083--the-cloth-scrolls-because-fixed-means-two-different-things) | The cloth scrolls, because `fixed` means two different things | Product |
+| [0084](#0084--one-cloth-per-tab) | One cloth per tab | Product |
+| [0085](#0085--a-quieter-cloth-so-the-titles-on-it-can-be-read) | A quieter cloth, so the titles on it can be read | Product |
+| [0086](#0086--a-dish-is-shown-at-the-size-a-dish-is-chosen-by) | A dish is shown at the size a dish is chosen by | Product |
+| [0087](#0087--a-saved-ingredient-says-where-it-went) | A saved ingredient says where it went | Product |
+| [0088](#0088--the-finished-bar-throws-confetti) | The finished bar throws confetti | Product |
+| [0089](#0089--an-ingredient-is-usually-bought-in-a-unit-as-well-as-an-amount) | An ingredient is usually bought in a unit as well as an amount | Domain |
+| [0090](#0090--a-list-row-is-one-line-and-the-unit-is-behind-the-amount) | A list row is one line, and the unit is behind the amount | Product |
+| [0091](#0091--half-a-recipe-on-the-list) | Half a recipe on the list | Domain |
+| [0092](#0092--photos-travel-the-relay-serves-them-on-photos) | Photos travel: the relay serves them on `/photos` | Sync |
 
 ---
 
@@ -4116,3 +4128,392 @@ come from `labels.ts` for one reason: they are the words on the appliance.
 **Dropping the thumbnail on a line that has a badge**, which makes the row
 whose ingredient is hardest to recognise the one without a picture.
 **Truncating the name.** That is the thing being protected.
+
+## 0083 — The cloth scrolls, because `fixed` means two different things
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** 0081 gave `body` a checked tablecloth and pinned it with
+`background-attachment: fixed`, on the reasoning that squares standing still
+under a moving list read as a cloth the app is laid out on. On the two phones
+this app runs on, that produced two different apps: iOS ignores the property
+on the root element and let the cloth scroll, Android honoured it and held the
+squares still. Neither was wrong; the build was simply not the same on both.
+
+**Decision.** Drop the declaration. The cloth **scrolls with the page**,
+everywhere, which is the browsers' default and the behaviour both phones can
+actually be made to agree on.
+
+**Consequences.** One line removed, and the app looks on Android the way it
+already looked on the phone it was designed against. Nothing else in the
+stylesheet reads the property.
+
+**Rejected.** **Reinstating it with a wrapper element that both engines
+honour**, which is a real technique and would buy back the still cloth — at
+the price of a scrolling container between `<body>` and everything else, and
+that container is a new stacking context underneath the whole `--layer-*`
+scale (0079). A still cloth is worth rather less than a layer scale that means
+what it says. **Leaving it as it was**: two phones, one build, two looks is a
+bug however small it renders.
+
+## 0084 — One cloth per tab
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces),
+[0064](#0064--the-tabs-run-from-the-shelves-to-the-trip),
+[0074](#0074--a-tab-opens-cold)
+
+**Context.** Five tabs, one cloth, and a phone screen with no chrome to speak
+of: the surest signal of which screen you are on is the tab bar at the bottom,
+which is exactly where a thumb covers it. The screens are otherwise built from
+the same handful of shapes — cream cards, lilac tiles, an anis band — on
+purpose.
+
+**Decision.** Each tab gets its **own two check colours**, and nothing else
+moves. `App.svelte` stamps `data-screen` on the root element; `app.css`
+redefines `--check-a` and `--check-b` under `:root[data-screen='…']`. The
+palettes run with the tab order (0064): lilac for Réglages, a leafy green for
+Ingrédients, apricot for Recettes, a pale blue for Liste, pink for Courses.
+
+**Only the checks.** Five palettes is five times the surface area for a
+contrast mistake, and the rule that has to hold on all of them is the one from
+0081 — a heading in the display face sits *on* the cloth. Every pair is at
+least 5.2:1 against `--display-ink`, comfortably past the 3:1 that size and
+weight need, and between 1.37:1 and 1.51:1 against itself so the weave reads
+as a texture rather than as a chequerboard.
+
+**Consequences.** A screen is recognisable before a word on it is read, which
+is worth most in the two places a thumb goes without looking — the list and
+the cart. The attribute follows what is *rendered*, not `Session.screen`:
+pairing and "qui êtes-vous ?" run over a session whose screen is already set,
+and both belong on the plain cloth. Adding a tab means adding a palette, and
+the contrast floor above is what says whether the colour is allowed.
+
+**Rejected.** **Tinting the shell as well** — the apricot header, the tab bar,
+the anis band. That is four more surfaces per palette to check `--display-ink`,
+`--text` and `--on-accent` against, and the band is the one thing on screen
+that must never become hard to read. **Tinting the cards.** Cream *is* the
+thing that carries a word in this system (0081); making it five creams is
+making the rule five rules. **Remembering a per-tab palette as a preference**:
+there is no preference here, only five screens.
+
+## 0085 — A quieter cloth, so the titles on it can be read
+
+**Date** 2026-09-02 · **Status** Accepted · **Supersedes part of**
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** 0081's cloth was `#a9a24a` olive against `#e9c3e4` pink. It also
+established that a heading in the display face at `--text-lg` or bigger may
+sit on the cloth, because at that size and weight AA asks 3:1 rather than
+4.5:1. Measured against the darker check, `--display-ink` came out at
+**3.49:1** — over the line, and only just. An aisle heading crossing from a
+pink square to an olive one visibly dimmed as it went.
+
+**Decision.** Lighten the darker check. The default pair becomes `#c8c47e`
+against `#f3dcef`, and every per-tab palette (0084) is built to the same two
+numbers: **at least 5.2:1** against `--display-ink`, and **no more than about
+1.5:1** against each other.
+
+**One change, two effects, and that is why it is the right one.** Lightening
+the dark square raises the contrast with a dark ink *and* lowers the contrast
+inside the pattern. The cloth stops competing with what is written on it and
+the ink clears AA at body size rather than at heading size — so the exemption
+0081 wrote for large text is no longer load-bearing.
+
+**Consequences.** The look is the same look, a stop quieter. The numbers are
+the acceptance criterion for any future palette: a check pair that fails
+either of them is not a Cabas cloth.
+
+**Rejected.** **Darkening `--display-ink` instead**, which fixes the heading
+and leaves the pattern as loud as it was — the complaint was the pattern.
+**Putting the aisle headings on a surface**, which is the safe answer and
+costs the app the one place the cloth is allowed to show through under words.
+**Reducing `--check-size`**: a finer weave reads as noise at arm's length,
+which is worse than a loud one.
+
+## 0086 — A dish is shown at the size a dish is chosen by
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it),
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** 0062 sized a photo against the row it sits in — 3 rem, round,
+ringed in pink — on the reasoning that recognising a product on a shelf takes
+very little of one. That is true of an ingredient. It is not true of a recipe:
+a photo of a finished dish is not confirming a choice already made, it **is**
+the choice.
+
+**Decision.** A third size, `dish`: `--photo-dish` (5.5 rem), square, at
+`--radius-md` rather than round. Used on the recipe shelf, beside a name at
+`--text-lg`. And the reader's `full` photo widens from 4/3 to **3/2** and
+takes the flat shadow every raised thing in this palette has.
+
+**Square, not round.** A round crop throws away the corners of the one photo
+in the app that is *of* something rather than about it. Round is right for a
+bead beside a name; a dish is a picture.
+
+**Consequences.** The recipe shelf's rows are taller than the ingredient
+shelf's, deliberately: the two answer different questions. The growth goes to
+the picture and not to the padding around it — the row's vertical padding drops
+to `--space-2` to pay for part of it.
+
+**Rejected.** **Growing `--photo-thumb`**, which would have taken the cart line
+with it — the row 0082 has just finished arbitrating for width. **A photo
+above the row rather than beside it**, a card grid: it reads well and it fits
+three recipes on a phone screen instead of six, on a shelf that is scrolled
+looking for a name.
+
+## 0087 — A saved ingredient says where it went
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0073](#0073--an-ingredients-editor-opens-under-the-ingredient),
+[0060](#0060--what-was-searched-for-is-what-gets-created)
+
+**Context.** 0073 put the editor **under the row it belongs to**, which is
+right and has one cost: saving collapses a tall panel, everything below it
+slides up, and the eye is left on whatever now occupies the space the form
+had. A *new* ingredient is worse — it is filed wherever the alphabet puts it,
+which is nowhere near the "Nouveau" button that made it.
+
+**Decision.** On a successful save the shelf **scrolls the row into view and
+flashes it once**: a pink outline that fades over `--duration-flash`.
+
+Three details, each of which is the reason something else was not done. The
+class comes off at the animation's own `animationend`, so the duration lives in
+`app.css` and is read from nowhere else — a token parsed back out of
+`getComputedStyle` is the trap `--press-delay` already carries. It is an
+`outline` and not a background, because the row's cream belongs to
+`SwipeToAdd`'s sliding front and an outline needs no room reserved for it. And
+if the saved ingredient does not match the shelf's current search, **the search
+is cleared** — there is otherwise no row to scroll to, and somebody who has
+just created a thing wants to see it.
+
+**Consequences.** `Ingredients.svelte` gains one piece of state and one
+`scrollIntoView`, which honours `prefers-reduced-motion` by asking for `auto`
+instead of `smooth`. Under reduced motion the flash is 1 ms rather than 0 —
+long enough for `animationend` to be guaranteed, which is what takes the class
+off again.
+
+**Rejected.** **A toast**: it says the same thing somewhere else on the screen,
+which is the opposite of pointing at the row. **Keeping the editor open after
+a save**, which turns "Enregistrer" into a button that does nothing visible.
+**Sorting the just-saved row to the top**, which is a lie about the shelf's
+order that survives until the next render.
+
+## 0088 — The finished bar throws confetti
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0023](#0023--the-staple-flag-and-its-derived-auto-check),
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** The cart's progress bar is the one thing on that screen a person
+reads without stopping to look. It reaches the end and nothing happens.
+
+**Decision.** When the last line is ticked, a burst of confetti falls from the
+bar, and the bar itself turns `--done`.
+
+**The moment is the bar filling, not "Terminer les courses".** Finishing
+empties the cart, so by then there is no bar to celebrate over. It fires on the
+**transition** into a full bar rather than on the state, so arriving at the tab
+with everything already ticked throws nothing at somebody who is merely passing
+through.
+
+**Consequences.** `Confetti.svelte` is two dozen absolutely positioned spans
+that exist for a second and a half. It is `position: fixed` and its origin is
+measured by the caller, and that is not a detail: a box long enough to fall
+through contributes to the page's scrollable overflow, so an absolutely
+positioned one would grow a scrollbar for the duration of the burst and lose it
+again. It is `pointer-events: none`, because somebody who has just ticked the
+last line is reaching for the button underneath. And it counts `animationend`s
+rather than setting a timer, for the reason 0087 gives.
+
+Under `prefers-reduced-motion` the pieces travel `0px` in 1 ms — the burst
+happens and is over, and the colour change is what is left saying it.
+
+**Rejected.** **A confetti library**: two dozen spans and a keyframe is less
+code than the import. **Firing on `FinishShopping`** — see above. **A sound.**
+**Celebrating a *recipe* completing**, which happens several times a trip and
+would make the gesture worthless by the third one.
+
+## 0089 — An ingredient is usually bought in a unit as well as an amount
+
+**Date** 2026-09-02 · **Status** Accepted · **Supersedes part of**
+[0066](#0066--an-ingredient-knows-how-much-of-it-one-buys),
+[0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount)
+
+**Context.** 0066 gave an ingredient a `default_quantity`, which is a
+`Quantity` and has therefore carried a unit since the day it was written. The
+*form* threw half of it away: an amount with no number meant "nobody has said",
+and the rule was applied to the pair — so somebody who opened the dropdown,
+chose "kg" and saved found "unité" waiting for them the next time. The stored
+value was `None` and the app was, strictly speaking, behaving as documented.
+
+**Decision.** The unit is an answer on its own. An empty amount with a unit
+that is **not** `piece` means **one of that unit**; only an empty amount with
+the dropdown still on `piece` — where it starts — is "nobody has said".
+
+**And the answer is used where it was being ignored.** Choosing an ingredient
+in the list's own add form now fills in both fields from its usual quantity.
+The swipe used it and the long press used it; the one place where somebody
+asked for an ingredient *by hand* opened on "g" whatever the shelf said.
+
+**Consequences.** The rule is one function in `IngredientForm`, next to the
+field it governs, and the hint under that field states it. `piece` remains the
+one unit that cannot be chosen "meaninglessly", which is the price of having a
+default in the dropdown at all — an ingredient bought by the piece and sized at
+one is exactly what `shopping_quantity` already substitutes.
+
+**Rejected.** **Storing a unit without an amount** in the domain: it is a
+second shape for the same field and a `Quantity` already holds both. **Making
+the dropdown start empty**, which turns a valid form into an invalid one for
+every ingredient nobody has sized. **Reading the unit as an answer even when it
+is `piece`**, which would write "1 pièce" onto every ingredient somebody
+merely opened.
+
+## 0090 — A list row is one line, and the unit is behind the amount
+
+**Date** 2026-09-02 · **Status** Accepted · **Supersedes part of**
+[0079](#0079--asking-for-more-of-a-line-purges-its-tick-and-both-amounts-are-one-control),
+[0077](#0077--the-list-is-where-an-amount-is-changed-too)
+
+**Context.** 0077 and 0079 put a full control on every list row — "−", the
+amount, "+" — and made it identical on both kinds of line. It works, and it
+costs a third of a card's height to say "500 g": three separately bordered
+pills on a row of their own, with the attribution and the progress on a third
+row below them.
+
+**Decision.** **One pink pill holding three buttons**, and it shares its line
+with the meta.
+
+The pill is the shape `AmountDialog` and `RecipeReader` already use for the
+same question, so this is one control drawn once rather than three drawn side
+by side: six borders became one, and the buttons inside it are the size they
+were — `--tapsize`, which 0079 raised them to and which nothing here lowers.
+The amount in the middle is underlined, because it is a door and something has
+to say so.
+
+**And that door edits the unit as well as the number**, which is the half that
+was missing rather than merely large: a line that can only change its number is
+a line somebody typed "500" into meaning grams and got five tomatoes. The
+command already took both (`SetEntryQuantity`) and the panel already had the
+field; what it did not have was a label saying so, an accessible name saying
+so, or a test. All three exist now, and the panel's legend reads "Quantité et
+unité".
+
+**Consequences.** A row is two lines instead of three. The meta ellipsises
+rather than pushing the control off a narrow phone — it is the secondary half
+of the row, and the amount is not. A recipe's "écrite pour 4" moves into the
+meta, where it reads as the aside it is.
+
+**Rejected.** **Shrinking the buttons**, which is what 0079 explicitly
+reversed and for a reason that has not changed. **Putting the control on the
+name's line**: about 180 px of controls against a 390 px phone leaves a name
+that ellipsises at three words. **A unit dropdown on the row itself**, which
+is more space for the thing this entry exists to make smaller.
+
+## 0091 — Half a recipe on the list
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0022](#0022--instruction-steps-are-segments-referencing-ingredient-usages),
+[0020](#0020--list-entries-vanish-on-completion-purge-is-deferred),
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items)
+
+**Context.** Cooking something you already have half the ingredients for is
+the ordinary case, and the app had two answers, both bad: put the whole recipe
+on the list and untick the four things you own in the shop, or add the missing
+ones as bare ingredients and lose the recipe — with it the scaling, the
+progress, and any way of saying "we are eight tonight".
+
+**Decision.** A recipe entry may name **which of the recipe's own lines it
+asks for**. `ListItem::Recipe` gains `only: Option<BTreeSet<UsageId>>`; `None`
+is the whole recipe and is what every gesture in the app produces. The entry
+stays a recipe entry in every other respect — it is measured in people, it
+rescales, and **rescaling scales the lines it kept and no others**, which is
+the whole reason this is a field on the entry rather than a handful of bare
+ingredients.
+
+**The ids name root components**, an ingredient line or a sub-recipe line, and
+nothing deeper: a chosen sub-recipe expands whole. "I already have the pastry"
+is a statement about *this* recipe's list, and a set of ids reaching into a
+sub-recipe would be a statement about somebody else's. Asking for half a
+sub-recipe is done by opening it.
+
+**Two things are refused and one is tolerated.** An **empty** selection is
+refused: a row that asks for nothing can never complete, so it never leaves the
+list (0020), and what the person meant is to remove it. An id the recipe
+**does not have** is refused at the command, where there is somebody looking at
+the recipe to tell. But an id that goes stale *later* — the other device
+deleted the line — contributes nothing and is kept: the line may come back, and
+dropping it on merge would be deciding for them.
+
+**Consequences.** `expand_only` is the domain's one new function and the
+restriction lives there, not in the cart. `store` gains an additive `only` key,
+so `SCHEMA_VERSION` does not move — an older build ignores it and buys the
+whole recipe, which is a spare bag of flour rather than a cake with none. The
+reader's ingredient list becomes a list of toggles, and the primary button says
+"Ajouter le reste à la liste" while some of it is already asked for.
+
+**Rejected.** **A pantry**, which is what "I already have it" really asks for
+and which 0018 cut on purpose — this is per-entry and forgotten when the entry
+goes, which is exactly the difference. **Ticking the lines in the cart
+instead**: the overlay is per *ingredient* and group-wide (0019), so ticking
+the flour would tick it for every recipe on the list and for the other person.
+**Adding the chosen lines as bare ingredients**, which loses the recipe and its
+scaling — the thing that made this worth a domain change.
+
+## 0092 — Photos travel: the relay serves them on `/photos`
+
+**Date** 2026-09-02 · **Status** Accepted · **Relates to**
+[0062](#0062--a-photo-is-a-blob-beside-the-document-never-in-it),
+[0080](#0080--the-photo-protocol-one-round-trip-then-a-conversation-the-device-drives),
+[0009](#0009--zero-knowledge-relay-with-app-layer-e2ee)
+
+**Context.** 0062 put photos beside the document and 0080 specified the
+protocol that moves them, sans-IO on both sides. Nothing spoke it: a photo
+taken on one phone was *named* on the other and absent there, for good. This is
+the half that makes the feature exist.
+
+**Decision.** The relay serves `/photos`, and the PWA drives it.
+
+**The relay side** is `crates/relay/src/photos.rs` and one connection handler.
+A group's photos are a directory beside its log — one file per `PhotoName`,
+holding the sealed bytes verbatim. There is no sequence, no epoch and no
+replay, because a photo library has no order: the hello says what a device
+holds and what it wants, the welcome answers with the two set differences, and
+after that every message carries one photo, asked for or offered. Two caps, and
+neither closes a socket: one photo may not exceed `MAX_PHOTO_BYTES`, one group
+may not exceed `MAX_GROUP_BYTES`, and both answer `Rejected` against the photo
+so the rest of the queue still goes.
+
+**Naming a file after something that arrived over a socket** is the dangerous
+part, and it is handled by the type: a `PhotoName` cannot be decoded unless it
+is ASCII letters, digits, `_` and `-`, so a `../` is a wire error before any
+relay code sees it (0080).
+
+**The device side** is `PhotoTransfer` in `ui/src/lib/photos.svelte.ts`, a
+second engine beside the sync one. It opens on foreground, after a photo is
+taken, after an import, and **after every merged frame** — which is the moment
+this device learns the names of photos the other phone took. It closes when the
+queues drain.
+
+**Consequences.** It is a **second socket**, and that is the point rather than
+an implementation detail: a photo is hundreds of kilobytes and a list edit is a
+hundred bytes, so one socket would put a tick in a shop behind a picture of a
+jar (Rule 6). Nothing is persisted between connections — the next hello
+re-derives the work from what is actually on disk at both ends, so a transfer
+cut short costs one round trip.
+
+A photo landing bumps a counter every `<Photo>` reads, which is the whole
+mechanism by which a placeholder becomes a picture with nothing else on the
+page told about it. And `Photos::forget_unreferenced` stops being a deletion:
+the relay now holds a copy, which is the condition 0062 wrote it against.
+
+**Rejected.** **Serving photos over HTTP** with the group id in the path,
+which is one cacheable URL away from a photo leaving the origin, and which
+gives the relay a second access-control surface where it currently has none.
+**Streaming the welcome's answer**: a phone that has just joined would be
+handed the entire library at once with no way to slow it down. **Sweeping
+unreferenced photos on the relay**, which is 0050's argument exactly — the
+relay cannot tell an abandoned photo from a quiet one, and the log is the
+recovery point if every device is lost.

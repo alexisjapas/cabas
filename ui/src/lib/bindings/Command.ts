@@ -13,7 +13,18 @@ export type Command = { "command": "save_ingredient", ingredient: IngredientInpu
  * (Rule 9). Cooking it for a different number tonight is what the
  * list's own "− 4 pers. +" is for.
  */
-servings: number | null, } | { "command": "add_ingredient_to_list", ingredient: string, 
+servings: number | null, 
+/**
+ * Which of the recipe's own lines to ask for; absent is all of them
+ * (DECISIONS 0091).
+ *
+ * The ids are the recipe's root components — an ingredient line or a
+ * sub-recipe line — and they are checked against the recipe as it
+ * stands: naming a line it does not have is refused here, where there
+ * is somebody to tell, rather than silently expanding to less than
+ * was asked for.
+ */
+only: Array<string> | null, } | { "command": "add_ingredient_to_list", ingredient: string, 
 /**
  * Absent means "as much of it as one usually buys": the
  * ingredient's own default quantity, or one piece if it has none
@@ -22,4 +33,4 @@ servings: number | null, } | { "command": "add_ingredient_to_list", ingredient: 
  * business logic rather than something the frontend should hold
  * (Rule 9).
  */
-quantity: QuantityInput | null, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "set_entry_quantity", entry: string, quantity: QuantityInput, } | { "command": "nudge_list_entry", entry: string, steps: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, } | { "command": "choose_user", user: string, } | { "command": "create_user", name: string, } | { "command": "name_device", name: string, };
+quantity: QuantityInput | null, } | { "command": "set_entry_servings", entry: string, servings: number, } | { "command": "set_entry_components", entry: string, only: Array<string> | null, } | { "command": "set_entry_quantity", entry: string, quantity: QuantityInput, } | { "command": "nudge_list_entry", entry: string, steps: number, } | { "command": "remove_list_entry", entry: string, } | { "command": "toggle_cart_item", ingredient: string, } | { "command": "finish_shopping" } | { "command": "open_recipe", recipe: string, servings: number | null, } | { "command": "close_recipe" } | { "command": "rename_user", name: string, } | { "command": "choose_user", user: string, } | { "command": "create_user", name: string, } | { "command": "name_device", name: string, };

@@ -385,10 +385,30 @@ pub(crate) fn list_entry_value(entry: &ListEntry) -> LoroValue {
         (k::ADDED_AT, codec::timestamp_value(entry.added_at)),
     ];
     let specific = match &entry.item {
-        ListItem::Recipe { recipe, servings } => vec![
+        ListItem::Recipe {
+            recipe,
+            servings,
+            only,
+        } => vec![
             (k::KIND, text(k::KIND_RECIPE)),
             (k::RECIPE, text(recipe.as_str())),
             (k::SERVINGS, LoroValue::I64(i64::from(servings.get()))),
+            // A list, because that is the only sequence a `LoroValue` has;
+            // the domain holds a set and sorts it, so the two devices that
+            // chose the same lines write the same value (DECISIONS 0091).
+            (
+                k::ONLY,
+                match only {
+                    Some(chosen) => LoroValue::List(
+                        chosen
+                            .iter()
+                            .map(|usage| text(usage.as_str()))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    ),
+                    None => LoroValue::Null,
+                },
+            ),
         ],
         ListItem::Ingredient {
             ingredient,
@@ -411,6 +431,17 @@ pub(crate) fn read_list_entry(value: &LoroValue, path: &str) -> Result<ListEntry
         k::KIND_RECIPE => ListItem::Recipe {
             recipe: RecipeId::from_raw(codec::string(codec::field(map, k::RECIPE, path)?, path)?),
             servings: codec::servings(codec::field(map, k::SERVINGS, path)?, path)?,
+            // Absent on everything written before DECISIONS 0091, and on
+            // every entry that asks for the whole recipe since.
+            only: match codec::optional(map, k::ONLY) {
+                Some(v) => Some(
+                    codec::list(v, path)?
+                        .iter()
+                        .map(|usage| codec::string(usage, path).map(UsageId::from_raw))
+                        .collect::<Result<_>>()?,
+                ),
+                None => None,
+            },
         },
         k::KIND_INGREDIENT => ListItem::Ingredient {
             ingredient: IngredientId::from_raw(codec::string(

@@ -11,7 +11,22 @@ servings: number,
  * What the recipe itself is written for, so the UI can show that the
  * two differ.
  */
-written_for: number, } | { "kind": "ingredient", ingredient: string, name: string, quantity: QuantityView, 
+written_for: number, 
+/**
+ * The recipe's own lines this entry asks for, when it asks for only
+ * some of them (DECISIONS 0091). `None` is the whole recipe.
+ *
+ * **Resolved**, not a copy of what is stored: an id naming a line the
+ * recipe no longer has is left out, so a screen can count these
+ * against `components` and be right. The document keeps the stale id
+ * — the line may come back — and this is the reading of it.
+ */
+only: Array<string> | null, 
+/**
+ * How many lines the recipe has now, so a row can say "3 of 7"
+ * without holding a copy of the recipe.
+ */
+components: number, } | { "kind": "ingredient", ingredient: string, name: string, quantity: QuantityView, 
 /**
  * The same amount, losslessly, in the shape the field that edits it
  * hands back (DECISIONS 0072).

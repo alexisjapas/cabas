@@ -40,13 +40,18 @@ and never inside it**, because every save rewrites the whole document and a
 photo library in it turns a tick in a shop into a multi-megabyte write
 (DECISIONS 0062, which carries the measurement). Half one is in **0.5.0** —
 taken, stored, displayed on one device; **0.6.0 adds importing one from the
-device** as well as taking it (0065). **Half two is under way and is entirely
-client-side so far**: the photo protocol (`crates/sync/src/photo.rs`,
+device** as well as taking it (0065). **Half two was client-side first**: the
+photo protocol (`crates/sync/src/photo.rs`,
 DECISIONS 0080) and the client that speaks it — `PhotoSession` in
 `cabas-sync`, sans-IO, and `PhotoSync` in `app::photos`, which is that client
-met with this device's store. Nothing calls either, because nothing listens
-on `/photos` yet; the relay is the next piece, and until it exists a photo
-taken on one phone is named on the other and absent there.
+met with this device's store. **0.11.0 closes it** (0092): the relay serves
+`/photos` out of a per-group directory of sealed blobs beside the log
+(`crates/relay/src/photos.rs`), and `PhotoTransfer` in
+`ui/src/lib/photos.svelte.ts` drives it — a **second socket** beside the sync
+one, because a photo is hundreds of kilobytes and a tick in a shop must not
+queue behind it. A photo taken on one phone is on the other; `ui-test` asserts
+it where it used to assert the opposite. What is left of M10 is local cleanup
+and persisted storage, neither of which gates the exit criterion.
 
 **0.6.0 also changed four things about the app's own shape**, none of them on
 a milestone. **A family is a group** (0063) — in the code, in the relay's
@@ -153,13 +158,51 @@ and a number behind it: **the keeping badge goes under the name on a cart
 line, never beside it** (0082), because beside it the name is left about 43 px
 on a 390 px phone.
 
+
+**0.11.0 is one session of eleven requests**, and every one of them has an
+entry. Three are structural and the rest are the shape of the app:
+
+- **Photos reach the other phone** (0092) — M10's half two; see above.
+- **Half a recipe goes on the list** (0091). `ListItem::Recipe` gains
+  `only: Option<BTreeSet<UsageId>>` — `None` is the whole recipe and is what
+  every gesture produces. The entry stays a *recipe* entry: measured in
+  people, and **rescaling scales the lines it kept and no others**, which is
+  the whole reason it is a field on the entry rather than a handful of bare
+  ingredients. `expand_only` is the domain's one new function; the store's
+  `only` key is additive, so `SCHEMA_VERSION` does not move and an older
+  build buys the whole recipe. The reader's ingredient list is a list of
+  toggles, and its primary button says "Ajouter le reste à la liste" while
+  some of it is already asked for.
+- **An ingredient is usually bought in a unit as well as an amount** (0089),
+  which it always was in the document and was not in the form: a unit chosen
+  over an empty amount used to be discarded and now means one of it. And the
+  list's own add form seeds both fields from it, which is the one place an
+  ingredient was asked for by hand and its usual quantity was ignored.
+- **A list row is one line, and the unit is behind the amount** (0090): one
+  pink pill holding "−", the amount and "+", sharing its line with the meta.
+  Three bordered pills on a row of their own cost a third of a card to say
+  "500 g". The amount is the door to the exact amount **and its unit** — the
+  command always took both, but nothing said so.
+- **One cloth per tab** (0084), **quieter than it was** (0085), and **it
+  scrolls on Android too** (0083). The last is one line of CSS that iOS
+  ignores and Android honours, so the same build had a moving cloth on one
+  phone and a still one on the other. Each palette clears 5.2:1 against
+  `--display-ink` and stays under about 1.5:1 against itself — the two
+  numbers any new cloth has to meet.
+- **A dish is shown at the size a dish is chosen by** (0086): a third photo
+  size, `--photo-dish`, square rather than round, on the recipe shelf.
+- **A saved ingredient says where it went** (0087): the shelf scrolls to it
+  and flashes it once, because the editor opens under its row and saving
+  collapses a tall panel.
+- **The finished bar throws confetti** (0088) — on the *transition* into a
+  full bar, never on arriving at a tab where it already is.
 **M9 — history and statistics — is scheduled
 before M7**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.
 
-`crates/domain` holds the product logic as pure functions (83 tests);
+`crates/domain` holds the product logic as pure functions (90 tests);
 `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB — **plus `PhotoStore`, a second trait over one record per photo**,
@@ -173,12 +216,15 @@ on `CabasApp`) **and the library's file form** (`app::transfer`, and
 (phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
 `crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**. 272 native tests plus 20 in
-a real browser — 9 over IndexedDB and the photo store, 11 through the app —
+its own binary**, **and brokering photos on `/photos`** (0092). 290 native
+tests plus 22 in
+a real browser — 9 over IndexedDB and the photo store, 13 through the app —
 and all of them run
-in CI. The convergence test (`crates/relay/tests/convergence.rs`) is M5's
-exit criterion at replica level: two devices never online together converge
-through the relay, sealed end to end. The phones then answered for themselves.
+in CI. Two tests at replica level carry the two milestones:
+`crates/relay/tests/convergence.rs` is M5's — two devices never online
+together converge through the relay, sealed end to end — and
+`crates/relay/tests/photos.rs` is M10's, the same two devices ending up
+holding each other's pictures. The phones then answered for themselves.
 
 `ui/` is a working Svelte 5 app: identity, the cart, the list, the recipes
 (list, reader and editor), the ingredient library and settings, driven end to
@@ -286,10 +332,11 @@ does.
 
 The last command regenerates `ui/src/lib/bindings/*.ts` from the Rust types.
 It is not part of the everyday loop, but **CI fails if its output is stale**,
-so run it after touching **any of the six files that carry `ts(export)`** —
-`command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs` and
-`transfer.rs`. `grep -rl 'ts(export)' crates/app/src` is the authoritative
-list.
+so run it after touching **any of the seven files that carry `ts(export)`** —
+`command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs`,
+`transfer.rs` and `photos.rs` (which joined the list in 0092, for
+`PhotoEvent` and `PhotoStatus`). `grep -rl 'ts(export)' crates/app/src` is
+the authoritative list.
 
 CI runs all of these **inside the flake** — deliberately, because Rule 13
 makes nixpkgs authoritative for the `wasm-bindgen-cli` version, and a CI with
@@ -356,7 +403,7 @@ Every crate holds code since M5's first half. `crates/sync` — read
 | `protocol` | `ClientMessage`/`ServerMessage`, `FrameKind`, the postcard codec |
 | `photo` | The photo protocol (0080) — `PhotoName`, a `Hello` carrying what this device has and wants, a `Welcome` answering with what to upload and what is available, one sealed photo per message after that. Its own version byte, on `/photos` |
 | `session` | `Session` — the sans-IO client: cursor, epoch reset, seal/push, one `Event` per wire message |
-| `photo_session` | `PhotoSession` — the sans-IO photo client: the hello it offers, the two queues the welcome fills, one `PhotoEvent` per wire message. Stores nothing it did not ask for (0080) |
+| `photo_session` | `PhotoSession` — the sans-IO photo client: the hello it offers, the two queues the welcome fills, one `PhotoEvent` per wire message. Stores nothing it did not ask for (0080). Spoken to by `crates/relay` since 0092 |
 | `error` | `SyncError` — no vendor type crosses the boundary |
 
 `crates/relay` (binary + lib, never in `wasm-check`): `log.rs` is one
@@ -367,7 +414,15 @@ replay under the same lock as the subscription, then live forwarding, plus a
 (DECISIONS 0051). A device's cursor is honoured only when it names the log's
 epoch **and** points inside it — the second half is what a restored backup
 needs (0053). It depends on `cabas-sync` for the protocol types and never
-for a key.
+for a key. `photos.rs` is the other half of a group's directory: one file per
+`PhotoName` holding sealed bytes, an index of names and sizes read once at
+open, and two caps that reject **a photo** rather than the connection
+(DECISIONS 0092). It is not a log — no sequence, no epoch, no replay — and
+`server.rs`'s `/photos` handler is correspondingly short: a hello, a welcome
+carrying two set differences, then one photo per message in whichever
+direction asked for it. Naming a file after something off a socket is safe
+because a `PhotoName` cannot decode unless it is ASCII letters, digits, `_`
+and `-` (0080).
 `assets.rs` is the static half — the PWA, served from the same origin as
 `/sync`, out of a table `build.rs` wrote by walking `ui/dist` (DECISIONS
 0048). It shares nothing with the sync side but the port. `admin.rs` is the
@@ -390,9 +445,9 @@ clippy --workspace` working in a fresh checkout; the release image sets
 | `ingredient` | `Ingredient`, `Aisle` (0069), `Keeping` (0070), cross-dimension conversion, `resolve`, `shopping_quantity` (0066) |
 | `shop` | `Shop` — a name and nothing else; `resolve` over it, and `sold_at`, the one place "an unplaced ingredient is on every trip" is written (0071). Named `Shop` and not `Store` because `cabas-store` is a crate |
 | `recipe` | `Recipe`, usages, `Segment` steps, `dangling_refs`, and `matches` / `resolve` — a recipe recognised by its name, which is what an imported file needs (0076) |
-| `expand` | DAG flattening, cycle detection, `MAX_DEPTH` |
+| `expand` | DAG flattening, cycle detection, `MAX_DEPTH` — and `expand_only`, which restricts a list entry to some of a recipe's own lines (0091) |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
-| `list` | `ShoppingList`, `ListEntry`, `add`/`update` — both purge the overlay (0019, 0079) — and what one notch of the swipe is worth: `nudge_quantity` / `nudge_servings` (0072) |
+| `list` | `ShoppingList`, `ListEntry`, `add`/`update` — both purge the overlay (0019, 0079) — what one notch of the swipe is worth (`nudge_quantity` / `nudge_servings`, 0072), and `ListItem::Recipe::only`, the lines a half-added recipe asks for (0091) |
 | `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
 | `people` | `User`, `Device` — attribution names, not access control |
 | `event` | `Event`, `EventLog` — deletions and edits, capped |
@@ -406,7 +461,7 @@ one file and a compatibility surface (DECISIONS 0029):
 
 | Module | Holds |
 |---|---|
-| `schema` | Container and key names, `SCHEMA_VERSION`, the layout diagram — plus `shops`, additive like every key since (0071) |
+| `schema` | Container and key names, `SCHEMA_VERSION`, the layout diagram — plus `shops` (0071) and a list entry's `only` (0091), both additive like every key since |
 | `codec` | `LoroValue` ⇄ primitives: rationals, units, aisles, timestamps |
 | `mapping` | Domain struct ⇄ document, one pair per entity |
 | `document` | `Document`: lifecycle, reads, writes, snapshots, sync bytes |
@@ -428,7 +483,7 @@ one file and a compatibility surface (DECISIONS 0029):
 | `tags` | The enum spellings the frontend sees — its own contract, not the schema's |
 | `platform` | `Platform` (clock + randomness), `SystemPlatform`, `Identity` — whose user half is `None` until somebody is chosen (0068) |
 | `sync` | `SyncSession` — `cabas_sync`'s sans-IO client met with the replica: merge inside, seal outside, one `SyncEvent` per wire message |
-| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, `restore` one under an id minted elsewhere, and the two diffs a prefetch and a sweep need (0062, 0076) — plus `PhotoSync`, that store met with `cabas_sync`'s `PhotoSession` (0080) |
+| `photos` | `Photos` — the bytes the document only names: mint an id, store, read, `restore` one under an id minted elsewhere, and the two diffs a prefetch and a sweep need (0062, 0076) — plus `PhotoSync`, that store met with `cabas_sync`'s `PhotoSession`, which the PWA drives over `/photos` (0080, 0092) |
 | `transfer` | `LibraryFile` — the library as a JSON file of the app's own inputs, the reference rewriting an import needs, and `ImportReport` (0076) |
 | `wasm` | `CabasApp` — the PWA binding, and nothing but translation |
 
@@ -458,6 +513,7 @@ file:
 | `lib/core.ts` | The typed edge — the only place a cast meets the wasm `any`, plus the identity in `localStorage` (0031) |
 | `lib/session.svelte.ts` | The one `$state.raw`, `run(command)` — which also writes back the identity for the commands `MOVES_IDENTITY` names (0068) — the debounced flush, the persisted screen and its scroll offset |
 | `lib/sync.svelte.ts` | The socket and its policy: connect on foreground, backoff, push on change, the cursor and shadow in `localStorage` (0043) |
+| `lib/photos.svelte.ts` | The **second** socket, on `/photos`: opens when there may be photos to move, drains its queues one message at a time, closes when done, and bumps a counter every `<Photo>` reads (0092). Nothing is persisted between connections |
 | `lib/list.ts` | What the list already holds, keyed by the ingredient or recipe it came from — the whole entry since 0072, because a swipeable shelf now asks how much as well as whether |
 | `lib/qr.ts` | A QR encoder, hand-written and fixed to version 6-L — the one payload is a 12-word phrase (0047) |
 | `lib/photo.ts` | A picked file into the JPEG the core takes: EXIF orientation, downscale, encode until it fits under `maxPhotoBytes()` (0062) |
@@ -465,7 +521,7 @@ file:
 | `lib/labels.ts` | The French for every tag the core sends, and nothing else (0035) |
 | `lib/format.ts` | Rendered number meets word: decimal comma, "≈", plurals, relative time, French name order — and `fold`/`matches`, which every search filters through (0058) |
 | `app.css` | The tokens, `--layer-*` among them, and the two global classes `.display` and `.bubble` (0081). No component writes a literal value, a `z-index` included (Rule 10, 0079) |
-| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one, `PhotoField.svelte` takes one and imports one (0062, 0065); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, whichever kind of line it is, which is the third screen that opens it (0077, 0079); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
+| `screens/`, `components/` | The screens, and what more than one of them needs. `Pairing.svelte` is used twice — the first launch, and Settings on a device that already runs; `People.svelte` is the roster and the only place key rotation is offered; `Events.svelte` is the log; `SearchPicker.svelte` is how anything is chosen out of a library and `SearchField.svelte` how a shelf is narrowed (0058); `IngredientForm.svelte` is the library form and `IngredientPicker.svelte` is that form behind a picker's last row, used wherever an ingredient is chosen (0056); `Photo.svelte` shows one — at `thumb`, `dish` or `full` (0086) — and re-reads it when the transfer lands one (0092), `PhotoField.svelte` takes one and imports one (0062, 0065); `Confetti.svelte` is one burst over the cart's progress bar and nothing else (0088); `SwipeToAdd.svelte` wraps a shelf row, puts it on the list and goes on counting it (0067, 0072) with `AmountDialog.svelte` behind its long press — and behind the amount on a `screens/List.svelte` row too, whichever kind of line it is, which is the third screen that opens it (0077, 0079); `ShopPicker.svelte` is where a shop is chosen and born (0071) and `screens/Shops.svelte` is where one is renamed or forgotten; `Identify.svelte` is "qui êtes-vous ?" — the first launch and Settings' user switch, one screen (0068); `screens/Transfer.svelte` is `Réglages · Données`, the whole of export and import, and it holds the delivery of the file and nothing about its shape (0076) |
 | `sw.js` | The service worker: precache, one versioned cache, cache-first (0038) |
 | `vite.config.ts` | The build, and the plugin that writes the precache list into the worker — plus `PUBLIC_SHELL`, the handful of `public/` files named by hand because the plugin reads the bundle and never the disk (0081) |
 | `public/` | Served verbatim: the manifest, the favicon, the icons — and `fonts/`, the two OFL faces `app.css` declares (0081) |
@@ -679,9 +735,9 @@ Key domain shapes, all settled in DECISIONS:
   `render` rounds when a value has no tidy form, and a form that displays a
   rounded amount writes it back on the next save.
 - **The `.ts` files under `ui/src/lib/bindings/` are generated and CI
-  checks them.** Touching any of the six files carrying `ts(export)` —
-  `command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs`, `transfer.rs`
-  — means rerunning the export command above. **A doc comment counts**:
+  checks them.** Touching any of the seven files carrying `ts(export)` —
+  `command.rs`, `view.rs`, `tags.rs`, `platform.rs`, `sync.rs`,
+  `transfer.rs`, `photos.rs` — means rerunning the export command above. **A doc comment counts**:
   rustdoc prose
   is copied into the generated `.ts`, so reflowing a paragraph over a struct
   that exports is enough to fail the gate while every test still passes. That
@@ -880,10 +936,55 @@ Key domain shapes, all settled in DECISIONS:
   `format('woff2-variations')` for the variable Quicksand: an unknown format
   string makes the browser skip the source and fall back to the system face,
   silently, which is the exact failure self-hosting exists to prevent.
-- **There is one theme.** `color-scheme: light`, no `prefers-color-scheme: dark`
-  block, and nothing in the app may reintroduce one piecemeal: the cloth has no
-  night version and a half-inverted palette is worse than none. A real dark
-  theme is a new palette and its own DECISIONS entry.
+- **There is one theme, and five cloths.** `color-scheme: light`, no
+  `prefers-color-scheme: dark` block, and nothing may reintroduce one
+  piecemeal: the cloth has no night version and a half-inverted palette is
+  worse than none. What *does* change per screen is `--check-a` and
+  `--check-b`, and nothing else (DECISIONS 0084): `App.svelte` stamps
+  `data-screen` on the root element and `app.css` redefines the two under
+  `:root[data-screen='…']`. A new tab needs a new palette, and it has to clear
+  **5.2:1 against `--display-ink`** — because a heading in the display face
+  sits directly on the cloth — while staying under about **1.5:1 against
+  itself**, or the weave reads as a chequerboard rather than a texture (0085).
+- **`background-attachment: fixed` on the root element is two behaviours, not
+  one.** iOS ignores it and Android honours it, so the cloth scrolled on one
+  phone and stood still on the other from the same build (DECISIONS 0083). It
+  is gone; anything that wants a still background needs a scrolling container,
+  and a scrolling container between `<body>` and the app makes the whole
+  `--layer-*` scale a lie.
+- **A photo travels on its own socket, and nothing about it is persisted.**
+  `/photos` shares the origin and the group key with `/sync` and nothing else
+  — no cursor, no epoch, no sequence (DECISIONS 0080, 0092). The consequence
+  worth knowing is that a transfer cut short costs one round trip and never a
+  photo: the next hello re-derives the work from what is on disk at both ends.
+  The consequence worth watching is the other one — **`photoHandle` and
+  `photoPush` take the session out of the core's cell while they await**, so
+  two of them in flight at once find it empty. `PhotoTransfer` chains every
+  core call for that reason, and the error says so if the chain is ever
+  bypassed.
+- **A photo arriving is not a state change anything on screen is watching.**
+  It is written into a store beside the document, so no `StateView` moves and
+  no component re-renders. `PhotoTransfer.generation` is what closes that
+  loop: `Photo.svelte`'s effect reads it, so bumping it re-reads every photo
+  on screen and a placeholder becomes a picture. Anything else that shows
+  photo bytes has to read it too.
+- **The relay's photo cap has to bite before the bytes are in memory.**
+  `GroupPhotos::store` refusing an oversized blob is one step too late, so
+  `/photos` sets `max_message_size` on the upgrade (0092). A hello's two lists
+  and a push's payload are the two unbounded things a stranger who guessed a
+  group id can send.
+- **Adding a field to `ListItem::Recipe` is cheap; forgetting it in one arm of
+  `nudge_list_entry` is not.** `only` (DECISIONS 0091) has to survive every
+  command that rewrites a recipe line — `SetEntryServings` and
+  `NudgeListEntry` both rebuild the item — and dropping it there silently
+  turns half a recipe back into a whole one at the first "+" somebody presses.
+  The compiler catches the construction, not the `..existing` that would have
+  carried it.
+- **An empty `only` is refused, and that is a product decision rather than
+  defensiveness.** A recipe entry asking for none of its lines contributes
+  nothing, so its progress is 0/0, so it is never complete, so it never leaves
+  the list (0020). `chosen_components` refuses it at the command; the frontend
+  removes the entry instead, which is what the person meant.
 - **A `z-index` is a `--layer-*` token, and the scale lives in `app.css`.**
   The handful in this app all share the root stacking context — nothing
   between them and `<body>` sets a `position`, a `z-index` or a `transform` —
@@ -1102,9 +1203,12 @@ Key domain shapes, all settled in DECISIONS:
   all. `createImageBitmap` is used precisely because it can apply it; an
   `<img>` cannot be asked to.
 - **`Photos::forget_unreferenced` is a cleanup only once the relay holds a
-  copy.** Until M10's transfer half exists, a device's copy is the *only* copy,
-  and sweeping unreferenced photos at startup would be deleting them. It is
-  implemented and tested; nothing calls it yet, on purpose.
+  copy — and since 0092 it usually does.** The precondition it was written
+  against is met: the relay keeps a sealed copy of every photo it has been
+  pushed and deletes none. What it still lacks is a caller that runs it only
+  when *this* device's photos are durable there; sweeping a photo the relay
+  has not been given yet is still a deletion. It is implemented and tested;
+  nothing calls it yet, on purpose.
 - **A photo session's `want` list is not bookkeeping, it is the only thing
   standing between an untrusted relay and a phone's storage.** The relay is
   zero-knowledge and *not* trusted (Rule 7), and `/photos` is the one endpoint
@@ -1141,10 +1245,11 @@ Key domain shapes, all settled in DECISIONS:
   `an_import_that_fails_leaves_the_library_exactly_as_it_was`.
 - **An export skips a photo this device does not hold, in silence.** The
   entity keeps naming it, so the file stays truthful — but it means an export
-  *with photos asked for* can legitimately carry none, which is exactly the
-  state of a phone that joined by typing twelve words and has not been given
-  the pictures (M10's transfer half). `ui-test` puts a photo on that device
-  first for this reason; without it the assertion looks like a broken toggle.
+  *with photos asked for* can carry fewer than the library names. Since 0092
+  that window is usually short: a phone that joined by typing twelve words
+  fetches the pictures over `/photos` a moment later. Short is not zero, and
+  a test that waited on it would be racing the transfer — `ui-test` puts a
+  photo on that device by hand for exactly that reason.
 - **`navigator.share` wants the tap it came from, and the export is
   asynchronous.** Safari drops the transient activation across the await that
   builds the file, so the share sheet may refuse on a real phone while working

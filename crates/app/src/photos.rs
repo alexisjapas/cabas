@@ -194,6 +194,7 @@ fn acceptable(bytes: &[u8]) -> Result<()> {
 /// switches on it: the tag is `event`, the variants are `snake_case`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub enum PhotoEvent {
     /// The relay answered the hello and the whole of the work is known: this
     /// many photos to send, this many to fetch. Everything after it is one of
@@ -235,6 +236,7 @@ pub enum PhotoEvent {
 /// ends (DECISIONS 0080). It is read to draw progress and to decide when to
 /// close the socket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct PhotoStatus {
     /// Photos still to move: queued, plus sent and not yet answered.
     pub pending: usize,

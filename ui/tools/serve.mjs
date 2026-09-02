@@ -147,7 +147,7 @@ async function serve(request, response) {
 }
 
 /**
- * The sync socket, handed to the relay (DECISIONS 0044).
+ * The sync sockets, handed to the relay (DECISIONS 0044).
  *
  * A page served over `https:` may not open a `ws:` — the browser blocks it as
  * mixed content — and the relay terminates no TLS, because in production the
@@ -165,7 +165,10 @@ async function serve(request, response) {
  */
 https.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url ?? '/', 'https://cabas.invalid');
-  if (url.pathname !== '/sync') {
+  // Both of them: the document on `/sync` and the photos on `/photos`, which
+  // is a second socket for the reasons DECISIONS 0080 gives. This forwards
+  // bytes and knows nothing about either protocol, so one branch covers both.
+  if (url.pathname !== '/sync' && url.pathname !== '/photos') {
     socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
     return;
   }
@@ -204,7 +207,7 @@ https.on('upgrade', (request, socket, head) => {
     // Before the handshake there is still an HTTP conversation to answer, and
     // this is the failure by a wide margin — with a phone in hand — so it says
     // what to start rather than which errno came back.
-    console.error(`\n  /sync → ${authority}: ${error.message}`);
+    console.error(`\n  ${url.pathname} → ${authority}: ${error.message}`);
     console.error('  the relay does not seem to be running:');
     console.error('    CABAS_RELAY_DATA=.relay cargo run -p cabas-relay\n');
     socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
@@ -337,6 +340,7 @@ console.log('\n  the certificate  ← open this on the phone first');
 for (const host of list) console.log(`                   http://${host}:${httpPort}/`);
 console.log('\n  the app          ← once the certificate is installed *and* trusted');
 for (const host of list) console.log(`                   https://${host}:${httpsPort}/`);
-console.log(`\n  the sync socket  ← /sync on that same origin, proxied to ${authority}`);
-console.log('                   CABAS_RELAY moves it elsewhere');
+console.log(`\n  the sockets      ← /sync and /photos on that same origin,`);
+console.log(`                   both proxied to ${authority}`);
+console.log('                   CABAS_RELAY moves them elsewhere');
 console.log('\n  ctrl-c to stop\n');

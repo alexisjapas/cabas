@@ -16,6 +16,8 @@
 import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { Imported } from './bindings/Imported';
+import type { PhotoEvent } from './bindings/PhotoEvent';
+import type { PhotoStatus } from './bindings/PhotoStatus';
 import type { StateView } from './bindings/StateView';
 import type { SyncCursor } from './bindings/SyncCursor';
 import type { SyncEvent } from './bindings/SyncEvent';
@@ -364,5 +366,49 @@ export class Core {
   /** The socket closed. The next connection derives its key again. */
   syncClose(): void {
     this.#app.syncClose();
+  }
+
+  /**
+   * The photo half, on a socket of its own (DECISIONS 0080, 0092).
+   *
+   * The same shape as the sync calls above — opaque bytes in both directions,
+   * nothing decided on this side — with one difference that shows in every
+   * signature: they are all asynchronous, because a photo is a browser
+   * transaction. That is also why photos are not on `/sync`: a tick in a shop
+   * must never wait behind a picture of a jar (Rule 6).
+   *
+   * `photoHandle` and `photoPush` take the session out of the core's cell
+   * while they await, so **only one of them may be in flight at a time**. The
+   * engine in `photos.svelte.ts` chains them; calling two at once throws
+   * rather than corrupting a queue.
+   */
+
+  /** Starts a photo connection and returns the hello to send on it. */
+  photoHello(phrase: string): Promise<Uint8Array> {
+    return this.#app.photoHello(phrase);
+  }
+
+  /** One message off the socket, applied — which for a photo means written. */
+  photoHandle(wire: Uint8Array): Promise<PhotoEvent> {
+    return this.#app.photoHandle(wire) as Promise<PhotoEvent>;
+  }
+
+  /** The next photo to ask for, or `undefined` when there is nothing left. */
+  photoFetch(): Uint8Array | undefined {
+    return this.#app.photoFetch();
+  }
+
+  /** The next photo to offer, sealed — or `undefined` when there is none. */
+  photoPush(): Promise<Uint8Array | undefined> {
+    return this.#app.photoPush();
+  }
+
+  /** Where the transfer has got to, or `null` between connections. */
+  photoStatus(): PhotoStatus | null {
+    return this.#app.photoStatus() as PhotoStatus | null;
+  }
+
+  photoClose(): void {
+    this.#app.photoClose();
   }
 }

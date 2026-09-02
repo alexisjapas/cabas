@@ -20,7 +20,7 @@
 use std::num::NonZeroU32;
 
 use cabas_domain::cart::{self, Cart};
-use cabas_domain::expand::{ExpandError, expand};
+use cabas_domain::expand::{ExpandError, expand_only};
 use cabas_domain::list::ListItem;
 use cabas_domain::recipe::{Component, SubRecipeAmount};
 use cabas_domain::{
@@ -60,7 +60,11 @@ pub(crate) fn derive(library: &Library) -> Projection {
     for entry in &library.list.entries {
         let id = entry.id.to_string();
         match &entry.item {
-            ListItem::Recipe { recipe, servings } => {
+            ListItem::Recipe {
+                recipe,
+                servings,
+                only,
+            } => {
                 let Some(target) = library.recipes.get(recipe) else {
                     problems.push(problem(
                         Some(&id),
@@ -72,11 +76,14 @@ pub(crate) fn derive(library: &Library) -> Projection {
                 };
                 // Expanded here to find out whether it *can* be, and again
                 // inside `derive`. Twice over a handful of list entries is
-                // not a cost; a cart that cannot be shown is.
-                match expand(
+                // not a cost; a cart that cannot be shown is. Restricted the
+                // same way the derivation will restrict it (DECISIONS 0091),
+                // so the triage sees exactly the ingredients the cart will.
+                match expand_only(
                     recipe,
                     target.factor_for_servings(*servings),
                     &library.recipes,
+                    only.as_ref(),
                 ) {
                     Ok(contributions) => {
                         for contribution in contributions {
@@ -339,19 +346,34 @@ fn list_view(library: &Library, cart: &Cart) -> Vec<ListEntryView> {
         .map(|(entry, progress)| ListEntryView {
             id: entry.id.to_string(),
             item: match &entry.item {
-                ListItem::Recipe { recipe, servings } => ListItemView::Recipe {
-                    recipe: recipe.to_string(),
-                    name: library
-                        .recipes
-                        .get(recipe)
-                        .map(|r| r.name.clone())
-                        .unwrap_or_default(),
-                    servings: servings.get(),
-                    written_for: library
-                        .recipes
-                        .get(recipe)
-                        .map_or(servings.get(), |r| r.servings.get()),
-                },
+                ListItem::Recipe {
+                    recipe,
+                    servings,
+                    only,
+                } => {
+                    let held = library.recipes.get(recipe);
+                    ListItemView::Recipe {
+                        recipe: recipe.to_string(),
+                        name: held.map(|r| r.name.clone()).unwrap_or_default(),
+                        servings: servings.get(),
+                        written_for: held.map_or(servings.get(), |r| r.servings.get()),
+                        // In the recipe's own order rather than the set's, so
+                        // a screen that lists them reads down the recipe. And
+                        // filtered to the lines it still has — see the field.
+                        only: only.as_ref().map(|chosen| {
+                            held.map(|r| {
+                                r.components
+                                    .iter()
+                                    .map(|c| c.id())
+                                    .filter(|id| chosen.contains(id))
+                                    .map(ToString::to_string)
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                        }),
+                        components: held.map_or(0, |r| r.components.len()),
+                    }
+                }
                 ListItem::Ingredient {
                     ingredient,
                     quantity,

@@ -23,6 +23,7 @@
 //! effects. Neither of the other two crates re-derives the other's half —
 //! that is how two implementations of one rule appear, and then drift.
 
+use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use cabas_domain::event::{Action, Subject};
@@ -496,15 +497,20 @@ impl<S: Storage, P: Platform> App<S, P> {
             Command::DeleteShop { shop } => self.delete_shop(&shop, library),
             Command::SaveRecipe { recipe } => self.save_recipe(recipe, library),
             Command::DeleteRecipe { recipe } => self.delete_recipe(&recipe, library),
-            Command::AddRecipeToList { recipe, servings } => {
-                self.add_recipe_to_list(&recipe, servings, library)
-            }
+            Command::AddRecipeToList {
+                recipe,
+                servings,
+                only,
+            } => self.add_recipe_to_list(&recipe, servings, only, library),
             Command::AddIngredientToList {
                 ingredient,
                 quantity,
             } => self.add_ingredient_to_list(&ingredient, quantity.as_ref(), library),
             Command::SetEntryServings { entry, servings } => {
                 self.set_entry_servings(&entry, servings, library)
+            }
+            Command::SetEntryComponents { entry, only } => {
+                self.set_entry_components(&entry, only, library)
             }
             Command::SetEntryQuantity { entry, quantity } => {
                 self.set_entry_quantity(&entry, &quantity, library)
@@ -780,6 +786,7 @@ impl<S: Storage, P: Platform> App<S, P> {
         &mut self,
         recipe: &str,
         servings: Option<u32>,
+        only: Option<Vec<String>>,
         library: &Library,
     ) -> Result<bool> {
         let recipe = RecipeId::from_raw(recipe);
@@ -791,7 +798,12 @@ impl<S: Storage, P: Platform> App<S, P> {
             Some(servings) => servings_count(servings)?,
             None => held.servings,
         };
-        let entry = self.entry(ListItem::Recipe { recipe, servings })?;
+        let only = chosen_components(held, only)?;
+        let entry = self.entry(ListItem::Recipe {
+            recipe,
+            servings,
+            only,
+        })?;
         self.add_entry(entry, library)
     }
 
@@ -878,7 +890,7 @@ impl<S: Storage, P: Platform> App<S, P> {
             .list
             .entry(&id)
             .ok_or_else(|| AppError::not_found("list entry", id.as_str()))?;
-        let ListItem::Recipe { recipe, .. } = &existing.item else {
+        let ListItem::Recipe { recipe, only, .. } = &existing.item else {
             return Err(AppError::invalid(
                 "servings",
                 "a bare ingredient on the list has no serving count",
@@ -890,6 +902,55 @@ impl<S: Storage, P: Platform> App<S, P> {
                 item: ListItem::Recipe {
                     recipe: recipe.clone(),
                     servings: servings_count(servings)?,
+                    // Rescaling says nothing about *which* lines are wanted,
+                    // and scaling only the chosen ones is the whole point of
+                    // them being on a recipe entry (DECISIONS 0091).
+                    only: only.clone(),
+                },
+                ..existing.clone()
+            },
+            library,
+        )
+    }
+
+    /// Which of a recipe's lines an entry already on the list asks for
+    /// (DECISIONS 0091).
+    ///
+    /// The other door into the same field: [`Self::add_recipe_to_list`] opens
+    /// an entry with a selection, and this changes one. Both validate against
+    /// the recipe as it stands right now, which is why the check lives in
+    /// [`chosen_components`] rather than at either call site.
+    fn set_entry_components(
+        &mut self,
+        entry: &str,
+        only: Option<Vec<String>>,
+        library: &Library,
+    ) -> Result<bool> {
+        let id = ListEntryId::from_raw(entry);
+        let existing = library
+            .list
+            .entry(&id)
+            .ok_or_else(|| AppError::not_found("list entry", id.as_str()))?;
+        let ListItem::Recipe {
+            recipe, servings, ..
+        } = &existing.item
+        else {
+            return Err(AppError::invalid(
+                "only",
+                "a bare ingredient on the list has no lines to choose from",
+            ));
+        };
+        let held = library
+            .recipes
+            .get(recipe)
+            .ok_or_else(|| AppError::not_found("recipe", recipe.as_str()))?;
+
+        self.update_entry(
+            ListEntry {
+                item: ListItem::Recipe {
+                    recipe: recipe.clone(),
+                    servings: *servings,
+                    only: chosen_components(held, only)?,
                 },
                 ..existing.clone()
             },
@@ -971,7 +1032,11 @@ impl<S: Storage, P: Platform> App<S, P> {
                     }
                 }
             }
-            ListItem::Recipe { recipe, servings } => {
+            ListItem::Recipe {
+                recipe,
+                servings,
+                only,
+            } => {
                 let written_for = library
                     .recipes
                     .get(recipe)
@@ -980,6 +1045,9 @@ impl<S: Storage, P: Platform> App<S, P> {
                     Some(servings) => ListItem::Recipe {
                         recipe: recipe.clone(),
                         servings,
+                        // A notch is a number of people, not a change of mind
+                        // about which lines are wanted (DECISIONS 0091).
+                        only: only.clone(),
                     },
                     None => return self.remove_list_entry(entry, library),
                 }
@@ -1105,6 +1173,42 @@ impl<S: Storage, P: Platform> App<S, P> {
 fn servings_count(servings: u32) -> Result<NonZeroU32> {
     NonZeroU32::new(servings)
         .ok_or_else(|| AppError::invalid("servings", "a recipe serves at least one person"))
+}
+
+/// The lines of `recipe` a list entry may ask for (DECISIONS 0091).
+///
+/// `None` in, `None` out: the whole recipe, which is what every gesture
+/// produces and what a stored entry written before 0091 says.
+///
+/// Two things are refused rather than tidied. An **empty** selection is a row
+/// that asks for nothing, can never complete and therefore never leaves the
+/// list — what the person meant is `RemoveListEntry`, and inventing that here
+/// would be deciding for them. And an id the recipe **does not have** is
+/// refused because the caller can be told: this runs while somebody is
+/// looking at the recipe. Once stored, the same situation is tolerated in
+/// silence — the other device deleted the line since — and `expand_only` and
+/// the view both read past it.
+fn chosen_components(
+    recipe: &cabas_domain::Recipe,
+    only: Option<Vec<String>>,
+) -> Result<Option<BTreeSet<UsageId>>> {
+    let Some(only) = only else {
+        return Ok(None);
+    };
+    let chosen: BTreeSet<UsageId> = only.into_iter().map(UsageId::from_raw).collect();
+    if chosen.is_empty() {
+        return Err(AppError::invalid(
+            "only",
+            "an entry asking for none of a recipe is an entry to remove",
+        ));
+    }
+    if let Some(stranger) = chosen
+        .iter()
+        .find(|id| !recipe.components.iter().any(|c| c.id() == *id))
+    {
+        return Err(AppError::not_found("recipe line", stranger.as_str()));
+    }
+    Ok(Some(chosen))
 }
 
 fn text<'a>(field: &'static str, raw: &'a str) -> Result<&'a str> {

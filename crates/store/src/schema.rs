@@ -167,6 +167,16 @@ pub mod list_entry {
 
     pub const RECIPE: &str = "recipe";
     pub const SERVINGS: &str = "servings";
+    /// The recipe lines this entry asks for, when it asks for only some of
+    /// them (DECISIONS 0091). Absent is the whole recipe, which is what every
+    /// entry written before it existed says.
+    ///
+    /// Additive, like `shops` (0071), so `SCHEMA_VERSION` does not move. What
+    /// an older build does with it is worth stating: it ignores the key and
+    /// buys the whole recipe. That is the safe direction — a trip with a
+    /// spare bag of flour in it, rather than a cake with no flour — and it
+    /// is the same bargain every additive key here makes.
+    pub const ONLY: &str = "only";
     pub const INGREDIENT: &str = "ingredient";
     pub const QUANTITY: &str = "quantity";
     pub const ADDED_BY: &str = "added_by";

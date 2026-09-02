@@ -1,11 +1,12 @@
 //! The shopping list — recipes and bare ingredients, in one single list.
 
+use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use crate::ingredient::Ingredient;
 use crate::overlay::Overlay;
 use crate::units::Dimension;
-use crate::{IngredientId, ListEntryId, Quantity, Rational, RecipeId, Timestamp, UserId};
+use crate::{IngredientId, ListEntryId, Quantity, Rational, RecipeId, Timestamp, UsageId, UserId};
 
 /// What a list entry asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,28 @@ pub enum ListItem {
     Recipe {
         recipe: RecipeId,
         servings: NonZeroU32,
+        /// The recipe's own lines this entry asks for, when it asks for only
+        /// some of them (DECISIONS 0091).
+        ///
+        /// `None` is the whole recipe and is what everything that adds one in
+        /// a single gesture produces. `Some` is the half of a recipe somebody
+        /// already has at home: the entry then behaves in every other way like
+        /// a recipe — it is measured in people, it rescales, and rescaling
+        /// scales *these* lines — which is the whole reason this is a field on
+        /// the recipe entry rather than a handful of bare ingredients added
+        /// separately.
+        ///
+        /// The ids name **root** components: an ingredient line of this
+        /// recipe, or one of its sub-recipe lines, in which case the whole
+        /// sub-recipe comes with it. There is deliberately no way to ask for
+        /// half of a sub-recipe from here — that question is asked by opening
+        /// the sub-recipe.
+        ///
+        /// A set, so that two devices choosing the same lines in different
+        /// orders hold the same entry. An id the recipe no longer has
+        /// contributes nothing and is kept anyway: the line may come back, and
+        /// a merge that dropped it would decide for the other device.
+        only: Option<BTreeSet<UsageId>>,
     },
     /// A bare ingredient, added by hand.
     Ingredient {
@@ -220,6 +243,7 @@ mod tests {
                 item: ListItem::Recipe {
                     recipe: RecipeId::from_raw("tart"),
                     servings: NonZeroU32::new(4).expect("non-zero"),
+                    only: None,
                 },
                 added_by: UserId::from_raw("alice"),
                 added_at: Timestamp(0),

@@ -83,6 +83,35 @@
   );
 
   /**
+   * Choosing an ingredient fills in what one usually buys of it — the amount
+   * *and* the unit (DECISIONS 0089).
+   *
+   * The two fields are the one place in the app where an ingredient was asked
+   * for by hand and its usual quantity was ignored: the swipe uses it, the
+   * long press uses it, and this form opened on "g" whatever the shelf said.
+   *
+   * `seeded` is a plain variable and not `$state` on purpose. This effect
+   * depends on the library as well as on the choice, so a frame arriving from
+   * the other phone re-runs it — and re-running it must not overwrite an
+   * amount somebody is in the middle of typing. The guard is what makes the
+   * seeding happen once per choice rather than once per render.
+   */
+  let seeded = '';
+
+  $effect(() => {
+    const id = chosen;
+    const usual = session.state.ingredients.find((held) => held.id === id)?.default_quantity;
+    if (id === seeded) return;
+    seeded = id;
+    if (id === '') return;
+    // Nobody has said what one buys of it: leave the fields as they are rather
+    // than inventing "1 pièce" in a form that is about to be filled in anyway.
+    if (usual === null || usual === undefined) return;
+    amount = usual.amount;
+    unit = usual.unit;
+  });
+
+  /**
    * How many people this entry is for.
    *
    * Derived from the chosen recipe with an override on top, rather than
@@ -120,7 +149,7 @@
     const accepted =
       mode === 'recipe'
         ? chosenRecipe !== '' &&
-          session.run({ command: 'add_recipe_to_list', recipe: chosenRecipe, servings })
+          session.run({ command: 'add_recipe_to_list', recipe: chosenRecipe, servings, only: null })
         : chosen !== '' &&
           session.run({
             command: 'add_ingredient_to_list',
@@ -219,71 +248,79 @@
       >
     </div>
 
-    <!-- One control, two kinds of line. Every accessible name carries the row
-         it belongs to and the amount it is showing: navigating by button is
-         the ordinary way through this screen, and "Moins" alone names neither
-         what it takes one off nor which of six rows it is on — on a bare
-         ingredient it is also the button that empties the row. -->
-    {#if entry.item.kind === 'recipe'}
-      {@const item = entry.item}
-      <div class="amount">
-        <button
-          type="button"
-          class="notch"
-          aria-label="Moins de {item.name}"
-          onclick={() => nudge(entry.id, -1)}>−</button
-        >
-        <button
-          type="button"
-          class="quantity"
-          aria-label="Quantité de {item.name} : {item.servings} personnes"
-          onclick={() => editServings(entry.id, item.name, item.servings)}
-          >{item.servings} pers.</button
-        >
-        <button
-          type="button"
-          class="notch"
-          aria-label="Plus de {item.name}"
-          onclick={() => nudge(entry.id, 1)}>+</button
-        >
-        {#if item.servings !== item.written_for}
-          <small>écrite pour {item.written_for}</small>
-        {/if}
-      </div>
-    {:else}
-      {@const item = entry.item}
-      <div class="amount">
-        <button
-          type="button"
-          class="notch"
-          aria-label="Moins de {item.name}"
-          onclick={() => nudge(entry.id, -1)}>−</button
-        >
-        <button
-          type="button"
-          class="quantity"
-          aria-label="Quantité de {item.name} : {formatQuantity(item.quantity)}"
-          onclick={() => editQuantity(entry.id, item.name, item.edit)}
-          >{formatQuantity(item.quantity)}</button
-        >
-        <button
-          type="button"
-          class="notch"
-          aria-label="Plus de {item.name}"
-          onclick={() => nudge(entry.id, 1)}>+</button
-        >
-      </div>
-    {/if}
-
-    <p class="meta">
-      {#if entry.progress.total > 0}
-        {entry.progress.settled} / {entry.progress.total} réglé{entry.progress.settled > 1
-          ? 's'
-          : ''} ·
+    <!-- One control, two kinds of line, and one line for both the control and
+         what the row has to say about itself (DECISIONS 0090). Every
+         accessible name carries the row it belongs to and the amount it is
+         showing: navigating by button is the ordinary way through this
+         screen, and "Moins" alone names neither what it takes one off nor
+         which of six rows it is on — on a bare ingredient it is also the
+         button that empties the row. -->
+    <div class="line">
+      {#if entry.item.kind === 'recipe'}
+        {@const item = entry.item}
+        <div class="amount">
+          <button
+            type="button"
+            class="notch"
+            aria-label="Moins de {item.name}"
+            onclick={() => nudge(entry.id, -1)}>−</button
+          >
+          <button
+            type="button"
+            class="quantity"
+            aria-label="Quantité de {item.name} : {item.servings} personnes — modifier"
+            onclick={() => editServings(entry.id, item.name, item.servings)}
+            >{item.servings} pers.</button
+          >
+          <button
+            type="button"
+            class="notch"
+            aria-label="Plus de {item.name}"
+            onclick={() => nudge(entry.id, 1)}>+</button
+          >
+        </div>
+      {:else}
+        {@const item = entry.item}
+        <div class="amount">
+          <button
+            type="button"
+            class="notch"
+            aria-label="Moins de {item.name}"
+            onclick={() => nudge(entry.id, -1)}>−</button
+          >
+          <!-- The amount *and its unit*: this button is the only door to
+               either, and its name says so (DECISIONS 0090). -->
+          <button
+            type="button"
+            class="quantity"
+            aria-label="Quantité et unité de {item.name} : {formatQuantity(
+              item.quantity,
+            )} — modifier"
+            onclick={() => editQuantity(entry.id, item.name, item.edit)}
+            >{formatQuantity(item.quantity)}</button
+          >
+          <button
+            type="button"
+            class="notch"
+            aria-label="Plus de {item.name}"
+            onclick={() => nudge(entry.id, 1)}>+</button
+          >
+        </div>
       {/if}
-      {#if entry.added_by !== null}{entry.added_by} ·{/if}
-      {relativeTime(entry.added_at)}
-    </p>
+
+      <p class="meta">
+        {#if entry.item.kind === 'recipe' && entry.item.servings !== entry.item.written_for}
+          écrite pour {entry.item.written_for} ·
+        {/if}
+        {#if entry.progress.total > 0}
+          {entry.progress.settled} / {entry.progress.total} réglé{entry.progress.settled > 1
+            ? 's'
+            : ''} ·
+        {/if}
+        {#if entry.added_by !== null}{entry.added_by} ·{/if}
+        {relativeTime(entry.added_at)}
+      </p>
+    </div>
   </li>
 {/snippet}
 
@@ -613,15 +650,34 @@
     cursor: pointer;
   }
 
+  /* The amount and what the row has to say about itself, side by side
+     (DECISIONS 0090). This is the line that used to be two: three separate
+     bordered pills on one row and the meta on another, which cost a third of
+     a card's height to say "500 g". */
+  .line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+
   /* One shape for both kinds of line: a notch either side, and the amount in
      the middle is the door to the exact one (DECISIONS 0077, 0079). Written
      once because it is one control — the recipe row's copy of it drifted into
-     meaning something else within a single release. */
+     meaning something else within a single release.
+
+     **One pill holding three buttons**, which is the shape `AmountDialog` and
+     `RecipeReader` already use for the same question (0090). Three separate
+     bordered pills drew six edges to carry one number; this draws one, and
+     the buttons inside it are the same size they were. */
   .amount {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
+    min-height: var(--tapsize);
+    border-radius: var(--radius-pill);
+    background: var(--ring);
+    color: var(--on-ring);
   }
 
   /* `--tapsize` in both directions. It was `--space-6` tall, which is 32px:
@@ -629,16 +685,10 @@
      and the one either side of it takes the row off the list. */
   .amount button {
     height: var(--tapsize);
-    border: 2px solid var(--border-strong);
-    border-radius: var(--radius-pill);
-    background: var(--bubble);
-    color: var(--text);
+    border: 0;
+    background: none;
+    color: inherit;
     cursor: pointer;
-  }
-
-  .amount small {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
   }
 
   /* `.notch` and not `.step`: `RecipeEditor` already has a `.step`, Svelte
@@ -653,31 +703,36 @@
     line-height: 1;
   }
 
-  /* A pink pill, like every other quantity — and it hugs what it says rather
-     than filling the row: full width would read as a text field, and this is
-     a door to one. */
-  /* `.amount .quantity` and not `.quantity`: the rule above it is `.amount
-     button`, which outranks a lone class and quietly kept the pill cream. */
+  /* The number between the two notches, and the door to the exact amount —
+     and, on a bare ingredient, to its unit. Underlined rather than boxed: it
+     is already inside the pink pill, so a second surface would say nothing,
+     and something has to say it can be pressed. */
   .amount .quantity {
     flex: 0 1 auto;
-    min-width: var(--tapsize);
-    padding: 0 var(--space-4);
-    background: var(--ring);
-    border-color: transparent;
-    color: var(--on-ring);
+    min-width: 0;
+    padding: 0 var(--space-1);
     font-family: var(--font-numeric);
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
+    text-decoration: underline;
+    text-underline-offset: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Takes what is left of the line, and ellipsises rather than pushing the
+     control it shares the line with off a narrow phone. */
   .meta {
-    margin: var(--space-2) 0 0;
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     color: var(--text-muted);
     font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
 

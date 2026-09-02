@@ -104,6 +104,9 @@ fn recipe_entry(id: &str, recipe: &str, servings: u32) -> ListEntry {
         item: ListItem::Recipe {
             recipe: rid(recipe),
             servings: nz(servings),
+            // The whole recipe, which is what every gesture in the app
+            // produces (DECISIONS 0091).
+            only: None,
         },
         added_by: alice(),
         added_at: Timestamp(0),

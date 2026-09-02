@@ -279,6 +279,7 @@ async fn scenario() {
         .dispatch(Command::AddRecipeToList {
             recipe: recipe.clone(),
             servings: Some(6),
+            only: None,
         })
         .await
         .expect("the recipe goes on the list");
@@ -425,6 +426,7 @@ async fn broken_reference() {
         .dispatch(Command::AddRecipeToList {
             recipe: recipe.clone(),
             servings: Some(4),
+            only: None,
         })
         .await
         .expect("on the list");
@@ -456,6 +458,7 @@ async fn broken_reference() {
         .dispatch(Command::AddRecipeToList {
             recipe,
             servings: None,
+            only: None,
         })
         .await
         .expect("on the list");
@@ -865,6 +868,7 @@ async fn nudging_a_line_up_and_down() {
         .dispatch(Command::AddRecipeToList {
             recipe: tart,
             servings: None,
+            only: None,
         })
         .await
         .expect("a swiped recipe");
@@ -1162,6 +1166,150 @@ async fn a_photo_from_the_bytes_to_the_cart() {
     assert_eq!(photos.get(&id).await.expect("read"), None);
 }
 
+/// Half a recipe, because the rest is already in the cupboard (DECISIONS
+/// 0091).
+///
+/// The whole of the feature is in one property: the entry stays a *recipe*
+/// entry. It is measured in people, it rescales, and rescaling scales the
+/// lines it kept and no others — which is what a handful of bare ingredients
+/// added separately could not have done.
+async fn half_a_recipe_on_the_list() {
+    let mut app = open(MemoryStorage::new()).await;
+    let state = stocked(&mut app).await;
+    let state = tart(&mut app, &state).await;
+    let recipe = id_of_recipe(&state, "Tomato tart");
+
+    // The line ids are the recipe's own, read back off the editable view the
+    // reader hands its rows — the same values a screen would send.
+    let state = app
+        .apply(Command::OpenRecipe {
+            recipe: recipe.clone(),
+            servings: None,
+        })
+        .expect("open");
+    let lines: Vec<String> = state
+        .focus
+        .as_ref()
+        .expect("open")
+        .recipe
+        .components
+        .iter()
+        .map(|component| match component {
+            ComponentView::Ingredient { usage, .. } | ComponentView::SubRecipe { usage, .. } => {
+                usage.clone()
+            }
+        })
+        .collect();
+    assert_eq!(lines.len(), 3);
+
+    // Only the tomatoes: three of them, for four people, and nothing else in
+    // the cart.
+    let state = app
+        .dispatch(Command::AddRecipeToList {
+            recipe: recipe.clone(),
+            servings: None,
+            only: Some(vec![lines[1].clone()]),
+        })
+        .await
+        .expect("half a tart");
+    let entry = state.list[0].id.clone();
+    let ListItemView::Recipe {
+        only, components, ..
+    } = &state.list[0].item
+    else {
+        panic!("a recipe entry");
+    };
+    assert_eq!(
+        only.as_ref().expect("a restriction"),
+        &vec![lines[1].clone()]
+    );
+    assert_eq!(*components, 3);
+    assert_eq!(state.cart.to_buy.len(), 1);
+    assert_eq!(line(&state.cart.to_buy, "Tomato").amounts[0].amount, "3");
+
+    // Eight people: the tomatoes double and the flour still never appears.
+    let state = app
+        .dispatch(Command::SetEntryServings {
+            entry: entry.clone(),
+            servings: 8,
+        })
+        .await
+        .expect("we are eight");
+    assert_eq!(state.cart.to_buy.len(), 1);
+    assert_eq!(line(&state.cart.to_buy, "Tomato").amounts[0].amount, "6");
+
+    // A second line is added from the reader: the entry is still one entry.
+    let state = app
+        .dispatch(Command::SetEntryComponents {
+            entry: entry.clone(),
+            only: Some(vec![lines[1].clone(), lines[2].clone()]),
+        })
+        .await
+        .expect("and the eggs too");
+    assert_eq!(state.list.len(), 1);
+    assert_eq!(state.cart.to_buy.len(), 2);
+
+    // Cleared: the whole recipe, flour included — which is a staple, so it
+    // lands under "already at home" rather than in the aisles.
+    let state = app
+        .dispatch(Command::SetEntryComponents {
+            entry: entry.clone(),
+            only: None,
+        })
+        .await
+        .expect("all of it after all");
+    let ListItemView::Recipe { only, .. } = &state.list[0].item else {
+        panic!("a recipe entry");
+    };
+    assert_eq!(*only, None);
+    assert_eq!(state.cart.to_buy.len() + state.cart.at_home.len(), 3);
+
+    // Two refusals, and each is a decision rather than an oversight. Asking
+    // for none of a recipe is a row that can never complete — the command for
+    // that is `RemoveListEntry`. Naming a line the recipe has not got is
+    // refused while there is somebody to tell.
+    assert!(
+        app.dispatch(Command::SetEntryComponents {
+            entry: entry.clone(),
+            only: Some(Vec::new()),
+        })
+        .await
+        .is_err()
+    );
+    assert!(
+        app.dispatch(Command::SetEntryComponents {
+            entry,
+            only: Some(vec!["u_nonexistent".into()]),
+        })
+        .await
+        .is_err()
+    );
+
+    // And a bare ingredient has no lines to choose from.
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: id_of_ingredient(&state, "Egg"),
+            quantity: None,
+        })
+        .await
+        .expect("an egg by hand");
+    let bare = state
+        .list
+        .iter()
+        .find(|e| matches!(&e.item, ListItemView::Ingredient { .. }))
+        .expect("the bare entry")
+        .id
+        .clone();
+    assert!(
+        app.dispatch(Command::SetEntryComponents {
+            entry: bare,
+            only: Some(vec![lines[0].clone()]),
+        })
+        .await
+        .is_err()
+    );
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod native {
     use super::*;
@@ -1231,6 +1379,11 @@ mod native {
     fn a_shop_is_born_where_it_is_typed() {
         block_on(a_shop_is_created_by_the_form_that_needs_it());
     }
+
+    #[test]
+    fn half_a_recipe_goes_on_the_list_and_still_rescales() {
+        block_on(half_a_recipe_on_the_list());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -1288,6 +1441,11 @@ mod browser {
     #[wasm_bindgen_test]
     async fn a_shop_is_born_where_it_is_typed() {
         a_shop_is_created_by_the_form_that_needs_it().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn half_a_recipe_goes_on_the_list_and_still_rescales() {
+        half_a_recipe_on_the_list().await;
     }
 
     /// The PWA's actual path: a command built as a JS object, through the

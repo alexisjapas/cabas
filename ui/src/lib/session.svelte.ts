@@ -28,6 +28,7 @@ import type { Identity } from './bindings/Identity';
 import type { ImportReport } from './bindings/ImportReport';
 import type { StateView } from './bindings/StateView';
 import { Core, rememberIdentity } from './core';
+import { PhotoTransfer } from './photos.svelte';
 import { Sync } from './sync.svelte';
 
 /**
@@ -85,6 +86,17 @@ export class Session {
    */
   readonly sync: Sync;
 
+  /**
+   * The photo socket and its policy (DECISIONS 0092). A second engine beside
+   * `sync`, for the reason they are two sockets: photos are big, the list is
+   * urgent, and neither may wait on the other.
+   *
+   * It holds no business state either — a photo that arrives is written to
+   * this device's store inside the core, and what reaches the screen is a
+   * counter every `<Photo>` reads.
+   */
+  readonly photos: PhotoTransfer;
+
   /** The whole of what is on screen. Replaced, never edited. */
   state = $state.raw<StateView>(undefined as unknown as StateView);
 
@@ -109,16 +121,22 @@ export class Session {
     this.sync = new Sync(core, (state) => {
       this.state = state;
       this.#scheduleFlush();
+      // A merged frame is where this device learns the *names* of photos the
+      // other phone took, so it is exactly the moment to go and fetch them
+      // (DECISIONS 0092).
+      this.photos.nudge();
     });
+    this.photos = new PhotoTransfer(core, () => this.sync.group);
   }
 
   static async open(identity: Identity): Promise<Session> {
     const core = await Core.open(identity);
     const session = new Session(core, core.state(), readScreen());
     session.#watchPageLifecycle();
-    // Does nothing on a device with no phrase, which is every device until
-    // the pairing screens land.
+    // Neither does anything on a device with no phrase, which is every device
+    // until it is paired.
     session.sync.start();
+    session.photos.start();
     return session;
   }
 
@@ -148,8 +166,14 @@ export class Session {
    * id then rides on the ordinary save. Nothing about a photo makes `run`
    * asynchronous.
    */
-  putPhoto(bytes: Uint8Array): Promise<string> {
-    return this.#core.putPhoto(bytes);
+  async putPhoto(bytes: Uint8Array): Promise<string> {
+    const id = await this.#core.putPhoto(bytes);
+    // The other phone cannot see it until the relay has a copy, and this is
+    // the only moment this device knows there is one to send (DECISIONS 0092).
+    // Nudged before the id is even attached to anything: the transfer offers
+    // what the *store* holds, not what the document references.
+    this.photos.nudge();
+    return id;
   }
 
   /**
@@ -191,6 +215,9 @@ export class Session {
       this.error = null;
       this.#scheduleFlush();
       this.sync.localChange();
+      // A file may carry pictures (DECISIONS 0076), and this device is now
+      // the only holder of every one of them.
+      this.photos.nudge();
       return report;
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : String(cause);

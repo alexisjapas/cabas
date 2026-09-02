@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::expand::{ExpandError, RecipeIndex, expand};
+use crate::expand::{ExpandError, RecipeIndex, expand_only};
 use crate::ingredient::{Aisle, Ingredient};
 use crate::list::{ListItem, ShoppingList};
 use crate::overlay::{CheckState, Overlay, resolve};
@@ -157,12 +157,20 @@ pub fn derive(
 
     for entry in &list.entries {
         match &entry.item {
-            ListItem::Recipe { recipe, servings } => {
+            ListItem::Recipe {
+                recipe,
+                servings,
+                only,
+            } => {
                 let target = recipes
                     .get(recipe)
                     .ok_or_else(|| CartError::UnknownRecipe(recipe.clone()))?;
                 let factor = target.factor_for_servings(*servings);
-                for contribution in expand(recipe, factor, recipes)? {
+                // `only` is the half of a recipe somebody already has at home
+                // (DECISIONS 0091). It changes what expands and nothing else:
+                // the entry is still measured in people, so rescaling it
+                // scales exactly these lines.
+                for contribution in expand_only(recipe, factor, recipes, only.as_ref())? {
                     let slot = accumulated.entry(contribution.ingredient).or_default();
                     slot.quantities.push(contribution.quantity);
                     slot.sources.insert(entry.id.clone());

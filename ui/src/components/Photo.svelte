@@ -28,14 +28,24 @@
     photo: string | null;
     /** What a screen reader says. The name of what is pictured, or nothing. */
     alt?: string;
-    /** `thumb` on a row, `full` where the photo is the subject. */
-    size?: 'thumb' | 'full';
+    /**
+     * `thumb` on a row, `dish` on a recipe row, `full` where the photo is the
+     * subject. `dish` is its own size rather than a bigger `thumb` because it
+     * is also a different shape — see the token (DECISIONS 0086).
+     */
+    size?: 'thumb' | 'dish' | 'full';
   } = $props();
 
   let url = $state<string | null>(null);
 
   $effect(() => {
     const id = photo;
+    // Read, not used: it is what makes a placeholder become a picture the
+    // moment the transfer lands one (DECISIONS 0092). The counter changes,
+    // this effect re-runs, and a photo that has just arrived is read again.
+    // Photos already held cost one IndexedDB read each; ones still missing
+    // draw nothing either way.
+    void session.photos.generation;
     url = null;
     if (id === null) return;
 
@@ -90,11 +100,26 @@
     border-radius: var(--radius-pill);
   }
 
+  /* The dish on a shelf row: square, and rounded like a card rather than into
+     a bead. A round crop of a plate throws away the corners of the one photo
+     in the app that is *of* something rather than about it (DECISIONS 0086). */
+  .dish {
+    width: var(--photo-dish);
+    height: var(--photo-dish);
+    border: var(--photo-ring) solid var(--ring);
+    border-radius: var(--radius-md);
+  }
+
+  /* Where the photo is the subject: the top of a recipe being read. Wider than
+     4/3 and carrying the flat shadow every raised thing here does, because
+     this is the first thing on the screen and it should read as one
+     (DECISIONS 0086). */
   .full {
     width: 100%;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 3 / 2;
     border: var(--photo-ring-full) solid var(--ring);
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
   }
 
   img {

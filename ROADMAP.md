@@ -23,7 +23,7 @@ buys a false belief instead of no belief.
 | **M4** | **PWA, single device**: Svelte UI, offline, installable | Installed on the iPhone, usable in airplane mode, data survives a cold restart | ✅ |
 | **M5** | Relay + sync: axum, E2EE, pairing, users, attribution | Two devices converge, **including when never online at the same time** | ✅ |
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
-| **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0): taken, stored and shown on one device. Half two: the protocol and the client are in, `/photos` on the relay is not |
+| **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0). Half two done in 0.11.0: `/photos` on the relay, and a photo taken on one phone is on the other. What is left is local cleanup and persisted storage |
 | **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
 | **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
@@ -147,21 +147,17 @@ from the log alone, and that Home Assistant's backups really do carry `/data`,
 which is a claim this repository can make about the relay's behaviour and not
 about HA's.
 
-**Next action, in this repository: `/photos` on the relay.** M10's half two is
-under way and both client-side halves of it are in — the protocol
-(`crates/sync/src/photo.rs`, DECISIONS 0080) and the client that speaks it
-(`PhotoSession` beside it, `PhotoSync` in `app::photos`). Neither has a
-counterpart yet: nothing listens on `/photos`, so nothing calls either, and a
-photo taken on one device is still named on the other and absent there —
-which `ui-test` asserts on purpose rather than working around. The relay is
-what turns the two into a transfer: a per-group directory of sealed blobs,
-put, get, list, and the two refusals the protocol leaves to policy. Half one
-is done and in 0.5.0: a photo is taken from an ingredient's form or a
-recipe's, downscaled and encoded by the browser, stored beside the document
-one record per photo, and shown on the shelves, in the recipe reader and **on
-the cart line**, offline. **0.6.0 adds importing one from the device** rather
-than only taking it (DECISIONS 0065). The reasoning is DECISIONS 0062 and the
-checklist is under "M10 — Photos".
+**Next action, in this repository: M10's remaining tail, and it is small.**
+Half two landed in 0.11.0 (DECISIONS 0092): the relay serves `/photos` out of
+a per-group directory of sealed blobs, and `PhotoTransfer` in
+`ui/src/lib/photos.svelte.ts` drives it from the phone. A photo taken on one
+device is on the other, which `ui-test` now asserts where it used to assert
+the opposite — the bytes are not in the sync log and never were, so a picture
+on that screen can only have come from the second socket. What is left is
+listed under "M10 — Photos" and is two items: sweeping a device's own copy of
+a photo its replica no longer references, and asking for persisted storage.
+Neither blocks the milestone's exit criterion, which needs two phones and
+airplane mode rather than a change here.
 
 **0.6.0 also settled four things that were not on any milestone**, all of them
 about the app's own shape rather than its plumbing, and each with an entry
@@ -252,6 +248,29 @@ and `ui-test` now measures the library form at 390px — which 0078 said was the
 one place its 16px floor could cost something, and had never actually been
 opened for the measurement.
 
+**0.11.0 is a session of asking for eleven things at once**, and it is worth
+recording as one because that is what shaped it: three of them are a milestone
+(M10's transfer half), one is a domain change, and the rest are the kind of
+thing only the people who use the app every day would ever notice. Each has an
+entry; the short version is:
+
+- **Photos reach the other phone** (0092) — the relay serves `/photos` and the
+  PWA drives it. This is M10's half two and the headline.
+- **Half a recipe goes on the list** (0091): a recipe entry may name which of
+  its own lines it asks for, and rescaling scales those and no others. The
+  domain change of the release, and the one that reopens "I already have some
+  of this" without reopening the pantry (0018).
+- **An ingredient is usually bought in a unit as well as an amount** (0089),
+  which it always was in the document and was not in the form.
+- **A list row is one line, and the unit is behind the amount** (0090).
+- **One cloth per tab** (0084), **quieter than it was** (0085), and **it
+  scrolls on Android too** (0083) — one line of CSS that iOS ignored and
+  Android honoured, so the same build looked different on the two phones the
+  app runs on.
+- **A dish is shown at the size a dish is chosen by** (0086), **a saved
+  ingredient says where it went** (0087), and **the finished bar throws
+  confetti** (0088).
+
 **0.10.0 is the look.** The app had a deliberately vanilla one, and said so
 from the start (DECISIONS 0026): system fonts, one green accent, a light and a
 dark palette, and every value declared once in `app.css` precisely so that
@@ -294,7 +313,7 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.9.1**, through the releases listed under
+**The workspace has since moved to 0.11.0**, through the releases listed under
 the overview table. The precondition for the drill is *agreement*, not a
 particular number: whatever is on the Pi is what both phones must be showing
 in Settings before it starts. Releasing means updating the add-on and opening
@@ -999,26 +1018,46 @@ first, where every bug has one replica and one cause, then the transfer.
       left out of both lists rather than failing the connection: a library
       carries whatever an import wrote (0076), and one bad reference must not
       cost every other photo its transfer
-- [ ] **`relay`**: `/photos`, a per-group directory of sealed blobs, a byte
-      cap that refuses a push rather than filling the SD card Home Assistant
-      runs on, `survey` reporting the count and the weight, and `forget`
-      taking the photos with the log. Plus the one policy the protocol
-      deliberately leaves to it: a **maximum WebSocket message size**, since a
-      hello's lists and a push's payload are the two unbounded things a
-      stranger holding the group id can send (DECISIONS 0080)
-- [ ] **`ui`**: the socket is opened when there is work and closed when the
-      queue drains. A photo taken offline is attached immediately and uploaded
-      later (Rule 6); a photo referenced but not here yet renders as a
-      placeholder and **never as an error**
+- [x] **`relay`**: `/photos`, a per-group directory of sealed blobs beside the
+      log (`crates/relay/src/photos.rs`, DECISIONS 0092), a byte cap that
+      refuses a push rather than filling the SD card Home Assistant runs on,
+      and a per-photo one above it. `survey` and `forget` needed no change:
+      the first already weighs a group's directory recursively and the second
+      already removes it whole. Plus the one policy the protocol deliberately
+      leaves to it: a **maximum WebSocket message size**, set on the upgrade,
+      because a hello's lists and a push's payload are the two unbounded
+      things a stranger holding the group id can send, and rejecting an
+      oversized blob at the store is one step too late — by then it is in
+      memory
+- [x] **`ui`**: `PhotoTransfer` in `lib/photos.svelte.ts` — a second engine
+      beside the sync one, on a second socket, because a photo is hundreds of
+      kilobytes and a tick in a shop must not queue behind one (Rule 6). It
+      opens on foreground, after a photo is taken, after an import and **after
+      every merged frame** (which is when this device learns the names of the
+      other phone's photos), and closes when the queues drain. A photo taken
+      offline is attached immediately and uploaded later; a photo referenced
+      but not here yet renders as a placeholder and **never as an error**, and
+      becomes a picture on its own when the bytes land — a counter every
+      `<Photo>` reads, which is the whole mechanism
 - [ ] **Local cleanup**: a device deletes its own copy of a photo its replica
-      no longer references. Safe, because the relay hands it back if the
-      reference returns — and the relay itself deletes nothing (0050's
-      reasoning, 0062's decision 8)
+      no longer references. Safe **now that the relay holds a copy** — it
+      hands it back if the reference returns, and the relay itself deletes
+      nothing (0050's reasoning, 0062's decision 8). `forget_unreferenced` is
+      written and tested; what it still needs is a caller that runs it only
+      once this device's photos are durable on the relay, or it is a deletion
+      rather than a cleanup
 - [ ] **`navigator.storage.persist()`**, asked for once: the photo library is
       the first thing here big enough for eviction to matter
-- [ ] **The convergence test**, at replica level and in `relay`'s tests: two
-      devices never online at the same time, one takes a photo, the other ends
-      up holding the bytes — the mirror of `crates/relay/tests/convergence.rs`
+- [x] **The convergence test**, in `crates/relay/tests/photos.rs`: two devices
+      never online at the same time, one takes a photo, the other ends up
+      holding the bytes — the mirror of `crates/relay/tests/convergence.rs`,
+      and separate from it because the two share a port and a group key and
+      nothing else. Four scenarios: the transfer across, a second connection
+      with nothing to do, a photo nobody has uploaded yet, and a phone that
+      has just joined fetching the whole library. `ui-test` proves the same
+      thing through a real browser and a real relay, which is where the
+      assertion that used to say the photo could *not* come back now says it
+      did
 
 **One consequence for M6, and it is arithmetic rather than procedure**: Home
 Assistant's backups grow with the photo library. The drill is unchanged — its

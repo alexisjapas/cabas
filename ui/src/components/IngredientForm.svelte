@@ -38,11 +38,11 @@
     density: string;
     unitWeight: string;
     /**
-     * How much of it one usually buys, as typed (DECISIONS 0066). An empty
-     * amount means nobody has said, which is not the same as zero and not the
-     * same as one — the core substitutes a piece where it is needed. The unit
-     * is kept even while the amount is empty, so clearing the field and
-     * typing again does not also reset the dropdown.
+     * How much of it one usually buys, as typed (DECISIONS 0066) — an amount
+     * **and a unit** (0089). Both fields are empty of an answer only when the
+     * amount is blank *and* the dropdown is still on "unité", which is where
+     * it starts: naming a unit is saying something, and it used to be thrown
+     * away. See `toInput`.
      */
     defaultAmount: string;
     defaultUnit: UnitTag;
@@ -106,8 +106,31 @@
     return trimmed === '' ? null : trimmed;
   }
 
-  export function toInput(draft: IngredientDraft): IngredientInput {
+  /**
+   * What a usual quantity is worth, when only half of it was filled in
+   * (DECISIONS 0089).
+   *
+   * The amount alone is the ordinary case and reads straight through. The
+   * *unit* alone used to be discarded — "farine, kg" saved as nothing at all,
+   * which is the whole of the complaint that produced this entry: somebody
+   * opened the dropdown, chose a unit, saved, and found "unité" waiting for
+   * them the next time. A unit is a deliberate act, so it stands on its own
+   * and means one of it.
+   *
+   * `piece` is the exception and the reason this is not simply "keep whatever
+   * is in the two fields": it is where the dropdown starts, so a form nobody
+   * touched would otherwise save "1 pièce" — an answer, over an ingredient
+   * nobody has said anything about. That is exactly the state `None` exists
+   * to hold (0066), and the core substitutes a piece at the moment it is
+   * needed anyway.
+   */
+  function usualQuantity(draft: IngredientDraft): IngredientInput['default_quantity'] {
     const amount = orNull(draft.defaultAmount);
+    if (amount !== null) return { amount, unit: draft.defaultUnit };
+    return draft.defaultUnit === 'piece' ? null : { amount: '1', unit: draft.defaultUnit };
+  }
+
+  export function toInput(draft: IngredientDraft): IngredientInput {
     return {
       id: draft.id,
       name: draft.name.trim(),
@@ -121,9 +144,7 @@
       staple: draft.staple,
       density: orNull(draft.density),
       unit_weight: orNull(draft.unitWeight),
-      // The unit alone says nothing: a dropdown left on "pièce" over an empty
-      // amount is the absence of an answer, not an answer of one piece.
-      default_quantity: amount === null ? null : { amount, unit: draft.defaultUnit },
+      default_quantity: usualQuantity(draft),
       photo: draft.photo,
     };
   }
@@ -269,7 +290,10 @@
       field="default-quantity"
       {onkeydown}
     />
-    <small>Ce qu'on en achète quand on l'ajoute d'un geste. Vide : une pièce.</small>
+    <small>
+      Ce qu'on en achète quand on l'ajoute d'un geste — quantité et unité. Une
+      unité seule vaut 1. Tout vide : une pièce.
+    </small>
   </div>
 
   <div class="pair">

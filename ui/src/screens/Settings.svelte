@@ -3,6 +3,7 @@
   import Screen from '../components/Screen.svelte';
   import { buildVersion, readIdentity } from '../lib/core';
   import type { Session } from '../lib/session.svelte';
+  import type { PhotoPhase } from '../lib/photos.svelte';
   import type { SyncPhase } from '../lib/sync.svelte';
   import Events from './Events.svelte';
   import Identify from './Identify.svelte';
@@ -61,6 +62,24 @@
     online: 'Synchronisé',
     retrying: 'Hors de portée — nouvelle tentative',
     refused: 'Refusé par le serveur',
+  };
+
+  /**
+   * The photo socket says its own piece (DECISIONS 0092).
+   *
+   * A second line rather than a word folded into the first, because the two
+   * are genuinely independent: the list can be synchronised while a hundred
+   * megabytes of pictures are still crossing, and "Synchronisé" would be true
+   * and misleading. It is also the only place a photo transfer that keeps
+   * failing is visible at all — nothing else on screen waits for one.
+   */
+  const PHOTO_PHASES: Record<PhotoPhase, string> = {
+    idle: 'Photos : en veille',
+    connecting: 'Photos : connexion…',
+    running: 'Photos : transfert',
+    done: 'Photos : à jour',
+    retrying: 'Photos : hors de portée',
+    refused: 'Photos : refusées par le serveur',
   };
 
   /** Shown on demand, never by default: it is the key, and a settings screen
@@ -155,6 +174,12 @@
     <section class="group">
       <h2 class="display">Groupe</h2>
       <p class="status" data-phase={session.sync.phase}>{PHASES[session.sync.phase]}</p>
+      {#if session.sync.group !== null}
+        <p class="photo-status" data-phase={session.photos.phase}>
+          {PHOTO_PHASES[session.photos.phase]}{#if session.photos.pending > 0}&nbsp;— {session.photos
+              .pending} en attente{/if}
+        </p>
+      {/if}
 
       {#if session.sync.group === null}
         {#if pairingOpen}
@@ -343,6 +368,14 @@
     margin: 0;
     color: var(--text-muted);
     font-size: var(--text-sm);
+  }
+
+  /* Quieter than the line above it: the document is what has to be up to
+     date, and a photo still crossing is a fact rather than a problem. */
+  .photo-status {
+    margin: 0;
+    color: var(--text-faint);
+    font-size: var(--text-xs);
   }
 
   .group .note {

@@ -50,6 +50,27 @@
     }
   }
 
+  /**
+   * Which cloth the page is wearing (DECISIONS 0084).
+   *
+   * The tablecloth is `body`'s background and its two colours are custom
+   * properties, so naming the tab on the root element is the whole mechanism:
+   * `app.css` redefines the checks under `[data-screen]` and nothing else in
+   * the app has to know a screen has a colour. It is written here rather than
+   * in `Session.show`, because the attribute has to follow what is *rendered*
+   * — pairing and "qui êtes-vous ?" run over a session whose `screen` is
+   * already set, and both belong on the plain cloth.
+   */
+  let cloth = $derived(
+    phase.step === 'ready' && phase.session.state.me !== null ? phase.session.screen : null,
+  );
+
+  $effect(() => {
+    const root = document.documentElement;
+    if (cloth === null) delete root.dataset.screen;
+    else root.dataset.screen = cloth;
+  });
+
   onMount(() => {
     // Ahead of the identity check, and not inside `Session`: onboarding is a
     // form, so the very first screen a new phone shows already has a keyboard

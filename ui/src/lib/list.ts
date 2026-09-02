@@ -42,7 +42,27 @@ export function entriesBySource(list: ListEntryView[]): Map<string, ListEntryVie
  */
 export function badgeOf(entry: ListEntryView | undefined): string | null {
   if (entry === undefined) return null;
-  return entry.item.kind === 'ingredient'
-    ? formatQuantity(entry.item.quantity)
-    : `${entry.item.servings} pers.`;
+  if (entry.item.kind === 'ingredient') return formatQuantity(entry.item.quantity);
+  const people = `${entry.item.servings} pers.`;
+  // Half a recipe says so, because "4 pers." on a row carrying two of its
+  // seven lines is a promise the cart does not keep (DECISIONS 0091).
+  return entry.item.only === null
+    ? people
+    : `${people} · ${entry.item.only.length}/${entry.item.components}`;
+}
+
+/**
+ * Which of a recipe's lines an entry asks for (DECISIONS 0091).
+ *
+ * An empty set is "all of them" and is what every entry that has never been
+ * restricted answers — the caller ticks a row by asking `chosen.size === 0 ||
+ * chosen.has(line)`, which is the same shape `domain::sold_at` gives the cart
+ * for a shop. A recipe that is not on the list at all has no entry and no set;
+ * the caller has already checked that.
+ */
+export function chosenLines(entry: ListEntryView | undefined): Set<string> {
+  if (entry === undefined || entry.item.kind !== 'recipe' || entry.item.only === null) {
+    return new Set();
+  }
+  return new Set(entry.item.only);
 }

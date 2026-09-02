@@ -12,6 +12,7 @@
 //! browser-shaped.
 #![cfg(not(target_family = "wasm"))]
 
+use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use cabas_domain::event::{Action, Subject};
@@ -94,6 +95,7 @@ fn recipe_entry() -> ListEntry {
         item: ListItem::Recipe {
             recipe: RecipeId::from_raw("tart"),
             servings: nz(6),
+            only: None,
         },
         added_by: UserId::from_raw("alice"),
         added_at: Timestamp(1_000),
@@ -600,6 +602,43 @@ fn a_default_quantity_survives_a_round_trip() {
         reloaded.ingredients().expect("read")[0].default_quantity,
         Some(Quantity::whole(6, Unit::Piece))
     );
+}
+
+/// Half a recipe on the list (DECISIONS 0091), through the document and back.
+#[test]
+fn a_restricted_recipe_entry_survives_a_round_trip() {
+    let doc = Document::new();
+    let chosen: BTreeSet<UsageId> = [UsageId::from_raw("u_t_apples")].into_iter().collect();
+    doc.add_list_entry(&ListEntry {
+        item: ListItem::Recipe {
+            recipe: RecipeId::from_raw("tart"),
+            servings: nz(6),
+            only: Some(chosen.clone()),
+        },
+        ..recipe_entry()
+    })
+    .expect("write");
+
+    let reloaded = Document::load(&doc.snapshot().expect("snapshot")).expect("load");
+    let ListItem::Recipe { only, servings, .. } = &reloaded.list().expect("read").entries[0].item
+    else {
+        panic!("a recipe entry");
+    };
+    assert_eq!(only.as_ref(), Some(&chosen));
+    assert_eq!(*servings, nz(6));
+}
+
+/// An entry written before 0091, and every entry that asks for the whole
+/// recipe since: the key is simply absent.
+#[test]
+fn a_recipe_entry_with_no_restriction_reads_as_the_whole_recipe() {
+    let doc = Document::new();
+    doc.add_list_entry(&recipe_entry()).expect("write");
+    let reloaded = Document::load(&doc.snapshot().expect("snapshot")).expect("load");
+    let ListItem::Recipe { only, .. } = &reloaded.list().expect("read").entries[0].item else {
+        panic!("a recipe entry");
+    };
+    assert_eq!(*only, None);
 }
 
 #[test]

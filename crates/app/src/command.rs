@@ -82,6 +82,16 @@ pub enum Command {
         /// (Rule 9). Cooking it for a different number tonight is what the
         /// list's own "− 4 pers. +" is for.
         servings: Option<u32>,
+        /// Which of the recipe's own lines to ask for; absent is all of them
+        /// (DECISIONS 0091).
+        ///
+        /// The ids are the recipe's root components — an ingredient line or a
+        /// sub-recipe line — and they are checked against the recipe as it
+        /// stands: naming a line it does not have is refused here, where there
+        /// is somebody to tell, rather than silently expanding to less than
+        /// was asked for.
+        #[serde(default)]
+        only: Option<Vec<String>>,
     },
 
     /// Adds a bare ingredient. This also purges the ingredient's overlay
@@ -104,6 +114,21 @@ pub enum Command {
     SetEntryServings {
         entry: String,
         servings: u32,
+    },
+
+    /// Which of a recipe's lines an entry already on the list asks for
+    /// (DECISIONS 0091).
+    ///
+    /// `None` restores the whole recipe. An empty list is refused rather than
+    /// treated as "none of it": a line asking for nothing is a row that can
+    /// never complete and never leaves the list, and the thing the person
+    /// meant is to take the entry off — which is what
+    /// [`Command::RemoveListEntry`] is.
+    ///
+    /// Refused on a bare ingredient, which has no lines.
+    SetEntryComponents {
+        entry: String,
+        only: Option<Vec<String>>,
     },
 
     /// Sets what a bare ingredient on the list asks for, exactly

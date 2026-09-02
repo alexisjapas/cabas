@@ -253,6 +253,17 @@ pub enum ListItemView {
         /// What the recipe itself is written for, so the UI can show that the
         /// two differ.
         written_for: u32,
+        /// The recipe's own lines this entry asks for, when it asks for only
+        /// some of them (DECISIONS 0091). `None` is the whole recipe.
+        ///
+        /// **Resolved**, not a copy of what is stored: an id naming a line the
+        /// recipe no longer has is left out, so a screen can count these
+        /// against `components` and be right. The document keeps the stale id
+        /// — the line may come back — and this is the reading of it.
+        only: Option<Vec<String>>,
+        /// How many lines the recipe has now, so a row can say "3 of 7"
+        /// without holding a copy of the recipe.
+        components: usize,
     },
     Ingredient {
         ingredient: String,

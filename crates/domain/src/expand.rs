@@ -4,7 +4,7 @@
 //! appear twice under one parent. What must not happen is a cycle, so
 //! expansion carries the current path and refuses to re-enter it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::recipe::{Component, Recipe, SubRecipeAmount};
 use crate::units::Dimension;
@@ -67,9 +67,30 @@ pub fn expand(
     factor: Rational,
     recipes: &RecipeIndex,
 ) -> Result<Vec<Contribution>, ExpandError> {
+    expand_only(root, factor, recipes, None)
+}
+
+/// The same, restricted to some of `root`'s own lines (DECISIONS 0091).
+///
+/// `only` names **root** components — an ingredient line of `root`, or one of
+/// its sub-recipe lines — and nothing deeper: a chosen sub-recipe expands
+/// whole. That is the whole of the restriction, and it is deliberately not
+/// carried down the recursion: "I already have the pastry" is a statement
+/// about this recipe's list, and a set of ids that reached into a sub-recipe
+/// would be a statement about somebody else's.
+///
+/// `None` is every line, which is what [`expand`] passes. An id naming a line
+/// this recipe no longer has contributes nothing — the other device deleted
+/// it, and dropping the *entry* over that would be deciding for them.
+pub fn expand_only(
+    root: &RecipeId,
+    factor: Rational,
+    recipes: &RecipeIndex,
+    only: Option<&BTreeSet<UsageId>>,
+) -> Result<Vec<Contribution>, ExpandError> {
     let mut out = Vec::new();
     let mut path = Vec::new();
-    expand_into(root, factor, recipes, &mut path, &mut out)?;
+    expand_into(root, factor, recipes, only, &mut path, &mut out)?;
     Ok(out)
 }
 
@@ -77,6 +98,7 @@ fn expand_into(
     id: &RecipeId,
     factor: Rational,
     recipes: &RecipeIndex,
+    only: Option<&BTreeSet<UsageId>>,
     path: &mut Vec<RecipeId>,
     out: &mut Vec<Contribution>,
 ) -> Result<(), ExpandError> {
@@ -95,6 +117,11 @@ fn expand_into(
 
     path.push(id.clone());
     for component in &recipe.components {
+        // The restriction applies here and nowhere below: every recursive call
+        // passes `None`, so a chosen sub-recipe expands whole.
+        if only.is_some_and(|chosen| !chosen.contains(component.id())) {
+            continue;
+        }
         match component {
             Component::Ingredient(usage) => out.push(Contribution {
                 ingredient: usage.ingredient.clone(),
@@ -106,7 +133,7 @@ fn expand_into(
                     .get(&sub.recipe)
                     .ok_or_else(|| ExpandError::UnknownRecipe(sub.recipe.clone()))?;
                 let sub_factor = sub_recipe_factor(target, &sub.amount)?;
-                expand_into(&sub.recipe, factor * sub_factor, recipes, path, out)?;
+                expand_into(&sub.recipe, factor * sub_factor, recipes, None, path, out)?;
             }
         }
     }
@@ -197,6 +224,84 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].quantity, Quantity::whole(300, G));
         assert_eq!(out[0].usage, UsageId::from_raw("u_p_flour"));
+    }
+
+    /// The half of a recipe somebody already has at home (DECISIONS 0091).
+    #[test]
+    fn only_some_lines_expands_only_those() {
+        let cake = Recipe::new(rid("cake"), "Cake", nz(4))
+            .with_component(ing_component("u_flour", "flour", 200))
+            .with_component(ing_component("u_sugar", "sugar", 100))
+            .with_component(ing_component("u_butter", "butter", 80));
+        let idx = index(vec![cake]);
+
+        let chosen: BTreeSet<UsageId> = [UsageId::from_raw("u_sugar")].into_iter().collect();
+        let out = expand_only(&rid("cake"), Rational::from_integer(1), &idx, Some(&chosen))
+            .expect("expands");
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].ingredient, IngredientId::from_raw("sugar"));
+        assert_eq!(out[0].quantity, Quantity::whole(100, G));
+    }
+
+    /// Scaling a restricted entry scales the lines it kept, and only those —
+    /// which is what makes "we are eight tonight" mean something on a recipe
+    /// half of which is already in the cupboard.
+    #[test]
+    fn a_factor_still_applies_to_what_is_left() {
+        let cake = Recipe::new(rid("cake"), "Cake", nz(4))
+            .with_component(ing_component("u_flour", "flour", 200))
+            .with_component(ing_component("u_sugar", "sugar", 100));
+        let idx = index(vec![cake]);
+
+        let chosen: BTreeSet<UsageId> = [UsageId::from_raw("u_flour")].into_iter().collect();
+        let out = expand_only(&rid("cake"), Rational::from_integer(2), &idx, Some(&chosen))
+            .expect("expands");
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].quantity, Quantity::whole(400, G));
+    }
+
+    /// A chosen sub-recipe comes whole. The restriction names this recipe's
+    /// lines and is deliberately not carried into anybody else's.
+    #[test]
+    fn a_chosen_sub_recipe_expands_entirely() {
+        let tart = Recipe::new(rid("tart"), "Tart", nz(4))
+            .with_component(ing_component("u_t_apples", "apples", 600))
+            .with_component(sub_component(
+                "u_t_pastry",
+                "pastry",
+                SubRecipeAmount::Factor(Rational::from_integer(1)),
+            ));
+        let idx = index(vec![tart, pastry()]);
+
+        let chosen: BTreeSet<UsageId> = [UsageId::from_raw("u_t_pastry")].into_iter().collect();
+        let out = expand_only(&rid("tart"), Rational::from_integer(1), &idx, Some(&chosen))
+            .expect("expands");
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].ingredient, IngredientId::from_raw("flour"));
+        assert_eq!(out[0].quantity, Quantity::whole(300, G));
+    }
+
+    /// A line the recipe no longer has: the other device deleted it while this
+    /// entry named it. It contributes nothing, and the rest of the entry is
+    /// untouched — refusing the whole expansion would take somebody's list
+    /// apart over somebody else's edit.
+    #[test]
+    fn an_id_the_recipe_no_longer_has_contributes_nothing() {
+        let cake = Recipe::new(rid("cake"), "Cake", nz(4))
+            .with_component(ing_component("u_flour", "flour", 200));
+        let idx = index(vec![cake]);
+
+        let chosen: BTreeSet<UsageId> = [UsageId::from_raw("u_flour"), UsageId::from_raw("u_gone")]
+            .into_iter()
+            .collect();
+        let out = expand_only(&rid("cake"), Rational::from_integer(1), &idx, Some(&chosen))
+            .expect("expands");
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].ingredient, IngredientId::from_raw("flour"));
     }
 
     #[test]

@@ -668,6 +668,41 @@ if (JSON.parse(tabs).join('·') !== expectedTabs.join('·')) {
 }
 ok('the tabs run from the shelves to the trip, left to right');
 
+// --- one cloth per tab, and it scrolls (DECISIONS 0083, 0084) ---------------
+//
+// The tablecloth is `body`'s background and its two colours are custom
+// properties, so naming the tab on the root element is the whole mechanism.
+// Both halves are asserted because both are a one-word mistake: an attribute
+// that stops following the tab, and a `background-attachment: fixed` that iOS
+// ignores and Android honours — the same build with a moving cloth on one
+// phone and a still one on the other.
+const cloth = async () =>
+  evaluate(`
+    JSON.stringify({
+      screen: document.documentElement.dataset.screen ?? null,
+      check: getComputedStyle(document.body).getPropertyValue('--check-a').trim(),
+      attachment: getComputedStyle(document.body).backgroundAttachment,
+    })
+  `);
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the recipes tab');
+const onRecipes = JSON.parse(await cloth());
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__text('h1') === 'Liste'`, 'the list tab');
+const onList = JSON.parse(await cloth());
+
+if (onRecipes.screen !== 'recipes' || onList.screen !== 'list') {
+  throw failed(`the cloth does not follow the tab: ${JSON.stringify({ onRecipes, onList })}`);
+}
+if (onRecipes.check === onList.check || onRecipes.check === '') {
+  throw failed(`two tabs share a cloth: ${JSON.stringify({ onRecipes, onList })}`);
+}
+if (onList.attachment === 'fixed') {
+  throw failed('the cloth is fixed again — it must scroll with the list on every phone');
+}
+ok(`each tab wears its own cloth, and it scrolls (${onRecipes.check} · ${onList.check})`);
+
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'ingredients screen');
 await evaluate(`__clickText('button', 'Nouveau')`);
@@ -692,6 +727,83 @@ if (usual !== '6') {
 }
 await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
 ok('and its usual quantity round-trips through the form');
+
+// --- and so does its usual *unit* (DECISIONS 0089) ---------------------------
+//
+// The complaint that produced 0089: somebody opened the dropdown, chose a
+// unit, saved, and found "unité" waiting for them next time. Both halves are
+// asserted here — an amount with a unit, and a unit with no amount, which used
+// to be thrown away entirely and now means one of it.
+//
+// The two ingredients are created and then **deleted again**, deliberately:
+// everything below this point counts what is in the library, and a test that
+// quietly widened the fixture would break assertions two hundred lines away
+// for reasons nobody would connect to this block.
+
+/** Opens an ingredient's editor and deletes it, confirming. */
+async function forget(name) {
+  await evaluate(`__clickText('li button', ${JSON.stringify(name)})`);
+  await waitFor('document.querySelector(".ingredient-form")', `${name}, open to be deleted`);
+  await evaluate(`__clickText('.ingredient-form button', 'Supprimer')`);
+  await evaluate(`__clickText('.ingredient-form button', 'Confirmer la suppression')`);
+  await waitFor(`!__all('li .name').includes(${JSON.stringify(name)})`, `${name}, gone`);
+}
+
+await evaluate(`__clickText('button', 'Nouveau')`);
+await waitFor('document.querySelector(".ingredient-form")', 'a form for the flour');
+await evaluate(`__set('[data-field="name"]', 'Farine')`);
+await evaluate(`__set('[data-field="default-quantity"]', '2')`);
+await evaluate(`__set('[data-field="default-quantity-unit"]', 'kg')`);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+await waitFor(`__all('li .name').includes('Farine')`, 'Farine in the library');
+await evaluate(`__clickText('li button', 'Farine')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Farine, open again');
+const usualUnit = await evaluate(`
+  JSON.stringify([
+    document.querySelector('[data-field="default-quantity"]').value,
+    document.querySelector('[data-field="default-quantity-unit"]').value,
+  ])
+`);
+if (usualUnit !== '["2","kg"]') {
+  throw failed(`the usual amount and unit came back as ${usualUnit}`);
+}
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+ok('an ingredient keeps the unit it is usually bought in, not just the number');
+
+await evaluate(`__clickText('button', 'Nouveau')`);
+await waitFor('document.querySelector(".ingredient-form")', 'a form for the milk');
+await evaluate(`__set('[data-field="name"]', 'Lait')`);
+await evaluate(`__set('[data-field="default-quantity-unit"]', 'l')`);
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+await waitFor(`__all('li .name').includes('Lait')`, 'Lait in the library');
+await evaluate(`__clickText('li button', 'Lait')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Lait, open again');
+const bare = await evaluate(`
+  JSON.stringify([
+    document.querySelector('[data-field="default-quantity"]').value,
+    document.querySelector('[data-field="default-quantity-unit"]').value,
+  ])
+`);
+if (bare !== '["1","l"]') {
+  throw failed(`a unit chosen over an empty amount should mean one of it, got ${bare}`);
+}
+await evaluate(`__clickText('.ingredient-form button', 'Annuler')`);
+ok('and a unit chosen with no amount means one of it, rather than nothing at all');
+
+// --- a saved row says where it went (DECISIONS 0087) -------------------------
+//
+// The editor opens under its row, so saving one collapses a tall panel and
+// leaves the eye on whatever slid up to fill the gap. The row is scrolled to
+// and flashed; the class is what the animation hangs off, and it is taken off
+// again by the animation's own end — so this looks for it while it is on.
+await evaluate(`__clickText('li button', 'Farine')`);
+await waitFor('document.querySelector(".ingredient-form")', 'Farine, open to be saved');
+await evaluate(`__clickText('.ingredient-form button', 'Enregistrer')`);
+await waitFor(`__text('li.flashing .name') === 'Farine'`, 'the saved row, flashing');
+ok('a saved ingredient scrolls back into view and says which row it is');
+
+await forget('Farine');
+await forget('Lait');
 
 await evaluate(`__clickText('button', 'Nouveau')`);
 await waitFor('document.querySelector(".ingredient-form")', 'ingredient form');
@@ -773,7 +885,7 @@ ok('and one dragged to the stop is added, leaving "Annuler" behind it');
 
 await evaluate(`__clickText('nav button', 'Liste')`);
 await waitFor(`__all('li .name').includes('Tomates')`, 'Tomates, on the list');
-const pushed = await evaluate(`__text('li .quantity[aria-label^="Quantité de Tomates"]')`);
+const pushed = await evaluate(`__text('li .quantity[aria-label^="Quantité et unité de Tomates"]')`);
 if (pushed !== '6') {
   throw failed(`the swipe used ${JSON.stringify(pushed)} rather than the usual six`);
 }
@@ -866,7 +978,7 @@ await shot('03-list');
 // The row is addressed by name for the same reason — this list holds four
 // entries before the file is done, and the first `li` is whichever one sorts
 // first.
-const TOMATOES = 'li .quantity[aria-label^="Quantité de Tomates"]';
+const TOMATOES = 'li .quantity[aria-label^="Quantité et unité de Tomates"]';
 
 await evaluate(`__click('li .notch[aria-label="Plus de Tomates"]')`);
 await waitFor(`__text('${TOMATOES}') === '9'`, 'one notch more on the line');
@@ -884,6 +996,54 @@ await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
 await waitFor(`__count('.amount-dialog') === 0`, 'the dialog, closed');
 await waitFor(`__text('${TOMATOES}') === '5'`, 'the typed amount, on the line');
 ok('and the exact amount is typed behind the line itself');
+
+// --- and the unit with it (DECISIONS 0090) ----------------------------------
+//
+// The one door to either, and it has to be both: a line that can only change
+// its number is a line somebody typed "500" into meaning grams and got five
+// tomatoes. Put back to pieces afterwards, because the rest of this file reads
+// a cart that counts them.
+await evaluate(`__click('${TOMATOES}')`);
+await waitFor('document.querySelector(".amount-dialog")', 'the amount and its unit');
+await evaluate(`__set('[data-field="entry-amount"]', '750')`);
+await evaluate(`__set('[data-field="entry-amount-unit"]', 'g')`);
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__text('${TOMATOES}') === '750 g'`, 'the line, in grams');
+ok('the unit of a line is changed from the list, not only its number');
+
+await evaluate(`__click('${TOMATOES}')`);
+await waitFor('document.querySelector(".amount-dialog")', 'the panel again');
+await evaluate(`__set('[data-field="entry-amount"]', '5')`);
+await evaluate(`__set('[data-field="entry-amount-unit"]', 'piece')`);
+await evaluate(`__clickText('.amount-dialog button', 'Valider')`);
+await waitFor(`__text('${TOMATOES}') === '5'`, 'the line, back in pieces');
+
+// --- and it costs one line, not two (DECISIONS 0090) ------------------------
+//
+// The amount used to take a row of its own and the meta another, so saying
+// "500 g" cost a third of a card. They share a line now: the control and what
+// the row has to say about itself, side by side. Asserted as *containment*
+// rather than as a height in pixels — the second is a number that has to be
+// re-guessed every time a font changes, and what actually broke was the
+// layout.
+const shape = await evaluate(`
+  (() => {
+    const row = [...document.querySelectorAll('.pending > li')]
+      .find((li) => li.querySelector('.name')?.textContent.trim() === 'Tomates');
+    if (!row) return JSON.stringify({ error: 'no row' });
+    const line = row.querySelector('.line');
+    return JSON.stringify({
+      shares: line !== null && line.contains(row.querySelector('.amount'))
+        && line.contains(row.querySelector('.meta')),
+      rows: new Set([...row.children].map((el) => Math.round(el.getBoundingClientRect().top))).size,
+    });
+  })()
+`);
+const { shares, rows } = JSON.parse(shape);
+if (shares !== true || rows !== 2) {
+  throw failed(`the list row is not two lines tall: ${shape}`);
+}
+ok('a list row is a name and one line holding both the amount and the meta');
 
 // A refused amount keeps the panel open on purpose — and the sentence saying
 // why has to be readable over it (DECISIONS 0079). It used to be painted
@@ -1072,6 +1232,23 @@ await waitFor(`__text('details summary')?.startsWith('Acheté')`, 'the bought se
 ok('ticking a line moves it to "Acheté"');
 await shot('05-ticked');
 
+// --- the bar, full (DECISIONS 0088) -----------------------------------------
+//
+// Confetti when the last line is ticked, over the bar that earned it. It fires
+// on the *transition*, so it is asserted here and not on arrival at the tab —
+// and it is taken away again by its own animation, which is why this waits for
+// the pieces rather than reading them once.
+await evaluate(`__clickText('section li button', 'Papier toilette')`);
+await waitFor(`__count('.confetti .piece') > 0`, 'the confetti, over a full bar');
+await waitFor(`__count('.progress.full') === 1`, 'the bar, showing it is full');
+await shot('05c-confetti');
+ok(`the finished bar throws confetti (${await evaluate(`__count('.confetti .piece')`)} pieces)`);
+
+// Put it back: everything below reads a cart that is half done, and a trip
+// finished here would be a fixture change disguised as a celebration.
+await evaluate(`__clickText('details li button', 'Papier toilette')`);
+await waitFor(`__all('section li .name').includes('Papier toilette')`, 'the line, unticked');
+
 // --- and the list stops showing it -----------------------------------------
 //
 // An entry whose every ingredient is settled has nothing left to say on a
@@ -1202,6 +1379,118 @@ if (!scaled.includes('4') || !scaled.includes('10 g')) {
 }
 ok(`scaling is the core's arithmetic, not the frontend's (${JSON.stringify(scaled)})`);
 await shot('08-recipe');
+
+// --- half a recipe, because the rest is in the cupboard (DECISIONS 0091) ----
+//
+// One line at a time, from the list that is already on screen. The entry that
+// comes out is still a *recipe* entry — measured in people, and rescaling it
+// scales the lines it kept and no others, which a handful of bare ingredients
+// added separately could not have done.
+//
+// The oil is the line to pick: it is the one ingredient in this recipe that
+// nothing else on the list already asks for, so what reaches the cart from it
+// is unambiguous. The tomatoes are the control — five of them are on the list
+// by hand, ticked off in the shop above, and a recipe entry that quietly
+// contributed its own two would show up as a changed amount on that line.
+const OIL = "Huile d'olive";
+/** One cart line's amount, wherever the line has got to — a ticked one is
+ *  inside `Acheté` rather than in an aisle, and that is exactly where the
+ *  control line is by now. */
+const CART_AMOUNT = (name) => `
+  [...document.querySelectorAll('li')]
+    .find((li) => li.querySelector('.name')?.textContent.trim() === ${JSON.stringify(name)})
+    ?.querySelector('.amount')?.textContent.trim() ?? null
+`;
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart, before any of this');
+const tomatoesBefore = await evaluate(CART_AMOUNT('Tomates'));
+if (tomatoesBefore === null) throw failed('the control line is not in the cart');
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the recipe shelf');
+await shot('08c-recipe-shelf');
+await evaluate(`__clickText('li button', 'Salade de tomates')`);
+await waitFor(`__text('h1') === 'Salade de tomates'`, 'the recipe, open again');
+for (let i = 0; i < 4; i += 1) await evaluate(`__click('.stepper button[aria-label="Plus"]')`);
+await waitFor(`__text('.count') === '8 pers.'`, 'read at eight again');
+
+await evaluate(`__clickText('.components .pick', ${JSON.stringify(OIL)})`);
+await waitFor(`__count('.components .pick.on') === 1`, 'one line of the recipe, chosen');
+await waitFor(`__text('.hint')?.includes('1 sur')`, 'the reader saying how much of it is asked for');
+ok('a single line of a recipe goes on the list from the recipe');
+
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__all('li .name').includes('Salade de tomates')`, 'the half-recipe entry');
+const partial = await evaluate(`
+  __text('.pending > li .quantity[aria-label^="Quantité de Salade de tomates"]')
+`);
+if (partial !== '8 pers.') {
+  throw failed(`a restricted entry is still measured in people, got ${JSON.stringify(partial)}`);
+}
+ok('and the entry it makes is still a recipe, measured in people');
+
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`__text('h1') === 'Courses'`, 'the cart, from half a recipe');
+await waitFor(`__all('section li .name').includes(${JSON.stringify(OIL)})`, 'the chosen line');
+const oilAtEight = await evaluate(CART_AMOUNT(OIL));
+const tomatoesAfter = await evaluate(CART_AMOUNT('Tomates'));
+if (tomatoesAfter !== tomatoesBefore) {
+  throw failed(
+    `a line nobody asked for reached the cart: Tomates went ${tomatoesBefore} → ${tomatoesAfter}`,
+  );
+}
+ok(`only the chosen line reaches the cart (${OIL} ${oilAtEight}, Tomates still ${tomatoesAfter})`);
+
+// Rescaling scales what it kept, and nothing else comes back with it. Two
+// notches is two whole recipes as written — eight people to sixteen — so the
+// oil doubles and the tomatoes are still exactly what was asked for by hand.
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__text('h1') === 'Liste'`, 'the list again');
+await evaluate(`__click('.pending > li .notch[aria-label="Plus de Salade de tomates"]')`);
+await evaluate(`__click('.pending > li .notch[aria-label="Plus de Salade de tomates"]')`);
+await evaluate(`__clickText('nav button', 'Courses')`);
+await waitFor(`(${CART_AMOUNT(OIL)}) !== ${JSON.stringify(oilAtEight)}`, 'the cart, rescaled');
+const oilAtSixteen = await evaluate(CART_AMOUNT(OIL));
+if ((await evaluate(CART_AMOUNT('Tomates'))) !== tomatoesBefore) {
+  throw failed('rescaling brought back a line that was not asked for');
+}
+ok(`and asking for twice as many people asks for twice that line (${oilAtEight} → ${oilAtSixteen})`);
+
+// The way back to the whole recipe: the button that said "Ajouter à la liste"
+// says "Ajouter le reste" while some of it is already asked for, and pressing
+// it clears the restriction rather than adding a second entry.
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the shelf');
+await evaluate(`__clickText('li button', 'Salade de tomates')`);
+await waitFor(`__text('h1') === 'Salade de tomates'`, 'the recipe, open once more');
+if (!(await evaluate(`__text('.primary')`)).includes('le reste')) {
+  throw failed(`the button does not offer the rest: ${await evaluate(`__text('.primary')`)}`);
+}
+await evaluate(`__click('.primary')`);
+await waitFor(`__count('.components .pick:not(.on)') === 0`, 'every line, asked for');
+ok('and "Ajouter le reste à la liste" takes the whole recipe, in the same entry');
+
+// One entry throughout, which is the other half of that button: a second one
+// beside it would ask for the chosen lines twice.
+await evaluate(`__clickText('nav button', 'Liste')`);
+await waitFor(`__text('h1') === 'Liste'`, 'the list, to count the entries');
+const trials = (await evaluate(`__all('li .name')`)).filter((n) => n === 'Salade de tomates');
+if (trials.length !== 1) {
+  throw failed(`asking for the rest made a second entry: ${JSON.stringify(trials)}`);
+}
+
+// The trial entry comes off: everything below reads a list this block has not
+// changed, and it is at sixteen people by now.
+await evaluate(`__click('li button[aria-label="Retirer Salade de tomates"]')`);
+await waitFor(`!__all('li .name').includes('Salade de tomates')`, 'the trial entry, removed');
+
+await evaluate(`__clickText('nav button', 'Recettes')`);
+await waitFor(`__text('h1') === 'Recettes'`, 'the shelf, one last time');
+await evaluate(`__clickText('li button', 'Salade de tomates')`);
+await waitFor(`__text('h1') === 'Salade de tomates'`, 'the recipe, read again');
+for (let i = 0; i < 4; i += 1) await evaluate(`__click('.stepper button[aria-label="Plus"]')`);
+await waitFor(`__text('.count') === '8 pers.'`, 'read at eight for the last time');
 
 await evaluate(`__clickText('button', 'Ajouter à la liste')`);
 await waitFor(`__text('.primary') === 'Ajoutée à la liste'`, 'the recipe on the list');
@@ -1677,6 +1966,27 @@ async function relayLog() {
   return null;
 }
 
+/**
+ * Every sealed photo the relay has been given, across every group
+ * (DECISIONS 0092).
+ *
+ * As latin-1 strings rather than buffers, because the only question asked of
+ * them is whether a JPEG header survived — which it must not, and which is
+ * the one thing the log's own check cannot cover: `/photos` is the endpoint
+ * where the untrusted party hands bytes back that a device writes to disk.
+ */
+async function photoFiles() {
+  const found = [];
+  for (const group of await readdir(RELAY_DATA).catch(() => [])) {
+    const dir = join(RELAY_DATA, group, 'photos');
+    for (const name of await readdir(dir).catch(() => [])) {
+      const bytes = await readFile(join(dir, name)).catch(() => null);
+      if (bytes !== null) found.push(bytes.toString('latin1'));
+    }
+  }
+  return found;
+}
+
 async function waitForRelay(label, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -1788,19 +2098,35 @@ await waitFor(`__text('h1') === 'Ingrédients'`, 'the ingredients screen');
 await waitFor(`__all('li .name').includes('Tomates')`, 'the library, back from the relay');
 ok('an empty replica gets the whole library back from the relay alone');
 
-// The photo does **not** come back, and that is correct rather than a
-// failure: the id is in the document and the document is what the relay
-// carries, while the bytes live in a store of their own that this wipe took
-// with it. Until the transfer half of M10 lands, this is what the second
-// phone sees — a frame that says a photo exists, no broken image, and nothing
-// in the console (DECISIONS 0062, Rule 6).
+// And the photo with it — **on its own socket** (DECISIONS 0092).
+//
+// This is the assertion that says the transfer half of M10 exists. The id is
+// in the document and the document is what `/sync` carries; the bytes are not
+// in that log and never were, so a photo on this screen can only have come
+// from `/photos`. It arrives after the frame that names it, which is what the
+// wait is: the placeholder is drawn first and becomes a picture when the
+// bytes land, with nothing else on the page told about it (Rule 6).
 await waitFor(`__count('li .photo[data-photo]') === 1`, 'the photo, named by the document');
-await evaluate('__settle()');
-const photosBack = await evaluate(`__count('li .photo img')`);
-if (photosBack !== 0) {
-  throw new Error(`the bytes cannot have come back through the log: ${photosBack} rendered`);
+await waitFor(`__count('li .photo img') === 1`, 'the photo, fetched from the relay');
+ok('and the photo came back too — through /photos, which is the only place it could');
+
+// What the relay wrote down for it is not a picture. The log has its own
+// check above; this is the same one for the blob store, and it matters more:
+// this is the one endpoint where the untrusted party hands back bytes that a
+// device writes to its own disk (Rule 7).
+// More than one, and that is the design rather than an accident: a device
+// offers what its *store* holds, not what the document currently references
+// (DECISIONS 0080). This run took one photo and imported another over it, and
+// both are safe on the relay — which is what makes `forget_unreferenced` a
+// cleanup rather than a deletion (0062).
+const sealedPhotos = await photoFiles();
+if (sealedPhotos.length === 0) {
+  throw failed(`the relay stored no photo at all in ${RELAY_DATA}`);
 }
-ok('the photo is named but absent — the bytes are not in the log, by design');
+if (sealedPhotos.some((bytes) => bytes.includes('\xff\xd8\xff'))) {
+  throw failed('the relay is holding a readable JPEG');
+}
+ok(`and the relay holds them sealed (${sealedPhotos.length}, none of them a JPEG)`);
 
 await evaluate(`__clickText('nav button', 'Recettes')`);
 await waitFor(`__all('li .name').includes('Salade de tomates au sel')`, 'the recipe, resynced');
@@ -2065,12 +2391,12 @@ if (typeof tomatoes.photo !== 'string') {
 }
 ok(`the whole library exports as one readable file (${exported.ingredients.length} ingredients)`);
 
-// And the toggle is the whole difference. But this device joined by typing
-// twelve words: it has the document and none of the pictures, because the
-// transfer half of M10 does not exist yet — so an export with photos asked
-// for would honestly carry nothing. Giving it one of its own is what makes
-// the toggle observable at all, and the stubs come off first because a photo
-// preview goes through `createObjectURL` too.
+// And the toggle is the whole difference. This device joined by typing twelve
+// words, so what it holds is whatever `/photos` has handed it since — which
+// is a race this assertion has no business running (DECISIONS 0092). Giving
+// it a photo of its own is what makes the toggle observable *deterministically*
+// rather than eventually, and the stubs come off first because a photo preview
+// goes through `createObjectURL` too.
 await evaluate(`__stopCatching()`);
 await evaluate(`__clickText('nav button', 'Ingrédients')`);
 await waitFor(`__text('h1') === 'Ingrédients'`, 'the shelf, to put a photo on this device');

@@ -40,6 +40,23 @@ pub enum Component {
     SubRecipe(SubRecipeUsage),
 }
 
+impl Component {
+    /// What names this line of the recipe.
+    ///
+    /// Both kinds carry one and it is the same kind of id, which is what lets
+    /// a list entry ask for a *subset of the lines* without caring which sort
+    /// each one is (DECISIONS 0091). Steps can only reference an ingredient
+    /// usage — see [`Recipe::usage`] — so this is deliberately not that
+    /// lookup: it answers "which line is this", not "which line does this
+    /// sentence mean".
+    pub fn id(&self) -> &UsageId {
+        match self {
+            Component::Ingredient(usage) => &usage.id,
+            Component::SubRecipe(sub) => &sub.id,
+        }
+    }
+}
+
 /// How an ingredient reference renders inside an instruction step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefDisplay {

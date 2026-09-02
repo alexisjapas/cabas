@@ -106,9 +106,22 @@
   --scrim: rgb(58 42 23 / 45%);
 
   /* --- The tablecloth -------------------------------------------------- */
-  /* Fill colours for one square. Neither is ever an ink. */
-  --check-a: #a9a24a;
-  --check-b: #e9c3e4;
+  /*
+   * Fill colours for one square. Neither is ever an ink, and both are
+   * **overridden per tab** by the `[data-screen]` blocks below (DECISIONS
+   * 0084) — these are the cloth of the screens that come before the app
+   * proper, pairing and "qui êtes-vous ?".
+   *
+   * Softer than the olive and pink they replace (0085). The pair used to run
+   * 1.68:1 against each other and put `--display-ink` at 3.49:1 on the darker
+   * square — over the 3:1 floor a heavy display face at `--text-lg` needs,
+   * and only just, so an aisle heading read as a smudge on half the squares
+   * it crossed. Lightening the dark check does both jobs at once: the cloth
+   * quietens to 1.40:1 and the ink climbs to 5.12:1, which is AA at *body*
+   * size rather than at heading size.
+   */
+  --check-a: #c8c47e;
+  --check-b: #f3dcef;
   --check-size: 40px;
 
   /* --- Spacing -------------------------------------------------------- */
@@ -174,6 +187,17 @@
   --duration-spring: 420ms;
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
+  /* A row saying "here I am" after it was saved (DECISIONS 0087). Long enough
+     to be caught by an eye that was on a form a moment ago and is now looking
+     at a list, short enough that it is over before the next tap. */
+  --duration-flash: 900ms;
+  /* One burst of confetti over the progress bar (DECISIONS 0088), and how far
+     a piece of it travels. The distance is a length rather than a number
+     because it is read straight into a `translate`. */
+  --duration-confetti: 1400ms;
+  --confetti-fall: 60vh;
+  --confetti-size: 0.5rem;
+
   /* --- The swipe that puts a row on the list (DECISIONS 0067, 0072) ----- */
   /* Distances, not decoration: these describe a gesture and are deliberately
      the ones measured on a phone rather than the ones drawn in a mockup. They
@@ -206,7 +230,15 @@
      against the row it sits in rather than against the picture — recognising
      a product takes very little of one (DECISIONS 0062). */
   --photo-thumb: 3rem;
-  /* The pink ring round a photo, at each of its two sizes. */
+  /*
+   * A dish on the recipe shelf (DECISIONS 0086). Bigger than an ingredient's
+   * thumb and square rather than round, because the two answer different
+   * questions: a thumb confirms *which* jar, and a photo of a finished dish is
+   * how a recipe is chosen at all. At 3rem it was a bead on the left of a name
+   * and did neither.
+   */
+  --photo-dish: 5.5rem;
+  /* The pink ring round a photo, at each of its sizes. */
   --photo-ring: 3px;
   --photo-ring-full: 5px;
 
@@ -239,6 +271,51 @@
   --keyboard-inset: 0px;
 }
 
+/*
+ * One cloth per tab (DECISIONS 0084).
+ *
+ * `App.svelte` stamps `data-screen` on the root element and these redefine the
+ * two check colours under it; `body`'s background reads them like any other
+ * inherited custom property, so nothing else in the app has to know. The
+ * attribute is absent before a tab is on screen, which is what leaves pairing
+ * and "qui êtes-vous ?" on the `:root` cloth above.
+ *
+ * Only the checks move. The shell, the bubbles, the tiles and every ink stay
+ * exactly where they are: five palettes is five times the surface area for a
+ * contrast mistake, and the one thing that has to hold on all of them is the
+ * heading that sits *on* the cloth. Each pair below is at least 5.2:1 against
+ * `--display-ink` — comfortably past the 3:1 a display face at `--text-lg`
+ * needs — and between 1.37:1 and 1.51:1 against itself, so the weave reads as
+ * a texture rather than as a chequerboard.
+ *
+ * The order is the tab bar's: Réglages · Ingrédients · Recettes · Liste ·
+ * Courses (0064).
+ */
+:root[data-screen='settings'] {
+  --check-a: #c9bfe0;
+  --check-b: #f2ecfa;
+}
+
+:root[data-screen='ingredients'] {
+  --check-a: #bcd08a;
+  --check-b: #eef5dc;
+}
+
+:root[data-screen='recipes'] {
+  --check-a: #f2c49a;
+  --check-b: #fdeada;
+}
+
+:root[data-screen='list'] {
+  --check-a: #a9cfd4;
+  --check-b: #e2f2f3;
+}
+
+:root[data-screen='cart'] {
+  --check-a: #e9b8d8;
+  --check-b: #fbe6f2;
+}
+
 /* Honour the system setting rather than animating regardless. */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -248,6 +325,15 @@
        lands where it lands, it just gets there at once. */
     --duration-spring: 0ms;
     --ease-spring: var(--ease-out);
+    /* The flash and the confetti are decoration end to end — unlike the
+       swipe, nothing under them still has to happen. `1ms` rather than `0ms`
+       so the `animationend` that takes the class off still fires: a zero
+       animation is allowed to be skipped entirely, and a row left wearing a
+       class it can never shed is a bug that only shows up on the machines
+       that asked for less motion. */
+    --duration-flash: 1ms;
+    --duration-confetti: 1ms;
+    --confetti-fall: 0px;
   }
 }
 
@@ -269,13 +355,16 @@ body {
   /* The cloth, and the flat apricot under it. `background-color` is what the
      sticky header and the tab bar sit on, so both stay declared — an alpha
      anywhere in either and a title becomes unreadable as the checks scroll
-     past behind it. `fixed` keeps the squares still under a moving list;
-     where a browser ignores it the pattern simply scrolls, which costs
-     nothing. */
+     past behind it.
+
+     The cloth **scrolls with the list**, and that is the whole of it: this
+     used to say `background-attachment: fixed`, which iOS quietly ignores on
+     the root element and Android honours — so the same build had a moving
+     cloth on one phone and a still one on the other (DECISIONS 0083). The
+     default is the one both agree on. */
   background-color: var(--surface);
   background-image: repeating-conic-gradient(var(--check-a) 0% 25%, var(--check-b) 0% 50%);
   background-size: var(--check-size) var(--check-size);
-  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-base);
