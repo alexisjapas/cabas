@@ -82,11 +82,11 @@
    * whole state and not the id it wrote, and this field has to put that id on
    * the draft it is sitting in the moment it exists.
    */
-  function create(): void {
+  async function create(): Promise<void> {
     const name = query.trim();
     if (name === '') return;
-    const id = mintShopId();
-    if (session.run({ command: 'save_shop', shop: { id, name } })) add(id);
+    const id = await mintShopId();
+    if (await session.run({ command: 'save_shop', shop: { id, name } })) add(id);
   }
 
   /**

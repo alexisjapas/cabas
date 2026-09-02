@@ -77,12 +77,17 @@
     // in front of it.
     keyboard.watch();
 
-    const identity = readIdentity();
-    if (identity === null) {
-      phase = { step: 'pairing' };
-      return;
-    }
-    void openWith(identity);
+    // The host answers with a promise on both platforms (DECISIONS 0093), so
+    // this runs beside `onMount` rather than inside it: an async `onMount`
+    // would hand Svelte a promise where it looks for a cleanup function.
+    void (async () => {
+      const identity = await readIdentity();
+      if (identity === null) {
+        phase = { step: 'pairing' };
+        return;
+      }
+      await openWith(identity);
+    })();
   });
 
 

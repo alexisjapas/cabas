@@ -26,7 +26,15 @@
     "checkJs": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "sourceMap": true
+    "sourceMap": true,
+
+    // The other half of the one conditional (DECISIONS 0093). Vite resolves
+    // $core-host per build; svelte-check has no idea what Vite decided, so it
+    // is pointed at the PWA implementation — which is the right default,
+    // because the PWA is what CI type-checks and what every gate runs against.
+    // The Tauri implementation is checked by the Android build.
+    "baseUrl": ".",
+    "paths": { "$core-host": ["./src/lib/core.wasm.ts"] }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "svelte.config.js", "vite.config.ts"]
 }

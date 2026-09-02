@@ -7,6 +7,9 @@
 # the relay binary by `crates/relay/build.rs` (DECISIONS 0048), never committed.
 /ui/node_modules
 /ui/dist
+# The Tauri bundle, built by `--mode tauri` into a directory of its own so an
+# Android build cannot overwrite the one `crates/relay/build.rs` embeds.
+/ui/dist-tauri
 
 # The cross-compiled relay, staged into the add-on's Docker context by
 # `build-relay` (DECISIONS 0049). A 4 MB build product with the whole PWA in

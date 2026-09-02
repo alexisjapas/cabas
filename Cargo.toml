@@ -6,6 +6,28 @@ members = [
     "crates/sync",
     "crates/app",
     "crates/relay",
+    "src-tauri",
+]
+# `src-tauri` is a member so that Rule 13's single registry reaches it and one
+# lockfile resolves the whole tree — but it is **not** in `default-members`,
+# and every workspace-wide gate excludes it by name.
+#
+# The reason is the same one that keeps the Android SDK in its own shell: on
+# Linux the `tauri` crate links the desktop GUI stack (dbus, gtk3, libsoup,
+# webkit2gtk), so a member that built by default would put that closure in the
+# everyday `nix develop` and in every CI run — to check a crate that only M7
+# and M8 touch. Cross-compiled to `aarch64-linux-android` it needs none of it,
+# because there the webview is Android's.
+#
+# The cost is stated rather than hidden: **nothing in CI compiles this crate
+# today.** `tauri-check` in the `.#android` shell is what checks it, and it is
+# a local gate until M8 brings a desktop shell that has the GUI libs anyway.
+default-members = [
+    "crates/domain",
+    "crates/store",
+    "crates/sync",
+    "crates/app",
+    "crates/relay",
 ]
 
 [workspace.package]
@@ -148,6 +170,25 @@ tracing-subscriber = "0.3"
 # clippy --workspace` until someone had run `pnpm build`. `crates/relay/
 # build.rs` writes the table instead — one `include_bytes!` per file, no
 # dependency, and an empty table when there is no bundle (DECISIONS 0048).
+
+# --- M7/M8 · the Tauri host ---
+#
+# The second implementation of the one TypeScript surface (DECISIONS 0093):
+# the same `cabas-app`, compiled natively, reached over `invoke` instead of
+# over `wasm-bindgen`. Kept to the same minor as the `cargo-tauri` the flake
+# pins, because that CLI generates the Gradle project this crate is built by
+# and the two are a matched pair. Not pinned to the patch — that is the
+# `wasm-bindgen` rule and it exists because a mismatch there is a blank page
+# with no error; here a mismatch is a build failure that names itself.
+#
+# No plugin, on purpose. Storage is `cabas-store`'s own `FileStorage` under
+# the directory `tauri::Manager::path()` hands out, and the identity is a
+# JSON file beside it (0031) — both plain `std::fs`. The share sheet and the
+# file picker that `Réglages · Données` needs (0076) are what will first want
+# `tauri-plugin-dialog` and `tauri-plugin-fs`; they are a parity item, not
+# part of the host.
+tauri = { version = "2.11", features = [] }
+tauri-build = { version = "2.6", features = [] }
 
 [profile.release]
 lto = true

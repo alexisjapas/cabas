@@ -303,6 +303,20 @@
         #
         # Text, not YAML: both files are ours, both are flat, and a parser
         # would be a dependency to keep honest for two greps.
+        # The gate `cargo clippy --workspace` cannot be, because `src-tauri` is
+        # out of `default-members`: on Linux the `tauri` crate wants the whole
+        # desktop GUI stack, and cross-compiled to Android it wants none of it.
+        # So the crate is checked for the target it actually ships to. Lives in
+        # the `.#android` shell because that is the only one with the NDK.
+        tauriCheck = pkgs.writeShellScriptBin "tauri-check" ''
+          set -euo pipefail
+          cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+          target="''${1:-aarch64-linux-android}"
+          echo "tauri-check: cabas-tauri for $target…"
+          cargo clippy -p cabas-tauri --target "$target" --all-targets -- -D warnings
+          echo "tauri-check: OK ($target)"
+        '';
+
         checkAddon = pkgs.writeShellScriptBin "check-addon" ''
           set -euo pipefail
           cd "$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
@@ -532,7 +546,7 @@
 
           shellHook = ''
             echo "cabas dev shell — $(rustc --version)"
-            echo "  cargo nextest run --workspace         # tests"
+            echo "  cargo nextest run --workspace --exclude cabas-tauri   # tests"
             echo "  wasm-check                            # Rule 8: the four shared crates on wasm32"
             echo "  check-wasm-bindgen                    # CLI/crate version match"
             echo "  build-wasm [--dev]                    # the wasm core into ui/src/lib/wasm"
@@ -575,9 +589,13 @@
         };
 
         # M7 only. Kept in a separate shell so the everyday `nix develop` stays
-        # a small download. The pinned SDK/NDK versions below are a starting
-        # point and are validated at the beginning of M7, not before — nothing
-        # depends on them until then.
+        # a small download. The pins below were validated when M7 opened: the
+        # shell realizes, and carries SDK 35, build-tools 35.0.0, NDK
+        # 29.0.14206865, JDK 21 and the two ARM targets. What that validation
+        # *added* is everything Tauri needs on top of a plain Android SDK —
+        # the CLI, `NDK_HOME`, and a Gradle — none of which the original pins
+        # carried, because nothing had ever asked them to build an app
+        # (DECISIONS 0005, ROADMAP M7).
         devShells.android =
           let
             androidPkgs = import nixpkgs {
@@ -588,8 +606,24 @@
               };
               overlays = [ rust-overlay.overlays.default ];
             };
+            # Neither of these is a free choice, and they are decided by two
+            # different things — which is why they do not match.
+            #
+            # `platformVersions` has to be what the generated
+            # `gen/android/app/build.gradle.kts` names as `compileSdk` (36,
+            # from `cargo tauri android init` with CLI 2.11.4).
+            # `buildToolsVersions` has to be what the Android Gradle Plugin
+            # that project pins (8.11.0) uses by default, which is 35.0.0 and
+            # is *not* the platform's number.
+            #
+            # Getting either wrong fails the same way and says nothing useful:
+            # Gradle tries to install the missing component itself, cannot,
+            # because /nix/store is read-only, and reports "The SDK directory
+            # is not writable" while naming a component nobody asked for. The
+            # generated project is the only thing that says what these should
+            # be, so `android init` has to run before they can be known.
             androidSdk = androidPkgs.androidenv.composeAndroidPackages {
-              platformVersions = [ "35" ];
+              platformVersions = [ "36" ];
               buildToolsVersions = [ "35.0.0" ];
               includeNDK = true;
             };
@@ -610,19 +644,45 @@
             packages =
               webPackages
               ++ (with androidPkgs; [
+                # The CLI that generates the Gradle project and drives
+                # `android init` / `android build`. Pinned by nixpkgs like
+                # every other tool here (Rule 13): the generated project is
+                # tied to the CLI that wrote it, so the two must not drift.
+                cargo-tauri
                 cargo-ndk
                 jdk21
+                # Deliberately **not** `gradle`. The earlier version of this
+                # shell carried it on the theory that the wrapper could be
+                # pointed at a known-good distribution; `android init` settled
+                # it the other way. `gen/android/gradle/wrapper` pins 8.14.3
+                # and `gradlew` fetches that, plus the whole AGP and Kotlin
+                # tree from google() and mavenCentral() — about 1.5 GB into
+                # `~/.gradle`, none of it Nix's. A `gradle` in the PATH that
+                # nothing invokes would be a lie about what builds the APK, so
+                # the impurity is left visible instead of half-papered-over.
                 androidSdk.androidsdk
-              ]);
+              ])
+              ++ [ tauriCheck ];
 
             ANDROID_HOME = "${androidSdk.androidsdk}/libexec/android-sdk";
             ANDROID_SDK_ROOT = "${androidSdk.androidsdk}/libexec/android-sdk";
             ANDROID_NDK_ROOT = "${androidSdk.androidsdk}/libexec/android-sdk/ndk-bundle";
+            # The same directory, under the name Tauri actually reads. It looks
+            # redundant beside `ANDROID_NDK_ROOT` and is not: Tauri v2 looks up
+            # `NDK_HOME` and nothing else, so a shell setting only the
+            # Google-blessed spelling fails at the link step complaining about
+            # a missing NDK while an NDK is plainly installed. `ndk-bundle`
+            # rather than the versioned directory beside it, so bumping
+            # `composeAndroidPackages` cannot silently leave this pointing at
+            # an NDK that is no longer there.
+            NDK_HOME = "${androidSdk.androidsdk}/libexec/android-sdk/ndk-bundle";
 
             shellHook = ''
               echo "cabas android shell (M7) — $(rustc --version)"
               echo "  ANDROID_HOME=$ANDROID_HOME"
-              echo "  SDK/NDK versions are unvalidated until M7 starts — see ROADMAP M7."
+              echo "  NDK_HOME=$NDK_HOME"
+              echo "  $(cargo-tauri --version 2>/dev/null || echo 'cargo-tauri MISSING')"
+              echo "  tauri-check                           # cabas-tauri, for aarch64-linux-android"
             '';
           };
 

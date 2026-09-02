@@ -51,7 +51,7 @@ const SMALLER_EDGE = 800;
 export async function encodePhoto(file: File): Promise<Uint8Array> {
   const bitmap = await decode(file);
   try {
-    const ceiling = maxPhotoBytes();
+    const ceiling = await maxPhotoBytes();
 
     for (const edge of [MAX_EDGE, SMALLER_EDGE]) {
       const canvas = draw(bitmap, edge);

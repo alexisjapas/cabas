@@ -27,7 +27,8 @@ import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { ImportReport } from './bindings/ImportReport';
 import type { StateView } from './bindings/StateView';
-import { Core, rememberIdentity } from './core';
+import { openCore, rememberIdentity } from './core';
+import type { Core } from './core';
 import { PhotoTransfer } from './photos.svelte';
 import { Sync } from './sync.svelte';
 
@@ -111,14 +112,14 @@ export class Session {
    */
   error = $state<string | null>(null);
 
-  private constructor(core: Core, state: StateView, screen: Screen) {
+  private constructor(core: Core, openedFresh: boolean, state: StateView, screen: Screen) {
     this.#core = core;
     this.state = state;
     this.screen = screen;
     // A merged frame is a state change like any other, and the replica it
     // came from now differs from what is on disk — so it renders and it saves,
     // through exactly the paths a command uses.
-    this.sync = new Sync(core, (state) => {
+    this.sync = new Sync(core, openedFresh, (state: StateView) => {
       this.state = state;
       this.#scheduleFlush();
       // A merged frame is where this device learns the *names* of photos the
@@ -130,8 +131,11 @@ export class Session {
   }
 
   static async open(identity: Identity): Promise<Session> {
-    const core = await Core.open(identity);
-    const session = new Session(core, core.state(), readScreen());
+    const core = await openCore(identity);
+    // Read together, because `Sync` needs the second to decide whether a
+    // stored cursor still belongs to this replica (DECISIONS 0045, 0093).
+    const [state, openedFresh] = await Promise.all([core.state(), core.openedFresh()]);
+    const session = new Session(core, openedFresh, state, readScreen());
     session.#watchPageLifecycle();
     // Neither does anything on a device with no phrase, which is every device
     // until it is paired.
@@ -141,14 +145,21 @@ export class Session {
   }
 
   /**
-   * Applies one intent. Returns whether it was accepted, for the callers that
-   * close a form on success and keep it open on failure.
+   * Applies one intent. Resolves to whether it was accepted, for the callers
+   * that close a form on success and keep it open on failure.
+   *
+   * Asynchronous since M7 and on both platforms, because Tauri's IPC has no
+   * synchronous form and one surface with two timings is two surfaces
+   * (DECISIONS 0093). It is not a wait on the network — Rule 6 is about the
+   * relay, and this is a hop to a core on the same device — and it is not a
+   * wait on storage either, which is 0032's property: `#scheduleFlush` is
+   * still what writes, and it is still not awaited.
    */
-  run(command: Command): boolean {
+  async run(command: Command): Promise<boolean> {
     try {
-      this.state = this.#core.apply(command);
+      this.state = await this.#core.apply(command);
       this.error = null;
-      if (MOVES_IDENTITY.has(command.command)) rememberIdentity(this.#core.identity());
+      if (MOVES_IDENTITY.has(command.command)) await rememberIdentity(await this.#core.identity());
       this.#scheduleFlush();
       this.sync.localChange();
       return true;

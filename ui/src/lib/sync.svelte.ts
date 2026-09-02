@@ -26,6 +26,17 @@
  * Every `Uint8Array` below is either a sealed frame or a wire message. This
  * file never looks inside one: a frame that opens is merged by the core, which
  * hands back the same whole `StateView` a command would (Rule 9).
+ *
+ * # Why every core call is chained
+ *
+ * Since M7 the core is reached through one asynchronous surface on both hosts
+ * (DECISIONS 0093), and this protocol is ordered: a frame moves the cursor,
+ * and the cursor is read back before the next one is handled. Messages arrive
+ * whenever the relay sends them, so two handlers awaiting at once would
+ * interleave a replay with its own bookkeeping — a cursor written from the
+ * wrong frame, silently, and only under a burst. `#run` is what makes "one at
+ * a time" true rather than merely likely, and it is the same shape
+ * `photos.svelte.ts` already needed for a different reason.
  */
 
 import type { StateView } from './bindings/StateView';
@@ -209,6 +220,8 @@ export class Sync {
   #pushTimer: ReturnType<typeof setTimeout> | undefined;
   #cursorTimer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
+  /** Every core call, one at a time. See the module note. */
+  #chain: Promise<void> = Promise.resolve();
 
   #cursor: SyncCursor;
   #shadow: Uint8Array;
@@ -231,7 +244,14 @@ export class Sync {
   replayed = $state(0);
   dropped = $state(0);
 
-  constructor(core: Core, adopt: (state: StateView) => void) {
+  /**
+   * `openedFresh` is a parameter rather than a call, because the constructor
+   * has to stay synchronous and every `Core` method is a promise since
+   * DECISIONS 0093. `Session.open` awaits it once and hands it down — which
+   * also puts the fact next to the replica it describes, since the two are
+   * read in the same breath.
+   */
+  constructor(core: Core, openedFresh: boolean, adopt: (state: StateView) => void) {
     this.#core = core;
     this.#adopt = adopt;
     // A cursor is only meaningful for the replica that consumed those frames
@@ -241,7 +261,7 @@ export class Sync {
     // the relay honestly replays nothing, and the library stays empty until
     // somebody else happens to push. Starting over costs one replay and is
     // always correct.
-    const progress = core.openedFresh()
+    const progress = openedFresh
       ? { cursor: { epoch: '0', since: 0 }, shadow: new Uint8Array() }
       : readProgress();
     this.#cursor = progress.cursor;
@@ -279,7 +299,9 @@ export class Sync {
   localChange(): void {
     if (this.#socket === null) return;
     clearTimeout(this.#pushTimer);
-    this.#pushTimer = setTimeout(() => this.#push(), PUSH_DELAY_MS);
+    // On the chain, so a push cannot start between a message being handled
+    // and the cursor it moves being read back.
+    this.#pushTimer = setTimeout(() => this.#run(() => this.#push()), PUSH_DELAY_MS);
   }
 
   /**
@@ -331,21 +353,24 @@ export class Sync {
     this.#socket = socket;
 
     socket.onopen = () => {
-      const group = this.group;
-      if (group === null) return;
-      try {
-        socket.send(this.#core.syncHello(group.phrase, this.#cursor));
-      } catch (cause) {
-        // A stored phrase that does not decode. Reconnecting would produce
-        // the same failure for as long as the phone is on, so it stops here
-        // and waits for someone to pair again.
-        this.#refuse(cause);
-      }
+      this.#run(async () => {
+        const group = this.group;
+        if (group === null) return;
+        try {
+          socket.send(await this.#core.syncHello(group.phrase, this.#cursor));
+        } catch (cause) {
+          // A stored phrase that does not decode. Reconnecting would produce
+          // the same failure for as long as the phone is on, so it stops here
+          // and waits for someone to pair again.
+          this.#refuse(cause);
+        }
+      });
     };
 
     socket.onmessage = (message: MessageEvent<unknown>) => {
       if (!(message.data instanceof ArrayBuffer)) return;
-      this.#receive(new Uint8Array(message.data));
+      const wire = new Uint8Array(message.data);
+      this.#run(() => this.#receive(wire));
     };
 
     // A refused connection and a dropped one arrive as the same pair of
@@ -359,10 +384,10 @@ export class Sync {
     };
   }
 
-  #receive(wire: Uint8Array): void {
+  async #receive(wire: Uint8Array): Promise<void> {
     let event;
     try {
-      event = this.#core.syncHandle(wire);
+      event = await this.#core.syncHandle(wire);
     } catch (cause) {
       // Not something this build can parse. Dropping the connection is the
       // honest answer: the alternative is applying half a conversation.
@@ -377,21 +402,21 @@ export class Sync {
         this.#attempt = 0;
         // The relay may have reset the cursor — a restored backup is a new
         // log — so it is read back rather than assumed.
-        this.#readCursor();
+        await this.#readCursor();
         break;
 
       case 'merged':
         this.#adopt(event.state);
-        this.#readCursor();
+        await this.#readCursor();
         break;
 
       case 'dropped':
-        this.#readCursor();
+        await this.#readCursor();
         break;
 
       case 'caught_up':
-        this.#readCursor();
-        this.#push();
+        await this.#readCursor();
+        await this.#push();
         break;
 
       case 'acked':
@@ -403,7 +428,7 @@ export class Sync {
           this.#reset = false;
           this.#rememberProgress(true);
           // Anything applied while that push was in flight is still local.
-          this.#push();
+          await this.#push();
         }
         break;
 
@@ -416,7 +441,7 @@ export class Sync {
 
   /** Seals and sends everything since the shadow, if there is anything and
    *  nothing is already in flight. */
-  #push(): void {
+  async #push(): Promise<void> {
     clearTimeout(this.#pushTimer);
     const socket = this.#socket;
     if (socket === null || socket.readyState !== WebSocket.OPEN) return;
@@ -424,7 +449,7 @@ export class Sync {
 
     // Read before sealing, adopt only on the ack: an edit made while the push
     // travels then stays local instead of being counted as sent.
-    const version = this.#core.version();
+    const version = await this.#core.version();
     // Byte equality on an opaque version. If two encodings of one version ever
     // differ, this sends a delta that turns out to be empty — a wasted frame,
     // never a lost edit, which is the right way round for a guess.
@@ -436,7 +461,7 @@ export class Sync {
     if (!this.#reset && sameBytes(version, this.#shadow)) return;
 
     try {
-      socket.send(this.#core.syncPush(this.#shadow));
+      socket.send(await this.#core.syncPush(this.#shadow));
       this.#inFlight = version;
     } catch (cause) {
       this.#refuse(cause);
@@ -459,7 +484,14 @@ export class Sync {
   #drop(): void {
     this.#socket = null;
     this.#inFlight = null;
-    this.#core.syncClose();
+    // On the chain like every other core call, but not through `#run`: a
+    // failure to let go of a session that is already gone is worth a line in
+    // the console and is not worth refusing the next connection over.
+    this.#chain = this.#chain
+      .then(() => this.#core.syncClose())
+      .catch((cause: unknown) => {
+        console.error('sync close failed:', cause);
+      });
   }
 
   #scheduleRetry(): void {
@@ -481,10 +513,18 @@ export class Sync {
     console.error('sync refused:', cause);
   }
 
+  /** Every core call, one at a time. See the module note. */
+  #run(work: () => Promise<void>): void {
+    this.#chain = this.#chain.then(work).catch((cause: unknown) => {
+      this.#refuse(cause);
+      this.#socket?.close();
+    });
+  }
+
   // --- what outlives the connection ---------------------------------------
 
-  #readCursor(): void {
-    const status = this.#core.syncStatus();
+  async #readCursor(): Promise<void> {
+    const status = await this.#core.syncStatus();
     if (status === null) return;
     this.#cursor = status.cursor;
     this.replayed = status.replayed;

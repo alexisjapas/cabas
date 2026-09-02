@@ -84,8 +84,8 @@
    * found nothing — the same continuity the picker's door has, at the other
    * place an ingredient is born (DECISIONS 0060).
    */
-  function create(wanted = ''): void {
-    draft = blankDraft(mintIngredientId(), wanted);
+  async function create(wanted = ''): Promise<void> {
+    draft = blankDraft(await mintIngredientId(), wanted);
     writing = { under: null };
     confirmingDelete = false;
   }
@@ -118,8 +118,8 @@
    */
   let flashing = $state<string | null>(null);
 
-  function save(ingredient: IngredientInput): void {
-    if (!session.run({ command: 'save_ingredient', ingredient })) return;
+  async function save(ingredient: IngredientInput): Promise<void> {
+    if (!(await session.run({ command: 'save_ingredient', ingredient }))) return;
     writing = null;
     // Always a string in practice — `blankDraft` mints one and `draftOf`
     // carries one — but `IngredientInput` lets the core name its own, and a
@@ -152,7 +152,7 @@
     flashing = id;
   }
 
-  function remove(): void {
+  async function remove(): Promise<void> {
     if (!confirmingDelete) {
       confirmingDelete = true;
       return;
@@ -160,7 +160,7 @@
     // Recipes still using it are not rewritten — the dangling reference is
     // reported and rendered as a warning, never a reason to refuse
     // (DECISIONS 0022).
-    if (session.run({ command: 'delete_ingredient', ingredient: draft.id })) writing = null;
+    if (await session.run({ command: 'delete_ingredient', ingredient: draft.id })) writing = null;
   }
 
   // --- the amount behind a row (DECISIONS 0072) ------------------------------
@@ -188,18 +188,17 @@
     pressed = ingredient;
   }
 
-  function confirm(chosen: AmountDraft): void {
+  async function confirm(chosen: AmountDraft): Promise<void> {
     if (pressed === null) return;
     const quantity = { amount: chosen.amount, unit: chosen.unit };
     const entry = onList.get(pressed.id);
-    const accepted =
-      entry === undefined
-        ? session.run({
-            command: 'add_ingredient_to_list',
-            ingredient: pressed.id,
-            quantity,
-          })
-        : session.run({ command: 'set_entry_quantity', entry: entry.id, quantity });
+    const accepted = await (entry === undefined
+      ? session.run({
+          command: 'add_ingredient_to_list',
+          ingredient: pressed.id,
+          quantity,
+        })
+      : session.run({ command: 'set_entry_quantity', entry: entry.id, quantity }));
     if (accepted) pressed = null;
   }
 </script>

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "cabas",
+  "identifier": "com.cladelabs.cabas",
+  "build": {
+    "frontendDist": "../ui/dist-tauri",
+    "beforeDevCommand": "pnpm -C ui dev --mode tauri",
+    "beforeBuildCommand": "pnpm -C ui build --mode tauri",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "cabas",
+        "width": 420,
+        "height": 900
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ]
+  }
+}

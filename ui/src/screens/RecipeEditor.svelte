@@ -38,7 +38,7 @@
     session: Session;
     recipe: RecipeInput;
     /** Returns whether it was accepted; a refusal keeps the form open. */
-    onsave: (recipe: RecipeInput) => boolean;
+    onsave: (recipe: RecipeInput) => Promise<boolean>;
     oncancel: () => void;
   } = $props();
 
@@ -61,19 +61,21 @@
 
   // --- the ingredient lines --------------------------------------------------
 
-  function addIngredient(): void {
+  async function addIngredient(): Promise<void> {
+    const id = await mintUsageId();
     recipe.components.push({
       kind: 'ingredient',
-      id: mintUsageId(),
+      id,
       ingredient: '',
       quantity: { amount: '', unit: 'g' },
     });
   }
 
-  function addSubRecipe(): void {
+  async function addSubRecipe(): Promise<void> {
+    const id = await mintUsageId();
     recipe.components.push({
       kind: 'sub_recipe',
-      id: mintUsageId(),
+      id,
       recipe: '',
       amount: { kind: 'factor', factor: '1' },
     });
@@ -309,13 +311,14 @@
       .filter((step) => step.segments.length > 0);
   }
 
-  function submit(event: SubmitEvent): void {
+  async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    // A snapshot, not the proxy: what crosses to wasm should be a plain value.
+    // A snapshot, not the proxy: what crosses the host boundary should be a
+    // plain value.
     const payload = $state.snapshot(recipe) as RecipeInput;
     payload.name = payload.name.trim();
     payload.steps = normalize(payload.steps);
-    onsave(payload);
+    await onsave(payload);
   }
 </script>
 

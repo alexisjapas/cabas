@@ -24,6 +24,9 @@ on:
     # checked.
     tags: ['v*']
   pull_request:
+  # Manual, and it exists for one job: `apk` builds the Android artifact on
+  # demand so a phone can be given a build without cutting a release.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -54,10 +57,14 @@ jobs:
         run: nix develop --command cargo fmt --all --check
 
       - name: clippy (-D warnings)
-        run: nix develop --command cargo clippy --locked --workspace --all-targets -- -D warnings
+        # `--exclude cabas-tauri` is not an oversight: on Linux that crate
+        # links the desktop GUI stack, and no runner here has it. It is checked
+        # for the target it ships to, by `tauri-check` in the `.#android`
+        # shell — a local gate until M8 (see src-tauri/README.md).
+        run: nix develop --command cargo clippy --locked --workspace --exclude cabas-tauri --all-targets -- -D warnings
 
       - name: tests
-        run: nix develop --command cargo nextest run --locked --workspace
+        run: nix develop --command cargo nextest run --locked --workspace --exclude cabas-tauri
 
       # Rule 9 — the frontend's types are generated from the Rust ones, never
       # hand-written. Regenerating them must be a no-op: a diff here means the
@@ -370,9 +377,89 @@ jobs:
           echo "::error::(or, if it was never meant to ship, move the version on and tag that one instead)."
           exit 1
 
-  # The Android shell is not built here (a multi-GB SDK for a milestone that
-  # has not started), but it must keep *evaluating*: a flake that breaks at
-  # eval is discovered at M7 otherwise, long after the change that broke it.
+  # The Android artifact (M7). **Not on every push**: this job realizes the
+  # Android SDK and NDK through Nix and then lets `gradlew` fetch its own
+  # Gradle and the whole AGP tree — several gigabytes and several minutes,
+  # against a crate that changes when `crates/app/src/wasm.rs` changes and
+  # not otherwise.
+  #
+  # It is also the CI coverage DECISIONS 0094 said this crate did not have.
+  # 0094 is still right about the everyday gates — `cargo clippy --workspace`
+  # excludes `cabas-tauri` because on Linux it links the desktop GUI stack —
+  # but "nothing on a runner compiles it" stops being true here, on the two
+  # events where it matters.
+  apk:
+    name: android apk
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v7
+
+      # The runner ships its own Android SDK, its own .NET and its own
+      # Haskell, and this job needs none of them and the disk they sit on.
+      # Without this the Nix closure plus `~/.gradle` runs the image out of
+      # space, which surfaces as a Gradle error about nothing in particular.
+      - name: make room
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # A fifth key: the Android targets and their own dependency tree,
+          # shared with none of the four above.
+          key: apk
+
+      # `gradlew` pins its own distribution and pulls the AGP and Kotlin trees
+      # from google() and mavenCentral() — about 1.5 GB that Nix does not own
+      # (see src-tauri/README.md). Cached on the wrapper properties and the
+      # Gradle files, which is what decides both.
+      - name: cache what gradle fetches for itself
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties', 'src-tauri/gen/android/**/*.gradle*') }}
+          restore-keys: gradle-
+
+      - name: install (frozen lockfile)
+        run: nix develop --command pnpm -C ui install --frozen-lockfile
+
+      # No `build-wasm` here, and that is not an omission. `--mode tauri`
+      # resolves `$core-host` to `core.tauri.ts`, so nothing in the graph
+      # imports the wasm glue and the bundle builds without it (DECISIONS
+      # 0093). The build below runs `beforeBuildCommand` itself.
+
+      # The gate `cargo clippy --workspace` cannot be (DECISIONS 0094), run
+      # before the expensive half so a type error does not cost a Gradle
+      # download to discover.
+      - name: clippy, for the target it ships to
+        run: nix develop .#android --command tauri-check
+
+      - name: build the apk
+        working-directory: src-tauri
+        run: nix develop ..#android --command cargo-tauri android build --debug --apk --target aarch64
+
+      # Debug rather than release, because a release APK is unsigned until
+      # there is a keystore to sign it with, and an unsigned APK cannot be
+      # installed. See src-tauri/README.md, "Signing".
+      - name: keep the apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabas-apk-${{ github.sha }}
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          retention-days: 30
+
+  # The Android shell is not *built* on every push — `apk` above does that,
+  # on a dispatch or a tag — but it must keep **evaluating** everywhere. A
+  # flake that breaks at eval would otherwise be discovered the next time
+  # somebody asks for an APK, which is exactly when they want one.
   android-shell-eval:
     name: android shell evaluates
     runs-on: ubuntu-latest

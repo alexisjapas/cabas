@@ -76,21 +76,21 @@
    * runs between two synchronous states (DECISIONS 0033). Returning `false`
    * keeps the editor open on a refusal.
    */
-  function save(recipe: RecipeInput): boolean {
+  async function save(recipe: RecipeInput): Promise<boolean> {
     const before = new Set(session.state.recipes.map((summary) => summary.id));
-    if (!session.run({ command: 'save_recipe', recipe })) return false;
+    if (!(await session.run({ command: 'save_recipe', recipe }))) return false;
 
     const created = session.state.recipes.find((summary) => !before.has(summary.id));
     if (created !== undefined) {
-      session.run({ command: 'open_recipe', recipe: created.id, servings: null });
+      await session.run({ command: 'open_recipe', recipe: created.id, servings: null });
     }
     writing = false;
     return true;
   }
 
-  function remove(recipe: string): void {
-    if (session.run({ command: 'delete_recipe', recipe })) {
-      session.run({ command: 'close_recipe' });
+  async function remove(recipe: string): Promise<void> {
+    if (await session.run({ command: 'delete_recipe', recipe })) {
+      await session.run({ command: 'close_recipe' });
     }
   }
 
@@ -115,22 +115,21 @@
     pressed = recipe;
   }
 
-  function confirm(chosen: AmountDraft): void {
+  async function confirm(chosen: AmountDraft): Promise<void> {
     if (pressed === null) return;
     const entry = onList.get(pressed.id);
-    const accepted =
-      entry === undefined
-        ? session.run({
-            command: 'add_recipe_to_list',
-            recipe: pressed.id,
-            servings: chosen.servings,
-            only: null,
-          })
-        : session.run({
-            command: 'set_entry_servings',
-            entry: entry.id,
-            servings: chosen.servings,
-          });
+    const accepted = await (entry === undefined
+      ? session.run({
+          command: 'add_recipe_to_list',
+          recipe: pressed.id,
+          servings: chosen.servings,
+          only: null,
+        })
+      : session.run({
+          command: 'set_entry_servings',
+          entry: entry.id,
+          servings: chosen.servings,
+        }));
     if (accepted) pressed = null;
   }
 </script>

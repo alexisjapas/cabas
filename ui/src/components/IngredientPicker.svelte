@@ -74,20 +74,20 @@
   let draft = $state<IngredientDraft>(blankDraft(''));
 
   /** Opened by the door, which hands over what was searched for (0060). */
-  function open(wanted: string): void {
-    draft = blankDraft(mintIngredientId(), wanted);
+  async function open(wanted: string): Promise<void> {
+    draft = blankDraft(await mintIngredientId(), wanted);
     creating = true;
   }
 
   /** Created, then chosen: whatever was being written carries on where it was. */
-  function create(ingredient: IngredientInput): void {
+  async function create(ingredient: IngredientInput): Promise<void> {
     // The id the command carries, not a re-read of the form behind it: this is
     // the value the document received. `null` would mean an ingredient the
     // core names itself, which is precisely the one this picker could not then
     // select — so there is nothing to select and nothing to save.
     const created = ingredient.id;
     if (created === null) return;
-    if (session.run({ command: 'save_ingredient', ingredient })) {
+    if (await session.run({ command: 'save_ingredient', ingredient })) {
       value = created;
       creating = false;
     }

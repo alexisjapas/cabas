@@ -1,0 +1,31 @@
+[package]
+name = "cabas-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Android and Linux host — the same core as the PWA, reached through `invoke`"
+
+# `tauri android init` generates `gen/android`, whose Gradle project builds
+# this crate as a shared library and loads it from the APK. The desktop build
+# (M8) wants an ordinary binary out of the same code, so the surface lives in
+# `lib.rs` and `main.rs` is three lines calling into it.
+[lib]
+name = "cabas_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+# The whole core, natively: `App` over `FileStorage`, the same commands and
+# the same view-models the PWA gets through wasm (DECISIONS 0005, 0093).
+cabas-app.workspace = true
+cabas-store.workspace = true
+cabas-domain.workspace = true
+tauri.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The host runs on a thread pool and the core is not `Sync`, so every piece
+# of state is behind a `Mutex` — see the module note in `lib.rs`.
+tokio = { workspace = true, features = ["sync"] }

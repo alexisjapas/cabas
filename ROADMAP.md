@@ -12,7 +12,7 @@ verified on each one, and nobody was told, because nobody looked. A red gate
 that goes unread is worse than an absent one: it costs the same to run and it
 buys a false belief instead of no belief.
 
-## Overview (status as of 2026-08-25)
+## Overview (status as of 2026-09-02)
 
 | Milestone | Content | Exit criterion | Status |
 |---|---|---|---|
@@ -25,7 +25,7 @@ buys a false belief instead of no belief.
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
 | **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0). Half two done in 0.11.0: `/photos` on the relay, and a photo taken on one phone is on the other. What is left is local cleanup and persisted storage |
 | **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
-| **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ⬜ |
+| **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | 🚧 started ahead of M6's tail and M9 — the shell is validated, the host seam is settled (0093) |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
 Legend: ✅ done · 🚧 in progress · ⬜ not started.
@@ -53,6 +53,19 @@ afternoon, on files this repository does not contain. Photos touch `domain`,
 still gates M6's closure and nothing else — and M10 adds one line to its
 arithmetic, since a backup now carries the photo library too (DECISIONS 0062).
 
+**Why M7 starts now, ahead of both.** The same rule, bent a second time and
+for a weaker reason than M10's, which is worth writing down rather than
+dressing up: M6's tail still needs a shell on the Pi, M9 is still scheduled
+first, and Android was started because it was asked for. What makes it
+harmless is the same argument as photos — the files do not meet. M6's
+remainder is a backup schedule and a drill on a machine this repository does
+not contain; M9 is `domain`, `store` and two screens; M7 is a new crate, a
+seam in `ui/lib`, and a toolchain. What it does **not** get is priority over
+them: M9's value grows with its age (see above) and it is not to be pushed
+further out by this. And the note at the top of this file applies with full
+force — M7 is not closed until an APK is on the Pixel 8 and CI is green on
+the commit that says so.
+
 **Why M4 comes before M5.** The PWA is the mandatory target (it is the only
 way onto iOS — DECISIONS 0003), and shipping it single-device first proves
 the whole vertical — domain → store → app → wasm → Svelte → installed on a
@@ -67,9 +80,9 @@ person on one device; that is a deliberate, shippable state.
 
 ```sh
 nix develop                                            # or `direnv allow`
-cargo nextest run --workspace                # tests
+cargo nextest run --workspace --exclude cabas-tauri          # tests
 wasm-check                                   # Rule 8: the four shared crates on wasm32
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --exclude cabas-tauri --all-targets -- -D warnings
 check-wasm-bindgen                           # CLI/crate version match (Rule 13)
 nix develop .#wasm-test -c wasm-test         # IndexedDB, in headless chromium
 
@@ -1116,10 +1129,165 @@ history and not two; and Settings says how much room the app takes.
 
 ## M7 — Android (Tauri v2)
 
-- [ ] Validate the `.#android` shell pins (SDK, build-tools, NDK) — deliberately unvalidated until now
-- [ ] Tauri v2 wrapper around the **unchanged** Svelte frontend; the Rust core switches from wasm to native, storage from IndexedDB to a file — both already behind traits since M3
-- [ ] `arm64-v8a` first, `armeabi-v7a` only if an actually old device needs it; `--split-per-abi`
-- [ ] APK distributed to the group directly (no store)
+The shape is [DECISIONS
+0093](docs/DECISIONS.md#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge),
+written before any code as Rule 14 asks: **one TypeScript surface, two
+implementations behind it**. The Tauri host is an `invoke` bridge onto the
+same `cabas-app`, compiled natively; the sockets stay in the frontend on both
+platforms, which supersedes 0043's `tokio-tungstenite` aside. The cost the
+entry names, and the one thing that reaches the PWA, is that **`Session.run`
+becomes asynchronous** — `invoke` has no synchronous form.
+
+- [x] **Validate the `.#android` shell pins.** Done 2026-09-02, and
+      validating them meant completing them. What was pinned realizes and is
+      coherent: SDK platform 35, build-tools 35.0.0, NDK 29.0.14206865
+      (`ndk-bundle` resolves to it, clang present), JDK 21, `cargo-ndk` 4.1.2,
+      `adb`, and Rust 1.97.1 carrying `aarch64-linux-android` and
+      `armv7-linux-androideabi`. What was **missing** is everything Tauri
+      needs on top of a plain Android SDK, because nothing had ever asked
+      these pins to build an app: the CLI (`cargo-tauri` 2.11.4, pinned by
+      nixpkgs like every other tool — Rule 13), a Gradle (8.14.4), and
+      **`NDK_HOME`** — Tauri v2 reads that name and no other, so a shell
+      setting only `ANDROID_NDK_ROOT` fails at the link step complaining about
+      a missing NDK while an NDK is plainly installed. The Gradle is the one
+      unverified pin left: Tauri builds through the *wrapper* it generates,
+      and a wrapper fetches its own distribution from outside Nix. `android
+      init` is what answers that
+- [x] **`core.ts` becomes an interface, and the frontend goes async.** Done
+      2026-09-02, entirely in this repository, with no Android in sight and
+      the PWA green at the end — which was the point of doing it first and
+      alone. `core.ts` is now the interface and `core.wasm.ts` is the old file
+      behind it; `$core-host` in `vite.config.ts` is the one conditional, on
+      Vite's `--mode` rather than on `process.env`, because that file states
+      at the top that it uses no Node API and that is what keeps it under the
+      app's own strict tsconfig. `Session.run` returns a promise and every
+      site that reads its boolean awaits it. **The compiler found all of
+      them**: 31 errors on the first check, nought at the end, and
+      `--fail-on-warnings` turned each unawaited `if (session.run(…))` into an
+      always-truthy condition rather than a form that closes on a refused
+      command.
+
+      Two things the doing settled that the plan had not. **`Sync`'s
+      constructor takes `openedFresh` as a parameter now**, because a
+      constructor cannot await and every `Core` method is a promise —
+      `Session.open` reads it beside the state and hands it down. And **the
+      sync engine chains its core calls**, the way `photos.svelte.ts` already
+      did for a different reason: this protocol is ordered, a frame moves the
+      cursor and the cursor is read back before the next frame is handled, so
+      two handlers awaiting at once would interleave a replay with its own
+      bookkeeping — a cursor written from the wrong frame, silently, and only
+      under a burst. `ui-test` is the proof and is unchanged: the whole
+      vertical, sync and photos included, green against the real relay
+- [x] **`src-tauri/`: the host.** Done 2026-09-02. `cabas-app` over
+      `FileStorage` and `FilePhotoStore` under the directory
+      `tauri::Manager::path()` hands out, 34 `invoke` commands wrapping
+      exactly the calls `wasm.rs` exposes — and nothing but translation, the
+      way `wasm.rs` is nothing but translation. The identity is the second
+      half of 0031, named there and never built until now: a JSON file beside
+      the replica, written through a temporary file and a rename.
+
+      Three things the writing settled. **`Mutex` where `wasm.rs` has
+      `RefCell`**, because Tauri runs commands on a thread pool — but the
+      discipline is the same and it is not the mutex's doing: a lock is taken
+      and dropped inside a statement that ends, never held across an `.await`.
+      On the PWA that rule stops a second tap panicking at the wasm boundary
+      (0032); here it would be a deadlock behind a write, which is the same
+      bug in the same shop. **`Photos` is not `Clone`**, so the photo store is
+      shared through an `Arc` — the handle outlives the guard, which is what
+      lets the awaits below it hold no lock. And **the crate is a workspace
+      member but not a `default-member`** ([0094](docs/DECISIONS.md#0094--src-tauri-is-a-member-not-a-default-member)),
+      because on Linux `tauri` links the desktop GUI stack: every gate naming
+      `--workspace` now names `--exclude cabas-tauri`, and `tauri-check` in
+      the `.#android` shell is what checks it. That entry states the price —
+      nothing on a runner compiles this crate until M8.
+- [x] **`core.tauri.ts`**, and the one conditional in `ui/`. Done the same
+      day: one `invoke` per method and no casts, because `invoke` is generic
+      where `wasm-bindgen` returns `any`. **Bytes convert here and only here**
+      — Tauri serialises arguments as JSON, so a `Uint8Array` would reach a
+      `Vec<u8>` as an object with numeric keys — which is what lets
+      `sync.svelte.ts` and `photos.svelte.ts` stay the same files on both
+      hosts. `--mode tauri` picks it, and the build in that mode carries **no
+      wasm and no service worker**: the worker's entry is dropped from
+      `rollupOptions` as well as its plugin, since the plugin is what replaces
+      the precache token and leaving the entry alone would have shipped a
+      worker whose cache is named after the placeholder — nothing registers it
+      there, which would have made it the quietest possible way to ship that
+      bug. `pnpm check` covers 215 files including this one, and the PWA build
+      and `ui-test` are unchanged
+- [x] **`cargo-tauri android init`, and a debug APK that builds.** Done
+      2026-09-02. `arm64-v8a`, `--skip-targets-install` because the targets
+      come from the flake and not from a rustup this shell does not have.
+      **Not yet on the Pixel 8** — that is the next item, and it needs the
+      phone in hand.
+
+      Init and the first builds corrected three pins that "the shell
+      realizes" could never have caught, which is why M7's first item could
+      not really finish before this one:
+
+      - **`platformVersions` must be the generated `compileSdk`** (36), and
+        **`buildToolsVersions` must be what that project's AGP 8.11.0
+        defaults to** (35.0.0) — two numbers that do not match each other and
+        are decided by two different components. Either one wrong fails
+        identically and unhelpfully: Gradle tries to install the missing
+        piece itself, cannot, because /nix/store is read-only, and reports
+        "The SDK directory is not writable".
+      - **The Gradle in the shell never built anything.** `gradlew` pins
+        8.14.3 and fetches it, with the AGP and Kotlin trees, into
+        `~/.gradle` — about 1.5 GB, none of it Nix's. `gradle` is out of the
+        flake now rather than sitting in the PATH pretending.
+      - **`beforeBuildCommand` runs from the repository root**, while
+        `frontendDist` is relative to `tauri.conf.json`.
+
+      And one real bug, found by doing it rather than by reading: an Android
+      build runs `beforeBuildCommand`, which **overwrote `ui/dist`** — the
+      directory `crates/relay/build.rs` compiles into the relay (0048) — with
+      a Tauri bundle carrying no wasm and no service worker. Every gate stays
+      green and the phones get a blank page. `vite.config.ts` now writes
+      `dist-tauri` in that mode, so the two cannot collide.
+
+      The APK is 240 MB because `--debug` keeps every symbol in a 233 MB
+      `libcabas_tauri_lib.so`; the release build is the one to measure. The
+      frontend is embedded in that library rather than shipped as APK assets —
+      `app-CbZSvI_j.js` and `app-BYIDvKwk.css` are both in it, which is how it
+      was checked without a device.
+- [ ] **Onto the Pixel 8.** `adb install` the debug APK, or `cargo-tauri
+      android dev` for a build that reloads. The phone already runs the PWA
+      installed from the tunnel, and the two are separate apps with separate
+      storage — so this joins the group with the twelve words like any new
+      device, and the roster gains a third entry until it is renamed
+- [ ] **The two questions only the device answers** (0093). Is
+      `http://tauri.localhost` a secure context? If it is not, the webview
+      refuses `wss:` and the socket moves to Rust after all — this milestone's
+      one load-bearing assumption. And does the APK reach the relay at
+      `cabas.cladelabs.com` at all, from a webview whose origin is not the
+      relay's
+- [ ] **Parity on the device**, the way M4 and M5 were closed and not by a
+      test: the library, a trip through a shop, a photo taken and arriving on
+      the iPhone, and the twelve words joining the existing group
+- [x] **CI builds the APK, and it is downloaded from there.** Done
+      2026-09-02: the `apk` job, on a **`workflow_dispatch` or a `vX.Y.Z`
+      tag** and not on every push — it realizes the Android SDK and NDK
+      through Nix and then lets `gradlew` fetch its own Gradle and the AGP
+      tree, which is several gigabytes against a crate that only changes when
+      `wasm.rs` does. It runs `tauri-check` before the expensive half, so a
+      type error does not cost a Gradle download to find, and it uploads the
+      APK as a workflow artifact.
+
+      It is also the CI coverage [0094](docs/DECISIONS.md#0094--src-tauri-is-a-member-not-a-default-member)
+      said this crate did not have. That entry is still right about the
+      everyday gates; "nothing on a runner compiles it" is not true any more.
+- [ ] **A keystore, before anybody is asked to keep a phone updated.** The CI
+      APK is a *debug* build, because a release one is unsigned and an
+      unsigned APK will not install — and Gradle's debug keystore is minted
+      per machine, so every CI run signs with a different key. Installing a
+      new build over an old one then fails, and the only way through is to
+      uninstall, which takes `identity.json` with it: the phone rejoins as a
+      new device and leaves a dead peer on the roster, which is 0068's defect
+      arriving through another door. One keystore, kept off CI and put in the
+      repository's secrets, closes it. `src-tauri/README.md` has the steps.
+- [ ] APK distributed to the group directly (no store) — a release asset
+      rather than a workflow artifact, once it is signed: an artifact needs a
+      GitHub login to download, and the people this is for do not have one
 
 **Exit**: APK installed, feature parity with the PWA, native core.
 

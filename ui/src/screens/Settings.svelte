@@ -1,6 +1,7 @@
 <script lang="ts">
   import Qr from '../components/Qr.svelte';
   import Screen from '../components/Screen.svelte';
+  import type { Identity } from '../lib/bindings/Identity';
   import { buildVersion, readIdentity } from '../lib/core';
   import type { Session } from '../lib/session.svelte';
   import type { PhotoPhase } from '../lib/photos.svelte';
@@ -28,10 +29,13 @@
   /**
    * The device half of the identity never appears in a view-model: it is a
    * fact about this device, not about the group document (DECISIONS 0031).
-   * `localStorage` is where it lives, so `localStorage` is where this reads
-   * it. Read once — it cannot change while the app is running.
+   * The host is where it lives, so the host is where this reads it — which
+   * is `localStorage` in the PWA and a file under Tauri, and this screen is
+   * not told which (DECISIONS 0031, 0093). Read once — it cannot change while
+   * the app is running — and `$state` rather than a `const` only because the
+   * host answers with a promise.
    */
-  const identity = readIdentity();
+  let identity = $state<Identity | null>(null);
 
   /**
    * Which build this is. Read once for the same reason as the identity, and
@@ -39,7 +43,14 @@
    * the relay compiled in (0048) — a bundle and a wasm module that disagreed
    * would be the one thing this line exists to reveal.
    */
-  const version = buildVersion();
+  let version = $state('');
+
+  // Both resolve in a microtask on either host: nothing here waits on a disk
+  // or a network, only on the surface being uniformly asynchronous (0093).
+  void (async () => {
+    identity = await readIdentity();
+    version = await buildVersion();
+  })();
 
   /**
    * The field follows the name in the document until somebody starts typing,
@@ -101,13 +112,13 @@
     relayDraft = null;
   }
 
-  function rename(event: SubmitEvent): void {
+  async function rename(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed === '' || trimmed === session.state.me?.name) return;
     // Attribution is a label, so this changes what future entries are signed
     // with and nothing about what anyone is allowed to do (Rule 7).
-    if (session.run({ command: 'rename_user', name: trimmed })) {
+    if (await session.run({ command: 'rename_user', name: trimmed })) {
       edited = null;
       saved = true;
       setTimeout(() => (saved = false), 2000);

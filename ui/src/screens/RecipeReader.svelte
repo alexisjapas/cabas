@@ -59,16 +59,16 @@
    * — asking for a recipe twice is a thing people do, and it was true before
    * any of this.
    */
-  function addToList(): void {
+  async function addToList(): Promise<void> {
     if (
-      partial && entry !== undefined
+      await (partial && entry !== undefined
         ? session.run({ command: 'set_entry_components', entry: entry.id, only: null })
         : session.run({
             command: 'add_recipe_to_list',
             recipe: recipe.id,
             servings: recipe.servings,
             only: null,
-          })
+          }))
     ) {
       addedAt = `${recipe.id}:${recipe.servings}`;
     }

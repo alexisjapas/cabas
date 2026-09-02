@@ -139,31 +139,82 @@ function hash(input: string): string {
   return value.toString(16).padStart(8, '0');
 }
 
-export default defineConfig({
-  plugins: [svelte(), serviceWorker()],
+// The host is chosen by Vite's own `--mode`, and deliberately not by an
+// environment variable: reading `process.env` here would be the first Node API
+// in this file and would cost it the strict browser tsconfig it is checked
+// under (see the note at the top).
+export default defineConfig(({ mode }) => {
+  // Which host this build is for. Everything below reads this and nothing
+  // else, so "what changes under Tauri" is one list in one place.
+  const tauri = mode === 'tauri';
 
-  server: {
-    // Bound to every interface so the phone on the same wifi can load the dev
-    // server. Testing this on a desktop browser only is how the iOS-specific
-    // half of M4 gets discovered late.
-    host: true,
-  },
+  // Two entries: the page, and the service worker. The worker has to land at
+  // the root as `/sw.js` — a worker's scope is the directory it is served
+  // from, and one under `/assets/` could not control the app.
+  //
+  // One entry under Tauri, and dropping the plugin below is not enough on its
+  // own: this input is what *emits* `sw.js`, while the plugin is what replaces
+  // the precache token in it. Leaving the entry would ship a worker whose
+  // cache is named after the placeholder — and nothing registers it there,
+  // which would make it the quietest possible way to ship that bug.
+  //
+  // Annotated rather than inferred: without the type the two branches widen to
+  // `{ sw?: undefined } | { sw: string }`, which is not a
+  // `Record<string, string>` and fails `pnpm check` with a wall of overload
+  // text about `UserConfigExport`.
+  const input: Record<string, string> = tauri
+    ? { app: 'index.html' }
+    : { app: 'index.html', sw: 'src/sw.js' };
 
-  build: {
-    // Safari on an iPhone that still gets updates handles ES2022. Going lower
-    // costs bundle size for devices this app does not target.
-    target: 'es2022',
-    sourcemap: true,
+  return {
+    // No service worker under Tauri: the assets are on the device already and
+    // the app is installed by the APK, so the worker has nothing to do and its
+    // precache would be a second copy of what is beside it (DECISIONS 0093).
+    plugins: tauri ? [svelte()] : [svelte(), serviceWorker()],
 
-    rollupOptions: {
-      // Two entries: the page, and the service worker. The worker has to land
-      // at the root as `/sw.js` — a worker's scope is the directory it is
-      // served from, and one under `/assets/` could not control the app.
-      input: { app: 'index.html', sw: 'src/sw.js' },
-      output: {
-        entryFileNames: (chunk) =>
-          chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js',
+    resolve: {
+      alias: {
+        // The one conditional in `ui/` (DECISIONS 0093). `core.ts` is the
+        // interface; this decides which implementation is behind it, so no
+        // screen, engine or component ever learns which host it runs on.
+        // `--mode tauri` selects the Android one; every other mode is the PWA,
+        // which is what keeps `dev`, `build` and `preview` unchanged.
+        // `tsconfig.json` carries the same mapping for `svelte-check`, and the
+        // two are only in step because a human keeps them so.
+        '$core-host': tauri ? '/src/lib/core.tauri.ts' : '/src/lib/core.wasm.ts',
       },
     },
-  },
+
+    server: {
+      // Bound to every interface so the phone on the same wifi can load the
+      // dev server. Testing this on a desktop browser only is how the
+      // iOS-specific half of M4 gets discovered late.
+      host: true,
+    },
+
+    build: {
+      // A directory of its own for the Tauri bundle, and it is not tidiness.
+      // `crates/relay/build.rs` compiles `ui/dist` into the relay binary
+      // (DECISIONS 0048), and `cargo tauri android build` runs
+      // `beforeBuildCommand` — so a shared output directory means an Android
+      // build silently replaces the PWA the relay is about to ship with one
+      // that has no wasm and no service worker in it. It builds, it is green,
+      // and the phones get a blank page. Two directories make that
+      // impossible rather than documented.
+      outDir: tauri ? 'dist-tauri' : 'dist',
+
+      // Safari on an iPhone that still gets updates handles ES2022. Going
+      // lower costs bundle size for devices this app does not target.
+      target: 'es2022',
+      sourcemap: true,
+
+      rollupOptions: {
+        input,
+        output: {
+          entryFileNames: (chunk) =>
+            chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js',
+        },
+      },
+    },
+  };
 });

@@ -88,20 +88,20 @@
   }
 
   /** Chosen off the roster, or typed into the field under it. */
-  function pick(user: Chosen): void {
+  async function pick(user: Chosen): Promise<void> {
     // On a device that is already in the group, the name is the only question
     // — its record is written and keeps the name it has.
     if (!arriving) {
-      apply(user, null);
+      await apply(user, null);
       return;
     }
     step = { at: 'device', user };
   }
 
-  function nameDevice(event: SubmitEvent): void {
+  async function nameDevice(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (step.at !== 'device' || deviceName.trim() === '') return;
-    apply(step.user, deviceName.trim());
+    await apply(step.user, deviceName.trim());
   }
 
   /**
@@ -112,9 +112,9 @@
    * 0031); `run` writes it back for exactly these commands, which is why
    * neither call has to remember to.
    */
-  function apply(user: Chosen, device: string | null): void {
-    if (device !== null && !session.run({ command: 'name_device', name: device })) return;
-    if (!session.run(user)) {
+  async function apply(user: Chosen, device: string | null): Promise<void> {
+    if (device !== null && !(await session.run({ command: 'name_device', name: device }))) return;
+    if (!(await session.run(user))) {
       // The core refused — the person was deleted from another device between
       // the render and the tap. Back to a roster that no longer has them.
       step = { at: 'who' };

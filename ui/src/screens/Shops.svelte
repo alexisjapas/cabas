@@ -49,18 +49,18 @@
     return edited !== null && edited.shop === shop.id ? edited.name : shop.name;
   }
 
-  function rename(shop: ShopView): void {
+  async function rename(shop: ShopView): Promise<void> {
     const name = nameOf(shop).trim();
     if (name === '' || name === shop.name) return;
-    if (session.run({ command: 'save_shop', shop: { id: shop.id, name } })) edited = null;
+    if (await session.run({ command: 'save_shop', shop: { id: shop.id, name } })) edited = null;
   }
 
-  function forget(shop: ShopView): void {
+  async function forget(shop: ShopView): Promise<void> {
     if (confirming !== shop.id) {
       confirming = shop.id;
       return;
     }
-    if (session.run({ command: 'delete_shop', shop: shop.id })) confirming = null;
+    if (await session.run({ command: 'delete_shop', shop: shop.id })) confirming = null;
   }
 </script>
 

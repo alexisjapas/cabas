@@ -102,6 +102,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0090](#0090--a-list-row-is-one-line-and-the-unit-is-behind-the-amount) | A list row is one line, and the unit is behind the amount | Product |
 | [0091](#0091--half-a-recipe-on-the-list) | Half a recipe on the list | Domain |
 | [0092](#0092--photos-travel-the-relay-serves-them-on-photos) | Photos travel: the relay serves them on `/photos` | Sync |
+| [0093](#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge) | Two cores, one frontend: the Tauri host is an `invoke` bridge | Architecture |
+| [0094](#0094--src-tauri-is-a-member-not-a-default-member) | `src-tauri` is a member, not a default member | Tooling |
 
 ---
 
@@ -4517,3 +4519,160 @@ handed the entire library at once with no way to slow it down. **Sweeping
 unreferenced photos on the relay**, which is 0050's argument exactly — the
 relay cannot tell an abandoned photo from a quiet one, and the log is the
 recovery point if every device is lost.
+
+## 0093 — Two cores, one frontend: the Tauri host is an `invoke` bridge
+
+**Date** 2026-09-02 · **Status** Accepted · **Implements**
+[0005](#0005--tauri-v2-as-a-packaging-layer-after-the-pwa) · **Relates to**
+[0031](#0031--the-devices-identity-comes-from-the-host),
+[0032](#0032--apply-is-synchronous-persist-is-not),
+[0033](#0033--every-mutation-returns-the-whole-state) · **Supersedes** the
+`tokio-tungstenite` consequence of
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend)
+
+**Context.** M7 opens. 0005 settled the shape three years of this file have
+assumed: Tauri v2 packages the **byte-identical** frontend, the Rust core
+switches from wasm to native, and storage from IndexedDB to a file — both
+swaps behind traits since M3, and both still there (`FileStorage`,
+`FilePhotoStore`). What 0005 could not know is what the seam would look like
+once it existed, and reading it at M7 turns up two facts that shape the whole
+milestone.
+
+The first is that **`invoke` is asynchronous and `apply` is not**. Tauri v2's
+IPC is promise-based; there is no supported synchronous command. `Core.apply`
+has been synchronous since 0032 and returns the whole new state since 0033,
+and `Session.run` is synchronous on top of it — 40 call sites across 11
+components, 12 of which read its boolean to decide whether to close a form.
+A native core makes every one of them a promise.
+
+The second is that **the sockets do not have to move**. 0043 put the PWA's
+WebSocket in the frontend and predicted, in a consequence rather than in its
+decision, that the native hosts would drive the same `Session` from Rust with
+`tokio-tungstenite`. The Tauri webview has the browser's `WebSocket`, the
+same `visibilitychange` and the same `pagehide` — which is 0043's *own*
+argument for where that policy belongs.
+
+**Decision.**
+
+**One TypeScript surface, two implementations, and it is fully asynchronous.**
+`core.ts` becomes the interface — `Core`, the identity accessors, and the
+minting helpers — with `core.wasm.ts` behind it in the PWA and
+`core.tauri.ts` behind it in the APK. Every method returns a promise on both,
+including the ones wasm answers instantly, because a surface whose timing
+differs per host is two surfaces. This is Rule 9's "one TypeScript API
+surface, two implementations behind it" as literally as it can be written.
+
+**`Session.run` becomes `async`, on both platforms.** There is one frontend
+(0005), so the PWA pays Android's cost: the boolean a form waits on arrives a
+microtask later than it does today. Rule 6 is untouched and this is worth
+saying plainly rather than leaving to be re-argued — the rule is that no user
+action waits on the **network**, and an IPC round trip to a core on the same
+device is not one. 0032's property is untouched too, for the same reason: it
+says a render never waits on *storage*, and `persist` is still the call that
+writes.
+
+**The socket stays in the frontend, on both hosts.**
+`lib/sync.svelte.ts` and `lib/photos.svelte.ts` are the same files on the PWA
+and in the APK, and they talk to whichever `Core` is behind them. This
+supersedes 0043's `tokio-tungstenite` aside and keeps its reasoning: the
+foreground rule (0011) is a page-lifecycle policy, and the page lifecycle is
+in the page on both platforms.
+
+**The identity moves behind the same seam.** 0031 already said it —
+`localStorage` in the PWA, a config file under Tauri — and only the first half
+was ever built. `readIdentity` / `rememberIdentity` join the interface, and
+the Tauri implementation writes a file in the app's own data directory
+alongside the replica and the photos.
+
+**Consequences.** The APK gets what 0005 promised: a real core, a real file
+on a real filesystem, and a photo store that no browser heuristic can evict.
+The `ui/` tree gains exactly one conditional — which implementation is
+imported — and no screen learns which host it is running on.
+
+The async sweep is the price, and it is paid once. It is also not purely a
+cost: `run` returning a promise is what a form should have been awaiting all
+along on the import path, which is already asynchronous and already special-
+cased for it.
+
+Two things only the device can answer, written down so they are checked
+rather than assumed. **Is `http://tauri.localhost` a secure context?** If it
+is not, the webview refuses `wss:` and the socket does have to move to Rust
+after all — this decision's one load-bearing assumption. And **the service
+worker and the manifest are dead weight in the APK**: the bundle needs a
+build mode that leaves them out, or the webview installs a cache in front of
+assets it is already loading from disk.
+
+**Rejected.** **A Tauri shell over the wasm bundle** — the webview keeps the
+wasm core and IndexedDB, and the APK is a chrome-less browser. It is a day's
+work against this milestone's several, and it is 0005 reversed: Android would
+keep the evictable store the native core exists to escape, and the two
+platforms would run two different cores, each with its own bugs, from one
+repository that claims they are the same. It is the right answer if M7 ever
+needs to ship in an afternoon; it is not the answer to "Android native",
+which is what was asked.
+
+**Driving both sockets from Rust** (0043's prediction): about 880 lines of
+backoff, cursor, shadow and photo-queue policy re-expressed in a second
+language and kept in step with the first by hand — to move a socket the
+webview already opens. The reason 0043 gave for the frontend owning it does
+not stop being true inside a webview.
+
+**Keeping `run` synchronous by making the Tauri host answer synchronously**:
+there is no such call in Tauri v2, and manufacturing one (a blocking bridge,
+a shared buffer) means blocking the webview's main thread on the core — the
+one thing 0032 was written to prevent.
+
+## 0094 — `src-tauri` is a member, not a default member
+
+**Date** 2026-09-02 · **Status** Accepted · **Implements**
+[0093](#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge) ·
+**Relates to** [0013](#0013--nix-flake-with-a-separate-android-shell),
+[0049](#0049--the-relay-ships-as-a-home-assistant-add-on-built-by-ci)
+
+**Context.** M7's host is a new crate. Adding it to the workspace turned
+`cargo clippy --workspace` red on the spot, and not because of anything in it:
+on Linux the `tauri` crate links the desktop GUI stack, and the failure is
+`libdbus-sys` looking for `dbus-1.pc` in a shell that has never carried one.
+Cross-compiled to `aarch64-linux-android` it needs none of that, because there
+the webview is Android's.
+
+So the choice is between putting gtk3, libsoup, dbus and webkit2gtk in the
+everyday `nix develop` — paid by every developer and every CI run, to check a
+crate only M7 and M8 touch — and not building it there at all.
+
+**Decision.** `src-tauri` is a **workspace member** so that Rule 13's single
+registry reaches it and one lockfile resolves the whole tree, and it is **not
+a `default-member`**. Every gate that names `--workspace` also names
+`--exclude cabas-tauri`: `cargo clippy`, `cargo nextest`, and both of their
+lines in CI. `tauri-check` in the `.#android` shell is what checks it, against
+`aarch64-linux-android`, with `-D warnings` like everything else.
+
+`default-members` alone would not have done it. **An explicit `--workspace`
+overrides `default-members`**, so the field only helps the bare commands and
+the exclusion has to be written out wherever a gate spells `--workspace`. Both
+are kept: the field for `cargo check` typed by hand, the flag for the gates.
+
+The crate sits at the repository root rather than under `crates/` for the
+reason `cabas-relay/` does: `cargo tauri android init` generates a Gradle
+project beside `tauri.conf.json`, and `crates/` holds hand-written Rust.
+
+**Consequences.** The everyday loop costs exactly what it cost before, and the
+Android build is the only thing that pays.
+
+**The price is a hole in CI, and it is stated rather than discovered.**
+Nothing on a runner compiles this crate today. The top of ROADMAP.md is about
+a gate that failed unread for twelve commits, and this is the neighbouring
+failure — a gate that was never written. It is narrower than that one: the
+crate is `wasm.rs` translated, it changes when that surface changes, and
+`tauri-check` is one command in a shell M7 work happens in anyway. It closes
+at M8, which needs a desktop shell carrying those libraries for its own sake,
+and a Linux job can then build the host on a runner.
+
+**Rejected.** **The GUI stack in the everyday shell**: a multi-hundred-megabyte
+closure added to `nix develop` and to every CI run, so that `cargo test` over
+pure domain logic can also link a browser engine. It is the same trade 0013
+already refused for the Android SDK. **A separate workspace for `src-tauri`**:
+its own lockfile and its own copies of every shared version, which is Rule 13
+abandoned for the one crate that most needs to agree with `cabas-app` —
+`crates/app` and this host serialise the same types, and two resolutions of
+`serde` is exactly the bug nobody would look for.

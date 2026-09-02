@@ -265,7 +265,7 @@ export class PhotoTransfer {
         break;
     }
 
-    this.#readStatus();
+    await this.#readStatus();
     await this.#pump(socket);
   }
 
@@ -279,7 +279,8 @@ export class PhotoTransfer {
   async #pump(socket: WebSocket): Promise<void> {
     if (this.#socket !== socket || socket.readyState !== WebSocket.OPEN) return;
 
-    const status = this.#core.photoStatus();
+    const status = await this.#core.photoStatus();
+    if (this.#socket !== socket) return;
     if (status === null) return;
     if (status.done) {
       // Ours to decide and ours to act on: the relay cannot know what this
@@ -290,7 +291,8 @@ export class PhotoTransfer {
     }
 
     try {
-      const fetch = this.#core.photoFetch();
+      const fetch = await this.#core.photoFetch();
+      if (this.#socket !== socket || socket.readyState !== WebSocket.OPEN) return;
       if (fetch !== undefined) {
         socket.send(fetch);
         return;
@@ -319,7 +321,14 @@ export class PhotoTransfer {
     this.#socket = null;
     this.#openedWith = null;
     this.pending = 0;
-    this.#core.photoClose();
+    // On the chain like every other core call, but not through `#run`: a
+    // failure to let go of a session that is already gone is worth a line in
+    // the console and is not worth refusing the next transfer over.
+    this.#chain = this.#chain
+      .then(() => this.#core.photoClose())
+      .catch((cause: unknown) => {
+        console.error('photo close failed:', cause);
+      });
   }
 
   #scheduleRetry(): void {
@@ -341,8 +350,8 @@ export class PhotoTransfer {
     console.error('photo transfer refused:', cause);
   }
 
-  #readStatus(): void {
-    const status = this.#core.photoStatus();
+  async #readStatus(): Promise<void> {
+    const status = await this.#core.photoStatus();
     if (status === null) return;
     this.pending = status.pending;
     this.received = status.received;

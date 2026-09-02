@@ -212,20 +212,19 @@
    * amount and a serving count are different commands because they measure
    * different things, and the core refuses each on the other kind of line.
    */
-  function confirmAmount(typed: AmountDraft): void {
+  async function confirmAmount(typed: AmountDraft): Promise<void> {
     if (editing === null) return;
-    const accepted =
-      typed.kind === 'servings'
-        ? session.run({
-            command: 'set_entry_servings',
-            entry: editing.entry,
-            servings: typed.servings,
-          })
-        : session.run({
-            command: 'set_entry_quantity',
-            entry: editing.entry,
-            quantity: { amount: typed.amount, unit: typed.unit },
-          });
+    const accepted = await (typed.kind === 'servings'
+      ? session.run({
+          command: 'set_entry_servings',
+          entry: editing.entry,
+          servings: typed.servings,
+        })
+      : session.run({
+          command: 'set_entry_quantity',
+          entry: editing.entry,
+          quantity: { amount: typed.amount, unit: typed.unit },
+        }));
     if (accepted) editing = null;
   }
 
