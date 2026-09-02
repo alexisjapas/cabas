@@ -8,9 +8,10 @@ an installed PWA on iOS/web and as a Tauri app on Android/Linux.
 in [ROADMAP.md](ROADMAP.md) ("Resuming work" section); **why every choice was
 made** in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Current state**: **M0 through M5 complete** — the exit criterion was met on
-an iPhone and a Pixel 8, which pair with twelve words and converge both while
-both are open and while neither is ever open with the other. **M6 is under
+**Current state**: **M0 through M5 complete, and M7 with them** — the exit
+criterion was met on an iPhone and a Pixel 8, which pair with twelve words and
+converge both while both are open and while neither is ever open with the
+other. **M6 is under
 way**: the Svelte bundle is compiled into `cabas-relay` by its build script, so
 one binary serves the app and `/sync` on one origin (DECISIONS 0048), and that
 binary is cross-compiled to static musl and published by CI as a Home Assistant
@@ -196,8 +197,25 @@ entry. Three are structural and the rest are the shape of the app:
   collapses a tall panel.
 - **The finished bar throws confetti** (0088) — on the *transition* into a
   full bar, never on arriving at a tab where it already is.
-**M9 — history and statistics — is scheduled
-before M7**: what the
+**M7 — Android — is closed**, on a Pixel 8, on 2026-09-02. `src-tauri/` is
+the host: `cabas-app` compiled to `aarch64-linux-android` over `FileStorage`
+and `FilePhotoStore`, reached over 34 `invoke` commands that do nothing but
+translate, the way `wasm.rs` does. The shape is **one TypeScript surface with
+two implementations** (0093) — `core.ts` is the interface, `core.wasm.ts` and
+`core.tauri.ts` are behind it, and the `$core-host` alias is the only
+conditional in `ui/`. The whole surface is asynchronous on both hosts, because
+`invoke` has no synchronous form, so `Session.run` returns a promise
+everywhere. **The sockets did not move**: the Android webview is a secure
+context and opens a `wss:`, which was that entry's one load-bearing
+assumption, so `sync.svelte.ts` and `photos.svelte.ts` are the same files on
+both. Two entries came out of the doing — the crate is a workspace member and
+not a `default-member` (0094), and the default relay belongs to the host
+rather than to `location` (0095), which is what stopped the first APK joining
+its group at all. **Two tails are carried past the milestone**: there is no
+keystore, so every CI APK is a fresh install, and distribution is a workflow
+artifact rather than a release asset. `src-tauri/README.md` carries both.
+
+**M9 — history and statistics — is next**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.

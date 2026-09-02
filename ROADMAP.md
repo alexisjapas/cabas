@@ -25,7 +25,7 @@ buys a false belief instead of no belief.
 | **M6** | Deployment: HAOS add-on, CI image, Cloudflare Tunnel, backups | Reachable from 4G; a backup restore is tested and works | 🚧 live at `cabas.cladelabs.com`, both phones on it; cleanup and restore drill left |
 | **M10** | **Photos**: one per recipe, one per ingredient — blobs beside the document, never in it | A photo taken offline on one phone is readable on the other, offline, once both have been online — and the document has not grown | 🚧 half one done (0.5.0). Half two done in 0.11.0: `/photos` on the relay, and a photo taken on one phone is on the other. What is left is local cleanup and persisted storage |
 | **M9** | **History and statistics**: what was bought, when, how often — and the same for recipes | A finished trip is remembered: an ingredient names its last purchase and its rate, a recipe whose ingredients were all bought counts as made, and two devices ending the same trip produce one history | ⬜ |
-| **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | 🚧 started ahead of M6's tail and M9 — the shell is validated, the host seam is settled (0093) |
+| **M7** | Android via Tauri v2 | APK installed; same frontend, native core; parity with the PWA | ✅ on a Pixel 8 — a keystore and a distribution channel are carried past it |
 | **M8** | Linux desktop via Tauri | Runs on NixOS from the flake | ⬜ |
 
 Legend: ✅ done · 🚧 in progress · ⬜ not started.
@@ -1278,9 +1278,19 @@ becomes asynchronous** — `invoke` has no synchronous form.
       Joining proves the **sync** socket and nothing beyond it. `/photos` is a
       second socket that opens later (0092), and it is the parity item below
       that says whether it works.
-- [ ] **Parity on the device**, the way M4 and M5 were closed and not by a
-      test: the library, a trip through a shop, a photo taken and arriving on
-      the iPhone, and the twelve words joining the existing group
+- [x] **Parity on the device** — on the Pixel 8, 2026-09-02, the way M4 and
+      M5 were closed and not by a test. Four things, and each answers
+      something a browser could only rehearse:
+
+      **The twelve words joined the existing group**, and the roster offered
+      the people already in it — so a user was *chosen* rather than invented,
+      which is 0068 holding on a third device and the one thing here that
+      would not have been repairable. **Photos arrive**, which exercises
+      `/photos` — a second `wss:` the sync socket says nothing about (0092).
+      **A change crosses to the iPhone.** And **the keyboard and the cloth
+      behave**: `--keyboard-inset` (0040) and the scrolling background (0083)
+      were written against iOS and Chrome and had never been seen in a Tauri
+      webview.
 - [x] **CI builds the APK, and it is downloaded from there.** Done
       2026-09-02: the `apk` job, on a **`workflow_dispatch` or a `vX.Y.Z`
       tag** and not on every push — it realizes the Android SDK and NDK
@@ -1306,7 +1316,21 @@ becomes asynchronous** — `invoke` has no synchronous form.
       rather than a workflow artifact, once it is signed: an artifact needs a
       GitHub login to download, and the people this is for do not have one
 
-**Exit**: APK installed, feature parity with the PWA, native core.
+**Exit**: APK installed, feature parity with the PWA, native core. ✅ —
+installed on the Pixel 8 on 2026-09-02, joined the group with twelve words,
+and the four checks above all held. The core is `cabas-app` compiled to
+`aarch64-linux-android` over `FileStorage` and `FilePhotoStore`, and the
+frontend is the same tree the PWA builds from, with one aliased module
+between them (0093). CI green on the closing commit.
+
+**Two tails are carried past it**, both about handing the app to somebody
+rather than about the milestone's criterion — the same shape as the abandoned
+group log M5 closed with. **There is no keystore**, so every CI APK is signed
+with a different per-machine debug key and cannot be installed over the last
+one; uninstalling takes `identity.json` with it, and the phone then rejoins as
+a new device and leaves a dead peer on the roster. And **distribution is a
+workflow artifact**, which needs a GitHub account to download — the people
+this is for do not have one. `src-tauri/README.md` carries both.
 
 ## M8 — Linux desktop
 
