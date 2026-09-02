@@ -677,6 +677,13 @@ Key domain shapes, all settled in DECISIONS:
   what `tauri-check` in the `.#android` shell relies on. **Nothing in CI
   compiles it today**; that gap closes at M8, when a desktop shell has to
   carry the GUI stack anyway.
+- **`http://tauri.localhost` is a secure context, and that is settled rather
+  than assumed.** It was 0093's one load-bearing assumption — if the Android
+  webview had refused `wss:`, both sockets would have had to move into Rust
+  and `sync.svelte.ts` would have grown a twin. The APK joining its group on a
+  Pixel 8 (2026-09-02) proved it, because joining *is* the sync socket. Worth
+  knowing before anyone reopens that question: it is answered, and it was
+  answered by a phone.
 - **The relay URL cannot be derived from `location` on every host.** On the
   PWA it is exact — the relay serves the bundle and `/sync` from one origin
   (0012, 0048), so `location` *is* the relay. A Tauri webview is served from

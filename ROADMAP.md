@@ -1265,14 +1265,19 @@ becomes asynchronous** — `invoke` has no synchronous form.
       arrive. 0093 inherited 0043's sentence without noticing its premise was
       a property of how the PWA is *served*. `Host.defaultRelay()` is the fix:
       `null` in the PWA, the permanent origin under Tauri.
-- [ ] **The two questions only the device answers** (0093), neither of which
-      the first install reached, because 0095 stopped the connection before it
-      was attempted. Is
-      `http://tauri.localhost` a secure context? If it is not, the webview
-      refuses `wss:` and the socket moves to Rust after all — this milestone's
-      one load-bearing assumption. And does the APK reach the relay at
-      `cabas.cladelabs.com` at all, from a webview whose origin is not the
-      relay's
+- [x] **Both questions the device had to answer, answered together** — on the
+      Pixel 8, 2026-09-02, by the APK joining the group with twelve words.
+      **`http://tauri.localhost` is a secure context**: the webview opened a
+      `wss:` and the roster arrived, which is the whole of 0093's one
+      load-bearing assumption and the thing that would have cost this
+      milestone the Rust transport. And the APK reaches
+      `cabas.cladelabs.com` from an origin that is not the relay's — a
+      WebSocket is not subject to the same-origin rule a `fetch` would be, and
+      the relay checks a group id and never an `Origin` header (Rule 7).
+
+      Joining proves the **sync** socket and nothing beyond it. `/photos` is a
+      second socket that opens later (0092), and it is the parity item below
+      that says whether it works.
 - [ ] **Parity on the device**, the way M4 and M5 were closed and not by a
       test: the library, a trip through a shop, a photo taken and arriving on
       the iPhone, and the twelve words joining the existing group
