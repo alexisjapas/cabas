@@ -253,6 +253,25 @@ async fn max_photo_bytes() -> usize {
     MAX_PHOTO_BYTES
 }
 
+/// Where an Android install syncs unless somebody says otherwise.
+///
+/// The PWA has no such constant and does not need one: it is served by the
+/// relay, so its own origin is the answer (DECISIONS 0012, 0048). This host is
+/// served from `http://tauri.localhost`, so the same rule would point both
+/// sockets at the app itself — which is exactly what stopped a phone joining
+/// its group, and what DECISIONS 0095 is about.
+///
+/// Compiled in rather than configured, for the reason 0012 makes the origin
+/// permanent in the first place: there is one address and changing it is not a
+/// setting, it is a migration. `Réglages · Serveur` still overrides it, which
+/// is the only door a development relay has on this host.
+const HOME_RELAY: &str = "wss://cabas.cladelabs.com/sync";
+
+#[tauri::command]
+async fn default_relay() -> &'static str {
+    HOME_RELAY
+}
+
 #[tauri::command]
 async fn mint_phrase() -> Answer<String> {
     Ok(cabas_app::sync::mint_phrase()?)
@@ -584,6 +603,7 @@ pub fn run() {
             mint_shop_id,
             build_version,
             max_photo_bytes,
+            default_relay,
             mint_phrase,
             read_phrase,
             open,

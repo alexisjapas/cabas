@@ -287,12 +287,33 @@ export interface Host {
    */
   readPhrase(phrase: string): Promise<string>;
 
+  /**
+   * Where this device syncs when nobody has said otherwise, or `null` for
+   * "the origin this app was served from".
+   *
+   * `null` is the PWA's answer and it is a real one: the relay serves the
+   * bundle and `/sync` on one origin (DECISIONS 0012, 0048), so the app's own
+   * address *is* the relay's and deriving it from `location` is exact.
+   *
+   * A Tauri webview has no such address — it is served from
+   * `http://tauri.localhost`, which is the app talking to itself — so that
+   * host answers with the permanent origin instead. Inheriting the PWA's rule
+   * there was the defect this exists to fix (DECISIONS 0095): both sockets
+   * dialled `tauri.localhost` and a phone could never join its group.
+   *
+   * The shape is a `/sync` URL, the same as the Settings override, because
+   * `relayUrl` and `photoUrl` already know how to read one.
+   */
+  defaultRelay(): Promise<string | null>;
+
   /** Opens the replica this device holds. */
   openCore(identity: Identity): Promise<Core>;
+
 }
 
 export {
   buildVersion,
+  defaultRelay,
   maxPhotoBytes,
   mintDevice,
   mintIngredientId,

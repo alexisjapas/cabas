@@ -104,6 +104,7 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0092](#0092--photos-travel-the-relay-serves-them-on-photos) | Photos travel: the relay serves them on `/photos` | Sync |
 | [0093](#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge) | Two cores, one frontend: the Tauri host is an `invoke` bridge | Architecture |
 | [0094](#0094--src-tauri-is-a-member-not-a-default-member) | `src-tauri` is a member, not a default member | Tooling |
+| [0095](#0095--the-default-relay-belongs-to-the-host) | The default relay belongs to the host | Sync |
 
 ---
 
@@ -4676,3 +4677,60 @@ its own lockfile and its own copies of every shared version, which is Rule 13
 abandoned for the one crate that most needs to agree with `cabas-app` —
 `crates/app` and this host serialise the same types, and two resolutions of
 `serde` is exactly the bug nobody would look for.
+
+## 0095 — The default relay belongs to the host
+
+**Date** 2026-09-02 · **Status** Accepted · **Corrects**
+[0093](#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge) ·
+**Relates to** [0012](#0012--cloudflare-tunnel-on-an-owned-domain),
+[0043](#0043--the-pwas-websocket-lives-in-the-frontend),
+[0048](#0048--the-relay-serves-the-pwa-out-of-its-own-binary)
+
+**Context.** The first APK could not join its group, and the reason was not
+the one 0093 wrote down as its load-bearing assumption. It was smaller and it
+came first.
+
+0043 says the relay URL defaults to the app's own origin, and on the PWA that
+is exact rather than convenient: the relay serves the bundle and `/sync` from
+one address (0012, 0048), so `location` *is* the relay. `relayUrl` and
+`photoUrl` both derived it that way.
+
+A Tauri webview is served from `http://tauri.localhost`. So both sockets
+resolved to `ws://tauri.localhost/sync` and `…/photos` — the app dialling
+itself — and a phone sat on "Qui êtes-vous ?" with a roster that could never
+arrive. 0093 inherited 0043's sentence without noticing that its premise is a
+property of *how the PWA is served*, not a fact about the app.
+
+**Decision.** The default relay is part of the [`Host`] surface, beside the
+identity and for the same reason: it is a fact about where this app is
+running, which is the host's business (0031's shape). `defaultRelay()` answers
+`null` in the PWA — "derive it from `location`", which stays exact there — and
+the permanent origin under Tauri, from a constant compiled into the Rust host.
+
+It is resolved once in `Session.open`, beside the state and `openedFresh`, and
+handed to both engines. `relayUrl` and `photoUrl` take it as a fallback and
+read it exactly as they already read a Settings override, because it has the
+same shape: a `/sync` URL.
+
+**Consequences.** Compiled in rather than configured, which is 0012's own
+argument — there is one address, and changing it is a migration and not a
+setting. `Réglages · Serveur` still overrides it.
+
+**The narrow cost is a development one.** A LAN relay on Android can only be
+named from Settings, and Settings is behind joining a group — so a device that
+cannot reach the compiled-in origin cannot be pointed anywhere else. That is
+tolerable while the origin is up and would need a field on the pairing screen
+if it stopped being.
+
+**And it says nothing about the secure-context question.** 0093's assumption —
+that a webview on `http://tauri.localhost` may open a `wss:` — is still
+untested, because this defect stopped the connection before it was ever
+attempted. The next install is what answers it.
+
+**Rejected.** **Asking on the pairing screen**, which puts an address in front
+of somebody typing twelve words, for a value that is the same on every device
+and permanent by decision. **Reading it from `tauri.conf.json`**: the frontend
+cannot, and threading it through the build would be a second place for the
+origin to be wrong. **Defaulting the PWA to the same constant**: it would make
+`ui-serve` and `ui-test` talk to production, and the PWA's derivation is not a
+guess that happens to work — it is the topology 0048 built.

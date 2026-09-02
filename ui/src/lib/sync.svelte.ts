@@ -145,8 +145,11 @@ export function rememberGroup(group: Group): void {
  * installed PWA over TLS — cannot end up asking for a `ws:` the browser will
  * refuse as mixed content (DECISIONS 0044).
  */
-export function relayUrl(group: Group): string {
+export function relayUrl(group: Group, fallback: string | null): string {
   if (group.relay !== null && group.relay !== '') return group.relay;
+  // The host's own answer when it has one — the permanent origin under Tauri,
+  // where `location` is this app talking to itself (DECISIONS 0095).
+  if (fallback !== null && fallback !== '') return fallback;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${scheme}//${location.host}/sync`;
 }
@@ -206,6 +209,8 @@ export class Sync {
   /** Hands a merged state to the reactive layer, which renders it and saves
    *  the replica on its usual schedule. */
   readonly #adopt: (state: StateView) => void;
+  /** Where to sync when the group carries no override — see `relayUrl`. */
+  readonly #defaultRelay: string | null;
 
   /**
    * The group this device belongs to, or `null` until it is paired. Public
@@ -251,9 +256,15 @@ export class Sync {
    * also puts the fact next to the replica it describes, since the two are
    * read in the same breath.
    */
-  constructor(core: Core, openedFresh: boolean, adopt: (state: StateView) => void) {
+  constructor(
+    core: Core,
+    openedFresh: boolean,
+    defaultRelay: string | null,
+    adopt: (state: StateView) => void,
+  ) {
     this.#core = core;
     this.#adopt = adopt;
+    this.#defaultRelay = defaultRelay;
     // A cursor is only meaningful for the replica that consumed those frames
     // (DECISIONS 0045). These are two different files on the device and can be
     // lost separately — and a cursor that outlives its replica fails silently
@@ -348,7 +359,7 @@ export class Sync {
     clearTimeout(this.#retryTimer);
 
     this.phase = 'connecting';
-    const socket = new WebSocket(relayUrl(this.group));
+    const socket = new WebSocket(relayUrl(this.group, this.#defaultRelay));
     socket.binaryType = 'arraybuffer';
     this.#socket = socket;
 

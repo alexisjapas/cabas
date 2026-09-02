@@ -1255,7 +1255,19 @@ becomes asynchronous** — `invoke` has no synchronous form.
       installed from the tunnel, and the two are separate apps with separate
       storage — so this joins the group with the twelve words like any new
       device, and the roster gains a third entry until it is renamed
-- [ ] **The two questions only the device answers** (0093). Is
+- [x] **A third question the device answered first, and it was not on the
+      list** (0095). The APK could not join its group at all, and the reason
+      came before either question below: `relayUrl` and `photoUrl` derive the
+      relay from `location`, which is exact on the PWA — the relay serves the
+      bundle and `/sync` from one origin — and meaningless in a webview served
+      from `http://tauri.localhost`. Both sockets dialled the app itself, so
+      the phone sat on "Qui êtes-vous ?" waiting for a roster that could not
+      arrive. 0093 inherited 0043's sentence without noticing its premise was
+      a property of how the PWA is *served*. `Host.defaultRelay()` is the fix:
+      `null` in the PWA, the permanent origin under Tauri.
+- [ ] **The two questions only the device answers** (0093), neither of which
+      the first install reached, because 0095 stopped the connection before it
+      was attempted. Is
       `http://tauri.localhost` a secure context? If it is not, the webview
       refuses `wss:` and the socket moves to Rust after all — this milestone's
       one load-bearing assumption. And does the APK reach the relay at

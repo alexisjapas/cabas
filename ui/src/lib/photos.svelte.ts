@@ -51,9 +51,12 @@ import type { Group } from './sync.svelte';
  * keeps a development relay reachable without a second field to fill in and
  * get wrong.
  */
-export function photoUrl(group: Group): string {
-  if (group.relay !== null && group.relay !== '') {
-    return `${group.relay.replace(/\/sync\/?$/, '')}/photos`;
+export function photoUrl(group: Group, fallback: string | null): string {
+  // The Settings override and the host's own default (DECISIONS 0095) are both
+  // `/sync` URLs, so both are read the same way.
+  const named = group.relay !== null && group.relay !== '' ? group.relay : fallback;
+  if (named !== null && named !== '') {
+    return `${named.replace(/\/sync\/?$/, '')}/photos`;
   }
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${scheme}//${location.host}/photos`;
@@ -84,6 +87,8 @@ export type PhotoPhase =
 
 export class PhotoTransfer {
   readonly #core: Core;
+  /** Where to fetch photos when the group carries no override. */
+  readonly #defaultRelay: string | null;
   /** Read rather than held: `Sync` owns the group and it can change. */
   readonly #group: () => Group | null;
 
@@ -127,9 +132,10 @@ export class PhotoTransfer {
    */
   generation = $state(0);
 
-  constructor(core: Core, group: () => Group | null) {
+  constructor(core: Core, group: () => Group | null, defaultRelay: string | null) {
     this.#core = core;
     this.#group = group;
+    this.#defaultRelay = defaultRelay;
   }
 
   /**
@@ -185,7 +191,7 @@ export class PhotoTransfer {
     this.#again = false;
 
     this.phase = 'connecting';
-    const socket = new WebSocket(photoUrl(group));
+    const socket = new WebSocket(photoUrl(group, this.#defaultRelay));
     socket.binaryType = 'arraybuffer';
     this.#socket = socket;
     this.#openedWith = group.phrase;

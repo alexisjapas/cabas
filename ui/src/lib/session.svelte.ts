@@ -27,7 +27,7 @@ import type { Command } from './bindings/Command';
 import type { Identity } from './bindings/Identity';
 import type { ImportReport } from './bindings/ImportReport';
 import type { StateView } from './bindings/StateView';
-import { openCore, rememberIdentity } from './core';
+import { defaultRelay, openCore, rememberIdentity } from './core';
 import type { Core } from './core';
 import { PhotoTransfer } from './photos.svelte';
 import { Sync } from './sync.svelte';
@@ -112,14 +112,20 @@ export class Session {
    */
   error = $state<string | null>(null);
 
-  private constructor(core: Core, openedFresh: boolean, state: StateView, screen: Screen) {
+  private constructor(
+    core: Core,
+    openedFresh: boolean,
+    relay: string | null,
+    state: StateView,
+    screen: Screen,
+  ) {
     this.#core = core;
     this.state = state;
     this.screen = screen;
     // A merged frame is a state change like any other, and the replica it
     // came from now differs from what is on disk — so it renders and it saves,
     // through exactly the paths a command uses.
-    this.sync = new Sync(core, openedFresh, (state: StateView) => {
+    this.sync = new Sync(core, openedFresh, relay, (state: StateView) => {
       this.state = state;
       this.#scheduleFlush();
       // A merged frame is where this device learns the *names* of photos the
@@ -127,15 +133,20 @@ export class Session {
       // (DECISIONS 0092).
       this.photos.nudge();
     });
-    this.photos = new PhotoTransfer(core, () => this.sync.group);
+    this.photos = new PhotoTransfer(core, () => this.sync.group, relay);
   }
 
   static async open(identity: Identity): Promise<Session> {
     const core = await openCore(identity);
     // Read together, because `Sync` needs the second to decide whether a
     // stored cursor still belongs to this replica (DECISIONS 0045, 0093).
-    const [state, openedFresh] = await Promise.all([core.state(), core.openedFresh()]);
-    const session = new Session(core, openedFresh, state, readScreen());
+    const [state, openedFresh, relay] = await Promise.all([
+      core.state(),
+      core.openedFresh(),
+      // Where this host syncs when the group names nothing (DECISIONS 0095).
+      defaultRelay(),
+    ]);
+    const session = new Session(core, openedFresh, relay, state, readScreen());
     session.#watchPageLifecycle();
     // Neither does anything on a device with no phrase, which is every device
     // until it is paired.

@@ -126,6 +126,12 @@ export async function readPhrase(phrase: string): Promise<string> {
   return CabasApp.readPhrase(phrase);
 }
 
+/** The relay serves the bundle and `/sync` on one origin, so there is
+ *  nothing to configure: `relayUrl` derives it from `location` (0012, 0048). */
+export async function defaultRelay(): Promise<string | null> {
+  return null;
+}
+
 export async function openCore(identity: Identity): Promise<Core> {
   await wasmReady();
   return new WasmCore(await CabasApp.open(identity));

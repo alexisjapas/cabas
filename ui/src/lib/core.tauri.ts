@@ -91,6 +91,16 @@ export function readPhrase(phrase: string): Promise<string> {
  * window. Either way the frontend decides *when* — there is nothing to open
  * until the host says who this device is.
  */
+/**
+ * The permanent origin (DECISIONS 0012), from the Rust host.
+ *
+ * Not `location`: this app is served from `http://tauri.localhost`, so the
+ * PWA's rule would have both sockets dial the app itself (0095).
+ */
+export function defaultRelay(): Promise<string | null> {
+  return invoke<string>('default_relay');
+}
+
 export async function openCore(identity: Identity): Promise<Core> {
   await invoke('open', { identity });
   return new TauriCore();

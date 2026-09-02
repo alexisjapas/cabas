@@ -677,6 +677,15 @@ Key domain shapes, all settled in DECISIONS:
   what `tauri-check` in the `.#android` shell relies on. **Nothing in CI
   compiles it today**; that gap closes at M8, when a desktop shell has to
   carry the GUI stack anyway.
+- **The relay URL cannot be derived from `location` on every host.** On the
+  PWA it is exact — the relay serves the bundle and `/sync` from one origin
+  (0012, 0048), so `location` *is* the relay. A Tauri webview is served from
+  `http://tauri.localhost`, so the same expression makes both sockets dial the
+  app itself, and a phone sits on "Qui êtes-vous ?" waiting for a roster that
+  cannot arrive. `Host.defaultRelay()` is where each host answers for itself
+  (DECISIONS 0095): `null` in the PWA, the permanent origin under Tauri.
+  Anything new that opens a socket reads it too, and `relayUrl`/`photoUrl` are
+  the only two places that touch `location`.
 - **The APK job does not run on a push, and the CI APK is a fresh install
   every time.** `apk` is gated to `workflow_dispatch` and `vX.Y.Z` tags,
   because it realizes the Android SDK and NDK through Nix and then lets
