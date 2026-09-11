@@ -105,6 +105,8 @@ before any code was written. Status is `Accepted` unless stated otherwise.
 | [0093](#0093--two-cores-one-frontend-the-tauri-host-is-an-invoke-bridge) | Two cores, one frontend: the Tauri host is an `invoke` bridge | Architecture |
 | [0094](#0094--src-tauri-is-a-member-not-a-default-member) | `src-tauri` is a member, not a default member | Tooling |
 | [0095](#0095--the-default-relay-belongs-to-the-host) | The default relay belongs to the host | Sync |
+| [0096](#0096--a-tick-dies-with-the-row-it-was-made-on) | A tick dies with the row it was made on | Architecture |
+| [0097](#0097--the-list-is-two-lists) | The list is two lists | Product |
 
 ---
 
@@ -4734,3 +4736,142 @@ cannot, and threading it through the build would be a second place for the
 origin to be wrong. **Defaulting the PWA to the same constant**: it would make
 `ui-serve` and `ui-test` talk to production, and the PWA's derivation is not a
 guess that happens to work — it is the topology 0048 built.
+
+## 0096 — A tick dies with the row it was made on
+
+**Date** 2026-09-09 · **Status** Accepted · **Extends**
+[0028](#0028--finishing-a-trip-prunes-the-overlay-selectively) ·
+**Relates to**
+[0019](#0019--the-cart-is-derived-the-overlay-stores-only-explicit-actions),
+[0020](#0020--list-entries-vanish-on-completion-purge-is-deferred),
+[0023](#0023--the-staple-flag-and-its-derived-auto-check),
+[0034](#0034--a-broken-reference-is-a-warning-not-an-empty-screen),
+[0079](#0079--asking-for-more-of-a-line-purges-its-tick-and-both-amounts-are-one-control)
+
+**Context.** Reported from a real trip: *"when I add recipes, some of their
+ingredients turn up already bought"*. They were under "Acheté", so this is not
+0023's auto-checked staple — it is an explicit `Checked`, carrying somebody's
+name and a date, on a row nobody had touched.
+
+The overlay is persisted and the cart is derived (Rule 3). The two therefore
+have different lifetimes, and nothing was holding them together except at the
+two doors that had already been noticed: adding a bare ingredient purges its
+overlay entry (0019), changing what one asks for purges it again (0079), and
+finishing the trip purges what the completed entries were the last to ask for
+(0028). Every other way a line stops being asked for left the tick behind:
+
+- the row removed by hand, which is the ordinary way a list changes its mind;
+- the row nudged below its last notch, which is the same command
+  ([0072](#0072--the-gesture-keeps-counting-and-holding-a-row-types-the-amount));
+- an entry that could not be finished and was deleted rather than shopped;
+- a recipe edited to drop an ingredient, or an ingredient deleted outright.
+
+The stranded tick is **invisible while it is wrong**, which is why it survived
+this long: with nothing on the list asking for that ingredient there is no
+cart line to draw it on. It waits, in the document, for the day a recipe names
+that ingredient again — and the row then arrives ticked, folded away under
+"Terminées" and "Acheté", bought as far as the cart is concerned. The
+difference is discovered at home. There is no expiry on it: a tick made in
+March is still checking things off in September.
+
+**Decision.** An explicit action outlives nothing. Once no list entry asks for
+an ingredient, its overlay entry is dropped.
+
+The rule is `cabas_domain::forget_stale_checks(cart, overlay)`, beside
+`finish_shopping` and phrased the same way: the domain says what is left and
+the caller writes it down. `finish_shopping` stays exactly as it is — it knows
+which entries are *going* and can drop their ticks before they leave, which is
+0028's selectivity and still correct.
+
+The sweep runs in `App::apply`, after **every** command that changed the
+document, rather than in the commands that can strand a tick. That is
+deliberate. The list of doors above is four items long today and each of them
+is a door somebody adds another one beside; the note in `CLAUDE.md` about
+`update_list_entry` is the same lesson from 0079, one release earlier. `apply`
+is the one door they all already go through. Running it everywhere has a
+second effect that a targeted purge would not have: **it heals what earlier
+builds left behind.** Every device carrying stale ticks today clears them on
+its next command, with no migration and no schema change.
+
+**It refuses to decide on a list it could not all read.** `project::derive`
+sets an entry aside when its recipe is missing or its expansion fails — a
+recipe the other phone deleted, a merge that has only half arrived (0034).
+Such an entry contributes no cart line, so a sweep that trusted the cart would
+throw away a tick somebody made in a shop over a row that comes back a moment
+later. `Projection::understood` says whether every entry survived the triage,
+and the sweep does nothing when it is false. The cart is still worth showing;
+it is not worth deciding with.
+
+**Consequences.** Two extra reads of the document in the rare case where the
+sweep actually writes, and one cart derivation shared with the render in every
+other case — `App::view_of` exists so that a command derives one cart rather
+than two.
+
+Under a CRDT the sweep is a group-wide write, like every purge before it. Two
+devices disagreeing about it converge on the next command from either: a tick
+that survives a concurrent removal is stale again, and stale is exactly what
+the next sweep looks for. Self-healing was already the property that made
+running it everywhere worth it; concurrency is where it earns it twice.
+
+Nothing about the schema moves. `SCHEMA_VERSION` is untouched, an older build
+reading the same document simply keeps the ticks this one drops, and no
+device has to be told anything.
+
+**Rejected.** **Purging at each door** — `remove_list_entry`, the two nudge
+arms, `delete_recipe`, `save_recipe`, `delete_ingredient` — which is the
+targeted fix, is five call sites, and repairs nothing already stranded.
+**Keying the overlay by list entry rather than by ingredient**, which would
+make a tick die with its entry structurally: it is a schema change, it breaks
+"checking one line advances every entry at once"
+([0028](#0028--finishing-a-trip-prunes-the-overlay-selectively)), and 0018's
+single flat list is what the shape is for. **Expiring a tick by age** — a
+trip id, or a timestamp older than a day — which invents a notion of "a trip"
+the app does not have, and would drop a tick made on Friday for a Saturday
+shop. **Doing it in the derivation**, which cannot work in either direction:
+a derivation may not write, and a stale tick is indistinguishable from a live
+one at exactly the moment it becomes visible again.
+
+## 0097 — The list is two lists
+
+**Date** 2026-09-09 · **Status** Accepted · **Relates to**
+[0059](#0059--the-list-shows-what-is-missing-and-a-recipe-joins-it-from-there),
+[0018](#0018--scope-cuts-no-pantry-a-single-list-no-ad-hoc-cart-items),
+[0081](#0081--the-cabas-look-a-tablecloth-cream-bubbles-and-colours-that-are-surfaces)
+
+**Context.** `Liste` sorted every entry into one alphabetical run, recipes and
+bare ingredients together. They are not the same thing to read. A recipe is an
+answer to "what are we eating", carries a number of people and a progress out
+of its own ingredients; a bare ingredient is an answer to "what has run out"
+and carries an amount. Interleaved by name, the kind has to be read off each
+row — from "4 pers." against "500 g" — before the row says anything, and a
+list of a dozen entries is read that way a dozen times.
+
+**Decision.** Two sections on the screen, recipes first, each alphabetical
+inside itself. One `<ul class="pending">` per section under a heading in the
+display face, which is the shape `Courses` already uses for an aisle and is
+allowed on the cloth for the same reason 0081 gives.
+
+Recipes first because that is the half that decides the other one: the loose
+ingredients are what is left over once the meals are settled.
+
+**Only what is still going is split.** "Terminées" stays one folded list. It
+is already out of the way, it is read to check nothing was missed rather than
+scanned, and a folded section that is itself two sections is two headings to
+say what one line already says.
+
+**Consequences.** It is a screen change and nothing else — one list, one
+`ShoppingList`, one cart derived from all of it (0018). The core is untouched,
+`ListItemView.kind` is what the split reads, and every command on a row is the
+one it already was.
+
+The alphabetical order this replaces was itself an entry's worth of reasoning
+— the core returns the list in the order entries were added, which is the
+order of a log — and it survives *inside* each section, which is where a
+person looks for a name.
+
+**Rejected.** **A tab each**, which doubles the walk to the one screen that
+answers "what is on the list". **A filter chip over one list**, the shape
+`Courses` uses for shops: a filter hides half the answer, and the question
+here is not "which of these" but "these, and also these". **Splitting
+"Terminées" too**, for the reason above. **A badge on each row** saying which
+kind it is, which is the same reading cost in a smaller font.

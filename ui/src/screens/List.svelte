@@ -52,6 +52,31 @@
   let pending = $derived(entries.filter((entry) => !entry.progress.complete));
   let done = $derived(entries.filter((entry) => entry.progress.complete));
 
+  /**
+   * Two lists, not one (DECISIONS 0097).
+   *
+   * A recipe and a loose ingredient are asked for by two different questions
+   * — "what are we eating" and "what has run out" — and reading them
+   * interleaved by name means reading the kind off every row before it says
+   * anything. Recipes first, because that is the half that decides the other.
+   *
+   * Only what is still going is split. A settled entry is already out of the
+   * way under "Terminées", and a folded section that is itself two sections
+   * is two headings to say what one line already says.
+   *
+   * Written here rather than as two filters in the markup: the order of the
+   * sections is this screen's own statement, and it belongs where it reads.
+   */
+  let sections = $derived(
+    [
+      { title: 'Recettes', entries: pending.filter((entry) => entry.item.kind === 'recipe') },
+      {
+        title: 'Ingrédients',
+        entries: pending.filter((entry) => entry.item.kind === 'ingredient'),
+      },
+    ].filter((section) => section.entries.length > 0),
+  );
+
   let recipes = $derived([...session.state.recipes].sort(byName));
   let recipeOptions = $derived<PickerOption[]>(
     recipes.map((recipe) => ({
@@ -401,11 +426,19 @@
     <p class="empty bubble">Tout est réglé. « Terminer les courses » vide la liste.</p>
   {/if}
 
-  <ul class="pending">
-    {#each pending as entry (entry.id)}
-      {@render row(entry)}
-    {/each}
-  </ul>
+  <!-- One `<ul class="pending">` per kind rather than one for the screen: the
+       class means "still going", which is what every other reader of it — the
+       tests included — is asking about. -->
+  {#each sections as section (section.title)}
+    <section>
+      <h2 class="display">{section.title}</h2>
+      <ul class="pending">
+        {#each section.entries as entry (entry.id)}
+          {@render row(entry)}
+        {/each}
+      </ul>
+    </section>
+  {/each}
 
   {#if done.length > 0}
     <details class="done">
@@ -576,6 +609,21 @@
     margin: var(--space-5) 0;
     color: var(--text-muted);
     text-align: center;
+  }
+
+  /* One heading per kind, in the display face directly on the cloth — the
+     same shape the cart uses for an aisle, and allowed there for the same
+     reason: at `--text-lg` in a heavy face it is over the 24px-equivalent AA
+     reads at 3:1, and `--display-ink` clears that against both checks
+     (DECISIONS 0081, 0097). */
+  section {
+    margin-bottom: var(--space-5);
+  }
+
+  h2 {
+    margin-bottom: var(--space-2);
+    color: var(--display-ink);
+    font-size: var(--text-lg);
   }
 
   ul {

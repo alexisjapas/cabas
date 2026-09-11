@@ -1552,14 +1552,42 @@ await waitFor(
 );
 ok('a recipe goes onto the list from the list, at the servings chosen there');
 
-// Alphabetical, because the core hands them back in the order they were added
-// — which is the order of a log, and nobody looks for anything that way.
-const order = await evaluate(`__all('.pending > li .name')`);
-const alphabetical = [...order].sort((a, b) => a.localeCompare(b, 'fr'));
-if (JSON.stringify(order) !== JSON.stringify(alphabetical)) {
-  throw failed(`the list is not in French order: ${JSON.stringify(order)}`);
+// Two lists, not one, and recipes first (DECISIONS 0097): the two kinds are
+// asked for by different questions, and interleaved by name the kind has to
+// be read off every row before it says anything.
+//
+// Each section is alphabetical inside itself, because the core hands the list
+// back in the order the entries were added — the order of a log, and nobody
+// looks for anything that way. A recipe row is the one whose amount is in
+// people, which is also the only thing about a row that says which kind it is.
+const listed = JSON.parse(
+  await evaluate(`
+  (() => JSON.stringify([...document.querySelectorAll('.pending')].map((ul) => ({
+    title: ul.previousElementSibling ? ul.previousElementSibling.textContent.trim() : null,
+    names: [...ul.children].map((li) => li.querySelector('.name').textContent.trim()),
+    kinds: [...new Set([...ul.children].map((li) =>
+      li.querySelector('.quantity').textContent.trim().endsWith('pers.') ? 'recipe' : 'ingredient',
+    ))],
+  }))))()
+`),
+);
+const titles = listed.map((section) => section.title);
+if (JSON.stringify(titles) !== JSON.stringify(['Recettes', 'Ingrédients'])) {
+  throw failed(`the list is not split by kind: ${JSON.stringify(listed)}`);
 }
-ok(`the list reads alphabetically (${JSON.stringify(order)})`);
+if (
+  JSON.stringify(listed[0].kinds) !== JSON.stringify(['recipe']) ||
+  JSON.stringify(listed[1].kinds) !== JSON.stringify(['ingredient'])
+) {
+  throw failed(`a row is under the wrong heading: ${JSON.stringify(listed)}`);
+}
+for (const section of listed) {
+  const alphabetical = [...section.names].sort((a, b) => a.localeCompare(b, 'fr'));
+  if (JSON.stringify(section.names) !== JSON.stringify(alphabetical)) {
+    throw failed(`${section.title} is not in French order: ${JSON.stringify(section.names)}`);
+  }
+}
+ok(`the list is two lists, each alphabetical (${JSON.stringify(listed.map((s) => s.names))})`);
 await shot('08b-list-with-recipes');
 
 // --- and the recipe survived too -------------------------------------------

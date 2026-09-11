@@ -261,6 +261,19 @@ and `ui-test` now measures the library form at 390px — which 0078 said was the
 one place its 16px floor could cost something, and had never actually been
 opened for the measurement.
 
+**0.12.0 is a defect and a screen.** The defect was reported from a real trip
+— *"when I add recipes, some of their ingredients turn up already bought"* —
+and what was on those rows was an explicit tick, under "Acheté", carrying
+somebody's name and a date nobody recognised. The overlay is persisted and the
+cart is derived, so the two have different lifetimes; every way a line stops
+being asked for other than the three already noticed (0019, 0079, 0028) left
+the tick behind, invisible for as long as nothing asked for that ingredient
+and waiting for the day something did. `App::apply` sweeps them now, after
+every command that changed the document — one door instead of four, and it
+heals what earlier builds stranded on the phones (DECISIONS 0096). The screen
+is `Liste`, split into recipes and bare ingredients under two headings, each
+alphabetical inside itself (0097).
+
 **0.11.0 is a session of asking for eleven things at once**, and it is worth
 recording as one because that is what shaped it: three of them are a milestone
 (M10's transfer half), one is a domain change, and the rest are the kind of
@@ -326,7 +339,7 @@ bundle would have rehearsed the bug rather than the fix, and a service worker
 hands a new build over one launch late (0038). Nothing about the drill needs
 preparing any more — it needs a shell on the Pi and an afternoon.
 
-**The workspace has since moved to 0.11.0**, through the releases listed under
+**The workspace has since moved to 0.12.0**, through the releases listed under
 the overview table. The precondition for the drill is *agreement*, not a
 particular number: whatever is on the Pi is what both phones must be showing
 in Settings before it starts. Releasing means updating the add-on and opening

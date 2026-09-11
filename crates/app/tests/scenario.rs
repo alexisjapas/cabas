@@ -1310,6 +1310,184 @@ async fn half_a_recipe_on_the_list() {
     );
 }
 
+/// A tick belongs to a row, and dies with it (DECISIONS 0096).
+///
+/// The defect this is the regression test for: the overlay is persisted and
+/// the cart is derived (Rule 3), so an ingredient ticked off in a shop and
+/// then taken off the list left a `Checked` behind with nothing left to show
+/// it on. Nothing was wrong on screen — there was no line to be wrong — right
+/// up until a recipe asked for that ingredient again weeks later, and the row
+/// arrived already bought.
+async fn a_tick_does_not_outlive_its_row() {
+    let mut app = open(MemoryStorage::new()).await;
+
+    let state = app
+        .dispatch(Command::SaveIngredient {
+            ingredient: new_ingredient("Butter", AisleTag::Dairy),
+        })
+        .await
+        .expect("the ingredient is saved");
+    let butter = id_of_ingredient(&state, "Butter");
+
+    // On the list by hand, ticked off in the shop, and off the list again
+    // without the trip ever being finished — which is the ordinary way a list
+    // changes its mind.
+    let state = app
+        .dispatch(Command::AddIngredientToList {
+            ingredient: butter.clone(),
+            quantity: Some(amount("250", UnitTag::G)),
+        })
+        .await
+        .expect("on the list");
+    let entry = state.list[0].id.clone();
+
+    let state = app
+        .dispatch(Command::ToggleCartItem {
+            ingredient: butter.clone(),
+        })
+        .await
+        .expect("ticked off in the shop");
+    assert_eq!(
+        line(&state.cart.bought, "Butter").state,
+        CheckStateTag::Checked
+    );
+
+    let state = app
+        .dispatch(Command::RemoveListEntry { entry })
+        .await
+        .expect("off the list again");
+    assert!(state.cart.to_buy.is_empty() && state.cart.bought.is_empty());
+
+    // Weeks later, a recipe asks for butter.
+    let recipe = RecipeInput {
+        id: None,
+        name: "Shortcrust".into(),
+        servings: 4,
+        yields: None,
+        photo: None,
+        components: vec![ComponentInput::Ingredient {
+            id: None,
+            ingredient: butter.clone(),
+            quantity: amount("125", UnitTag::G),
+        }],
+        steps: Vec::new(),
+    };
+    let state = app
+        .dispatch(Command::SaveRecipe { recipe })
+        .await
+        .expect("the recipe is saved");
+    let shortcrust = id_of_recipe(&state, "Shortcrust");
+    let state = app
+        .dispatch(Command::AddRecipeToList {
+            recipe: shortcrust,
+            servings: None,
+            only: None,
+        })
+        .await
+        .expect("the recipe goes on the list");
+
+    assert!(
+        state.cart.bought.is_empty(),
+        "the old tick had nothing left to describe: {:?}",
+        names(&state.cart.bought)
+    );
+    assert_eq!(
+        line(&state.cart.to_buy, "Butter").state,
+        CheckStateTag::ToBuy
+    );
+    assert!(
+        !state.list[0].progress.complete,
+        "and the recipe still has everything to buy"
+    );
+}
+
+/// The other half of the same rule: a row nothing can *read* keeps its tick.
+///
+/// Under a CRDT, one device deleting a recipe the other has on the list is
+/// not an error state, it is Tuesday (see `broken_reference`) — and neither
+/// is a merge that has only half arrived. The entry is set aside, so it
+/// contributes no cart line, so a sweep that trusted the cart would throw
+/// away a tick somebody made in a shop over a row that comes back a second
+/// later. `Projection::understood` is what stops it.
+async fn an_unreadable_row_keeps_its_tick() {
+    let mut app = open(MemoryStorage::new()).await;
+    let state = stocked(&mut app).await;
+    let state = tart(&mut app, &state).await;
+    let recipe = id_of_recipe(&state, "Tomato tart");
+
+    let state = app
+        .dispatch(Command::AddRecipeToList {
+            recipe: recipe.clone(),
+            servings: None,
+            only: None,
+        })
+        .await
+        .expect("the tart goes on the list");
+    let state = app
+        .dispatch(Command::ToggleCartItem {
+            ingredient: id_of_ingredient(&state, "Tomato"),
+        })
+        .await
+        .expect("three tomatoes, in the trolley");
+    assert_eq!(
+        line(&state.cart.bought, "Tomato").state,
+        CheckStateTag::Checked
+    );
+
+    // The other phone deleted the recipe. The entry stays, unreadable.
+    let state = app
+        .dispatch(Command::DeleteRecipe {
+            recipe: recipe.clone(),
+        })
+        .await
+        .expect("the recipe is deleted");
+    assert!(state.cart.to_buy.is_empty() && state.cart.bought.is_empty());
+    assert_eq!(state.problems.len(), 1, "and it says so");
+
+    // Anything at all happens next — this is where the sweep runs.
+    let state = app
+        .dispatch(Command::SaveIngredient {
+            ingredient: new_ingredient("Basil", AisleTag::Produce),
+        })
+        .await
+        .expect("an unrelated save");
+    assert_eq!(state.problems.len(), 1, "the row is still unreadable");
+
+    // The recipe comes back under the same id, which is what a late frame
+    // carrying it would bring.
+    let back = app
+        .dispatch(Command::SaveRecipe {
+            recipe: RecipeInput {
+                id: Some(recipe),
+                name: "Tomato tart".into(),
+                servings: 4,
+                yields: None,
+                photo: None,
+                components: vec![
+                    ComponentInput::Ingredient {
+                        id: None,
+                        ingredient: id_of_ingredient(&state, "Tomato"),
+                        quantity: amount("3", UnitTag::Piece),
+                    },
+                    ComponentInput::Ingredient {
+                        id: None,
+                        ingredient: id_of_ingredient(&state, "Egg"),
+                        quantity: amount("2", UnitTag::Piece),
+                    },
+                ],
+                steps: Vec::new(),
+            },
+        })
+        .await
+        .expect("the recipe is put back under its own id");
+
+    assert_eq!(
+        line(&back.cart.bought, "Tomato").state,
+        CheckStateTag::Checked,
+        "the tick survived the row it could not be drawn on"
+    );
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod native {
     use super::*;
@@ -1384,6 +1562,16 @@ mod native {
     fn half_a_recipe_goes_on_the_list_and_still_rescales() {
         block_on(half_a_recipe_on_the_list());
     }
+
+    #[test]
+    fn a_tick_does_not_outlive_the_row_it_was_made_on() {
+        block_on(a_tick_does_not_outlive_its_row());
+    }
+
+    #[test]
+    fn a_row_nothing_can_read_keeps_its_tick() {
+        block_on(an_unreadable_row_keeps_its_tick());
+    }
 }
 
 #[cfg(target_family = "wasm")]
@@ -1446,6 +1634,16 @@ mod browser {
     #[wasm_bindgen_test]
     async fn half_a_recipe_goes_on_the_list_and_still_rescales() {
         half_a_recipe_on_the_list().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_tick_does_not_outlive_the_row_it_was_made_on() {
+        a_tick_does_not_outlive_its_row().await;
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_row_nothing_can_read_keeps_its_tick() {
+        an_unreadable_row_keeps_its_tick().await;
     }
 
     /// The PWA's actual path: a command built as a JS object, through the

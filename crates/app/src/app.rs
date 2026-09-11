@@ -32,7 +32,7 @@ use cabas_domain::recipe::{Component, IngredientUsage, Segment, Step, SubRecipeU
 use cabas_domain::{
     Device, Event, Explicit, Ingredient, IngredientId, ListEntryId, Nudged, PhotoId, Quantity,
     Rational, Recipe, RecipeId, Shop, ShopId, SubRecipeAmount, Timestamp, UsageId, User, UserId,
-    finish_shopping, nudge_quantity, nudge_servings,
+    finish_shopping, forget_stale_checks, nudge_quantity, nudge_servings,
 };
 use cabas_store::{Document, Storage};
 
@@ -43,7 +43,7 @@ use crate::command::{
 use crate::error::{AppError, Result};
 use crate::library::Library;
 use crate::platform::{Identity, Platform};
-use crate::project::{self, Focus};
+use crate::project::{self, Focus, Projection};
 use crate::transfer::{self, ImportReport, LibraryFile};
 use crate::view::StateView;
 use crate::{id, number};
@@ -249,7 +249,14 @@ impl<S: Storage, P: Platform> App<S, P> {
             Ok(true) => {
                 self.mark_changed();
                 // The document moved under it; the library just read is stale.
-                self.state()
+                let library = Library::read(&self.document)?;
+                let projection = project::derive(&library);
+                if self.forget_stale_checks(&library, &projection)? {
+                    // The sweep wrote, so the projection it was computed
+                    // from is itself stale now. Rare enough to pay for.
+                    return self.state();
+                }
+                Ok(self.view_of(&library, &projection))
             }
             Ok(false) => {
                 self.revision += 1;
@@ -468,10 +475,16 @@ impl<S: Storage, P: Platform> App<S, P> {
     // --- internals ----------------------------------------------------------
 
     fn view(&self, library: &Library) -> StateView {
-        let projection = project::derive(library);
+        self.view_of(library, &project::derive(library))
+    }
+
+    /// The same, over a projection the caller already derived. [`App::apply`]
+    /// needs one to decide the sweep with, and deriving a second for the
+    /// render would be two carts where the command produced one.
+    fn view_of(&self, library: &Library, projection: &Projection) -> StateView {
         project::state(
             library,
-            &projection,
+            projection,
             self.focus.as_ref(),
             &self.identity,
             self.revision,
@@ -1128,18 +1141,46 @@ impl<S: Storage, P: Platform> App<S, P> {
         Ok(true)
     }
 
-    /// Writes down the overlay entries the domain dropped.
+    /// Drops the ticks nothing on the list asks for any more (DECISIONS 0096).
+    ///
+    /// Run after **every** command that changed the document, rather than in
+    /// the handful that can strand one. The handful is not small — a line
+    /// removed by hand, a line nudged below its last notch, a recipe edited
+    /// to drop an ingredient, an ingredient deleted from the library — and
+    /// each of them is a door somebody adds another one beside. This is the
+    /// one door they all already go through, and running it everywhere also
+    /// heals the ticks a build without it left behind.
+    ///
+    /// It refuses to decide on a list it could not all read: an entry set
+    /// aside by the triage still asks for its ingredients, and a tick made in
+    /// a shop must not be thrown away over a row that is temporarily
+    /// unreadable (see [`Projection::understood`]).
+    ///
+    /// Returns whether it wrote.
+    fn forget_stale_checks(&mut self, library: &Library, projection: &Projection) -> Result<bool> {
+        if library.overlay.is_empty() || !projection.understood {
+            return Ok(false);
+        }
+        let mut overlay = library.overlay.clone();
+        forget_stale_checks(&projection.cart, &mut overlay);
+        self.apply_overlay_purge(library, &overlay)
+    }
+
+    /// Writes down the overlay entries the domain dropped. Returns whether it
+    /// wrote anything.
     fn apply_overlay_purge(
         &mut self,
         library: &Library,
         remaining: &cabas_domain::Overlay,
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        let mut wrote = false;
         for ingredient in library.overlay.keys() {
             if !remaining.contains_key(ingredient) {
                 self.document.clear_explicit(ingredient)?;
+                wrote = true;
             }
         }
-        Ok(())
+        Ok(wrote)
     }
 
     // --- shared -------------------------------------------------------------

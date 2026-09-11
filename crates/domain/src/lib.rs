@@ -34,7 +34,9 @@ pub mod recipe;
 pub mod shop;
 pub mod units;
 
-pub use cart::{Cart, CartError, CartLine, EntryProgress, IngredientIndex, finish_shopping};
+pub use cart::{
+    Cart, CartError, CartLine, EntryProgress, IngredientIndex, finish_shopping, forget_stale_checks,
+};
 pub use event::{Action, Event, EventLog, Subject};
 pub use expand::{Contribution, ExpandError, RecipeIndex, expand};
 pub use ingredient::{Aisle, Ingredient, Keeping};

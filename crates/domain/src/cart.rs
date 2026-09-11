@@ -313,3 +313,105 @@ pub fn finish_shopping(list: &mut ShoppingList, cart: &Cart, overlay: &mut Overl
     }
     list.entries.retain(|e| !completed.contains(&e.id));
 }
+
+/// Drops the explicit actions nothing on the list asks for any more.
+///
+/// A tick is a statement about a row in front of you in a shop, and it stops
+/// meaning anything the moment that row is gone. The overlay outlives the
+/// cart, though — it is persisted and the cart is derived (Rule 3) — so an
+/// ingredient ticked off and then taken off the list leaves a `Checked`
+/// behind with nothing left to describe. Nothing shows it, because there is
+/// no line to show it on, right up until a recipe asks for that ingredient
+/// again weeks later: the row then arrives already bought, and the difference
+/// is discovered at home (DECISIONS 0096).
+///
+/// [`finish_shopping`] is the same rule through the door it was first noticed
+/// at, and it stays where it is: it knows which entries are *going* and can
+/// drop their ticks before they leave. This is the sweep behind it, for every
+/// other way a line stops being asked for — removed by hand, nudged below its
+/// last notch, or an ingredient a recipe no longer uses.
+///
+/// The caller passes the cart derived from the list **as it now is**, and has
+/// to be sure that cart accounts for every entry: a list that could not all
+/// be read asks for more than its cart shows, and pruning against that one
+/// would throw away a tick somebody made in a shop.
+pub fn forget_stale_checks(cart: &Cart, overlay: &mut Overlay) {
+    let asked_for: BTreeSet<&IngredientId> =
+        cart.lines.iter().map(|line| &line.ingredient).collect();
+    overlay.retain(|ingredient, _| asked_for.contains(ingredient));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::overlay::Explicit;
+    use crate::{Timestamp, UserId};
+
+    fn line(ingredient: &str) -> CartLine {
+        CartLine {
+            ingredient: IngredientId::from_raw(ingredient),
+            name: ingredient.to_owned(),
+            aisle: Aisle::Pantry,
+            staple: false,
+            amounts: Vec::new(),
+            state: CheckState::ToBuy,
+            sources: BTreeSet::new(),
+        }
+    }
+
+    fn ticked() -> Explicit {
+        Explicit::Checked {
+            by: UserId::from_raw("alice"),
+            at: Timestamp(1),
+        }
+    }
+
+    #[test]
+    fn a_tick_dies_with_the_last_line_that_asked_for_it() {
+        // The bug this guards against: the tick is invisible while it is
+        // stale — there is no line to draw it on — and comes back as
+        // "already bought" the day something asks for the ingredient again.
+        let mut overlay: Overlay = [
+            (IngredientId::from_raw("butter"), ticked()),
+            (IngredientId::from_raw("flour"), ticked()),
+        ]
+        .into_iter()
+        .collect();
+
+        let cart = Cart {
+            lines: vec![line("flour")],
+        };
+        forget_stale_checks(&cart, &mut overlay);
+
+        assert_eq!(overlay.len(), 1);
+        assert!(overlay.contains_key(&IngredientId::from_raw("flour")));
+    }
+
+    #[test]
+    fn an_explicit_unchecked_is_swept_the_same_way() {
+        // It is the same fact from the other side: "no, I do need to buy
+        // this" says nothing once nothing is asking for it, and leaving it
+        // behind would un-check a staple the next time a recipe wants one.
+        let mut overlay: Overlay = [(IngredientId::from_raw("salt"), Explicit::Unchecked)]
+            .into_iter()
+            .collect();
+
+        forget_stale_checks(&Cart::default(), &mut overlay);
+
+        assert!(overlay.is_empty());
+    }
+
+    #[test]
+    fn a_tick_on_a_line_that_is_still_asked_for_stays() {
+        let mut overlay: Overlay = [(IngredientId::from_raw("flour"), ticked())]
+            .into_iter()
+            .collect();
+
+        let cart = Cart {
+            lines: vec![line("flour")],
+        };
+        forget_stale_checks(&cart, &mut overlay);
+
+        assert_eq!(overlay.len(), 1, "the shop is not over");
+    }
+}

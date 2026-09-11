@@ -49,6 +49,15 @@ pub(crate) struct Focus {
 pub(crate) struct Projection {
     pub cart: Cart,
     pub problems: Vec<ProblemView>,
+    /// Whether the cart accounts for **every** entry on the list.
+    ///
+    /// `false` when [`derive`]'s triage had to set one aside — a recipe another
+    /// device deleted, a cycle, a merge that has only half arrived. The cart
+    /// is still worth showing, which is the whole point of the triage; it is
+    /// not worth *deciding* with, and the one decision that reads this is the
+    /// sweep of stale ticks (DECISIONS 0096). An entry nothing can read still
+    /// asks for its ingredients.
+    pub understood: bool,
 }
 
 /// Triages the list, then derives the cart from what survives.
@@ -106,6 +115,9 @@ pub(crate) fn derive(library: &Library) -> Projection {
         }
     }
 
+    // Every entry survived the triage, so the cart below is the whole list
+    // and may be decided with as well as shown (DECISIONS 0096).
+    let mut understood = usable.entries.len() == library.list.entries.len();
     let cart = match cart::derive(&usable, &library.recipes, &ingredients, &library.overlay) {
         Ok(cart) => cart,
         // Unreachable: the triage above removed every cause. Reported rather
@@ -118,11 +130,16 @@ pub(crate) fn derive(library: &Library) -> Projection {
                 ProblemKind::BrokenGraph,
                 error.to_string(),
             ));
+            understood = false;
             Cart::default()
         }
     };
 
-    Projection { cart, problems }
+    Projection {
+        cart,
+        problems,
+        understood,
+    }
 }
 
 /// Keeps a deleted ingredient visible instead of taking the whole entry down

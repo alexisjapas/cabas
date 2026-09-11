@@ -215,12 +215,28 @@ its group at all. **Two tails are carried past the milestone**: there is no
 keystore, so every CI APK is a fresh install, and distribution is a workflow
 artifact rather than a release asset. `src-tauri/README.md` carries both.
 
+**0.12.0 is two, and the first one came off a real trip.** **A tick dies with
+the row it was made on** (0096): the overlay is persisted and the cart is
+derived, so ticking something off and then taking it off the list left an
+explicit `Checked` behind with no line left to draw it on — invisible while it
+was wrong, right up until a recipe named that ingredient again weeks later and
+the row arrived already bought. `forget_stale_checks` is the domain's rule and
+**`App::apply` is where it runs**, after every command that changed the
+document rather than at the four doors that can strand one: it is one door
+instead of four, and running it everywhere is also what clears the ticks
+earlier builds left behind on the phones. It refuses to decide on a list it
+could not all read (`Projection::understood`), because an entry the triage set
+aside still asks for its ingredients. And **the list is two lists** (0097):
+`Liste` shows recipes and bare ingredients under two headings instead of one
+alphabetical run, because the two are asked for by different questions;
+"Terminées" stays one folded section.
+
 **M9 — history and statistics — is next**: what the
 group buys and how often, recorded at `FinishShopping` and derived from
 there, kept forever with the footprint shown in Settings (DECISIONS 0061).
 The milestone numbers are names, not the order; ROADMAP says why.
 
-`crates/domain` holds the product logic as pure functions (90 tests);
+`crates/domain` holds the product logic as pure functions (93 tests);
 `crates/store` holds the Loro schema, the two-way
 mapping, snapshots, compaction and the `Storage` trait over file +
 IndexedDB — **plus `PhotoStore`, a second trait over one record per photo**,
@@ -234,9 +250,9 @@ on `CabasApp`) **and the library's file form** (`app::transfer`, and
 (phrase → key, seal/open, the wire protocol, the sans-IO client `Session`);
 `crates/relay` is a working
 axum broker persisting sealed frames per group **and serving the PWA out of
-its own binary**, **and brokering photos on `/photos`** (0092). 290 native
-tests plus 22 in
-a real browser — 9 over IndexedDB and the photo store, 13 through the app —
+its own binary**, **and brokering photos on `/photos`** (0092). 295 native
+tests plus 24 in
+a real browser — 9 over IndexedDB and the photo store, 15 through the app —
 and all of them run
 in CI. Two tests at replica level carry the two milestones:
 `crates/relay/tests/convergence.rs` is M5's — two devices never online
@@ -468,7 +484,7 @@ clippy --workspace` working in a fresh checkout; the release image sets
 | `expand` | DAG flattening, cycle detection, `MAX_DEPTH` — and `expand_only`, which restricts a list entry to some of a recipe's own lines (0091) |
 | `overlay` | `Explicit`, `CheckState`, `resolve` (state derivation) |
 | `list` | `ShoppingList`, `ListEntry`, `add`/`update` — both purge the overlay (0019, 0079) — what one notch of the swipe is worth (`nudge_quantity` / `nudge_servings`, 0072), and `ListItem::Recipe::only`, the lines a half-added recipe asks for (0091) |
-| `cart` | `derive`, unit merging, `progress`, `finish_shopping` |
+| `cart` | `derive`, unit merging, `progress`, `finish_shopping` — and `forget_stale_checks`, which drops a tick with nothing left to describe (0096) |
 | `people` | `User`, `Device` — attribution names, not access control |
 | `event` | `Event`, `EventLog` — deletions and edits, capped |
 
@@ -663,6 +679,20 @@ Key domain shapes, all settled in DECISIONS:
   `add_entry` over `add` with the same second half; a new one that calls
   `document.update_list_entry` itself compiles, passes, and loses the rule
   again.
+- **And a tick outlives nothing at all** (DECISIONS 0096). The overlay is
+  persisted and the cart is derived, so the two have different lifetimes: an
+  ingredient ticked off and then taken off the list — removed by hand, nudged
+  below its last notch, dropped from a recipe — left a `Checked` behind with
+  no cart line to draw it on. It is **invisible while it is wrong**, which is
+  why it survived this long, and it comes back as "Acheté" the day something
+  asks for that ingredient again. `App::apply` sweeps it after every command
+  that changed the document, deliberately **not** in the commands that can
+  strand one: that list is four items long and grows, and sweeping everywhere
+  is also what heals the ticks earlier builds left on a phone. Anything new
+  that reads the cart to *decide* something has to read
+  `Projection::understood` the way the sweep does — an entry the triage set
+  aside contributes no cart line and still asks for its ingredients, so
+  pruning against that cart throws away a tick somebody made in a shop.
 - **Every core call is a promise, and `Session.run` is one too** (DECISIONS
   0093). Tauri's IPC has no synchronous form, so the surface is uniformly
   asynchronous on both hosts rather than differing per platform — which means
